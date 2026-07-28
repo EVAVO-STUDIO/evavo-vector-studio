@@ -12,7 +12,14 @@ import {
 
 const PORTABLE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const OPERATION_ID = /^[a-z][a-z0-9:-]{0,63}$/;
-const ROOT_KEYS = new Set(["version", "id", "name", "failureMode", "items"]);
+const ROOT_KEYS = new Set([
+  "$schema",
+  "version",
+  "id",
+  "name",
+  "failureMode",
+  "items",
+]);
 const ITEM_KEYS = new Set(["id", "operation", "spec"]);
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -104,6 +111,16 @@ export function validateBatchManifest(value: unknown): BatchManifest {
     );
   }
   assertKnownKeys(source, ROOT_KEYS, "manifest");
+  if (
+    source.$schema !== undefined &&
+    (typeof source.$schema !== "string" || source.$schema.length > 500)
+  ) {
+    throw new BatchEngineError(
+      "BATCH_MANIFEST_INVALID",
+      "manifest.$schema must be a string of at most 500 characters.",
+      { details: { schema: source.$schema } },
+    );
+  }
   if (source.version !== BATCH_CONTRACT_VERSION) {
     throw new BatchEngineError(
       "BATCH_MANIFEST_INVALID",
