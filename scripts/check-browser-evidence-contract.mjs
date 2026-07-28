@@ -20,6 +20,8 @@ function requireTokens(relativePath, source, tokens) {
 }
 
 const files = {
+  verifier: "packages/vector-core/src/difference-artifact-verification.ts",
+  verifierTests: "packages/vector-core/src/difference-artifact-verification.test.ts",
   workspace: "apps/web/app/components/TraceWorkspace.tsx",
   topology: "apps/web/app/components/TopologyEvidence.tsx",
   topologyStyles: "apps/web/app/components/TopologyEvidence.module.css",
@@ -29,16 +31,37 @@ const files = {
 };
 const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])));
 
-requireTokens(files.workspace, sources.workspace, [
+requireTokens(files.verifier, sources.verifier, [
+  "DifferenceArtifactVerificationError",
+  "DifferenceArtifactPayload",
   "PNG_SIGNATURE",
-  "verifyDifferencePayload",
-  "bytes.byteLength !== payload.bytes",
-  "view.getUint32(16, false)",
-  'window.crypto.subtle.digest("SHA-256", bytes)',
-  "sha256 !== payload.sha256.toLowerCase()",
-  "payloadDifference.selectedCandidateId !== payload.evidence.selection.selectedCandidateId",
+  "SHA256_PATTERN",
+  "globalThis.atob",
+  'String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]) !== "IHDR"',
+  'cryptoApi.subtle.digest("SHA-256", bytes)',
+  '"DIFFERENCE_CANDIDATE_MISMATCH"',
+  '"DIFFERENCE_BYTE_COUNT_MISMATCH"',
+  '"DIFFERENCE_DIMENSIONS_MISMATCH"',
+  '"DIFFERENCE_SHA256_INVALID"',
+]);
+
+requireTokens(files.verifierTests, sources.verifierTests, [
+  "verifies a base64 PNG against dimensions, bytes, candidate and SHA-256",
+  "rejects a difference artefact for another candidate",
+  "rejects an incorrect byte count",
+  "rejects dimensions that do not match the PNG IHDR",
+  "rejects an incorrect SHA-256",
+  "rejects a non-PNG stream",
+]);
+
+requireTokens(files.workspace, sources.workspace, [
+  "verifyDifferenceArtifactPayload,",
+  "type DifferenceArtifactPayload",
+  "await verifyDifferenceArtifactPayload(",
+  "payload.evidence.selection.selectedCandidateId",
   "<TopologyEvidence topology={result.inspection.topology} findings={result.inspection.findings} />",
-  "SHA-256 verified in this browser",
+  "shared SHA-256 verifier passed",
+  "Animated containers and multi-page TIFF are rejected before decoding",
 ]);
 
 requireTokens(files.topology, sources.topology, [
@@ -89,7 +112,7 @@ process.stdout.write(`${JSON.stringify({
   check: "browser-evidence-contract",
   ok: true,
   verifiedBoundaries: [
-    "base64 transport",
+    "shared base64 transport verifier",
     "PNG signature and dimensions",
     "SHA-256",
     "selected candidate binding",
