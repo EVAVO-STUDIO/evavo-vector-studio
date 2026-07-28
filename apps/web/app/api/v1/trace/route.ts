@@ -133,9 +133,10 @@ export async function POST(request: Request): Promise<Response> {
     lease = TRACE_RUNTIME_GUARD.acquire(request.signal);
   } catch (error) {
     if (error instanceof RasterRuntimeGuardError) {
-      const headers = error.retryAfterSeconds
-        ? { "retry-after": String(error.retryAfterSeconds) }
-        : {};
+      const headers = new Headers();
+      if (error.retryAfterSeconds !== undefined) {
+        headers.set("retry-after", String(error.retryAfterSeconds));
+      }
       return json(
         {
           error: error.code,
