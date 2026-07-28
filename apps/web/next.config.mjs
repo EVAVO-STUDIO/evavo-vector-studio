@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ["@neplex/vectorizer"],
+    serverComponentsExternalPackages: ["@neplex/vectorizer", "@resvg/resvg-js"],
   },
 };
 
