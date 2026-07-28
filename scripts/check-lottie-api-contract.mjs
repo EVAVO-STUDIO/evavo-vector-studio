@@ -43,6 +43,7 @@ const webPackage = await readJson("apps/web/package.json");
 const files = {
   route: "apps/web/app/api/v1/motion/lottie/route.ts",
   motionRoute: "apps/web/app/api/v1/motion/svg/route.ts",
+  dotLottieRoute: "apps/web/app/api/v1/motion/dotlottie/route.ts",
   page: "apps/web/app/page.tsx",
   readme: "README.md",
   apiDocs: "docs/API.md",
@@ -85,11 +86,9 @@ requireTokens(files.route, sources.route, [
   '"x-vector-lottie-contract": LOTTIE_CONTRACT_VERSION',
   '"x-vector-lottie-structural-inspection": "passed"',
   '"x-vector-lottie-player-validation": "not-performed"',
-  '"x-vector-dotlottie": "unavailable"',
   'encoding: "utf8-json"',
   'data: result.json',
   'playerRenderValidation: false',
-  'dotLottiePackaging: false',
   'approval: result.evidence.approval',
   'headers.set("cache-control", "no-store, max-age=0")',
 ]);
@@ -97,7 +96,6 @@ forbidTokens(files.route, sources.route, [
   "eval(",
   "new Function(",
   'playerRenderValidation: true',
-  'dotLottiePackaging: true',
   'approval: "approved"',
 ]);
 
@@ -105,17 +103,21 @@ requireTokens(files.motionRoute, sources.motionRoute, [
   'lottieJsonExportAvailable: true',
   'lottieEndpoint: "/api/v1/motion/lottie"',
   'lottiePlayerRenderValidationAvailable: false',
-  'dotLottieAvailable: false',
+]);
+requireTokens(files.dotLottieRoute, sources.dotLottieRoute, [
+  'endpoint: "/api/v1/motion/dotlottie"',
+  'createDotLottiePackage(lottie.json',
+  'playerRenderValidation: false',
 ]);
 requireTokens(files.page, sources.page, [
-  "Core + CLI + API available",
-  "player-render validation",
-  "dotLottie remain planned",
+  "Lottie + dotLottie",
+  "UI + API + CLI + MCP available",
+  "Independent source-to-player render validation",
 ]);
 requireTokens(files.readme, sources.readme, [
   "POST /api/v1/motion/lottie",
   "Governed Lottie JSON export and inspection are available through the core Lottie package, CLI and HTTP API",
-  "player-render validation remains unavailable",
+  "Independent player-render and browser archive-load validation also remain unavailable",
 ]);
 requireTokens(files.apiDocs, sources.apiDocs, [
   "# Lottie JSON API",
@@ -124,13 +126,14 @@ requireTokens(files.apiDocs, sources.apiDocs, [
   "20 MiB",
   "X-Vector-Lottie-Player-Validation",
   "not-performed",
-  "dotLottie remains unavailable",
+  "separate `/api/v1/motion/dotlottie` endpoint",
 ]);
 requireTokens(files.lottieDocs, sources.lottieDocs, [
   "## HTTP API workflow",
   "/api/v1/motion/lottie",
   "format=lottie",
   "playerRenderValidation: not-yet-performed",
+  "/api/v1/motion/dotlottie",
 ]);
 requireTokens(files.motionDocs, sources.motionDocs, [
   "Lottie HTTP API is available",
@@ -158,10 +161,10 @@ process.stdout.write(`${JSON.stringify({
   lottieContractVersion: "1.0",
   endpoint: "/api/v1/motion/lottie",
   directMimeType: "video/lottie+json",
+  separateDotLottieEndpoint: "/api/v1/motion/dotlottie",
   compatibility: {
     structuralInspection: true,
     playerRenderValidation: false,
-    dotLottie: false,
   },
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
