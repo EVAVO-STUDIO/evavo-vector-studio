@@ -1,1 +1,1 @@
-apply exact strict Lottie source type repair after package barrel fix
+apply exact strict Lottie source type repair with workspace install
