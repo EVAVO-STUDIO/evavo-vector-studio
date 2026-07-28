@@ -1,3 +1,4 @@
+export * from "./difference-artifact-verification.js";
 export * from "./svg.js";
 export * from "./svg-topology.js";
 
