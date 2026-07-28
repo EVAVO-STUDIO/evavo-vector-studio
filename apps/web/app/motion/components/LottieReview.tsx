@@ -788,7 +788,7 @@ export default function LottieReview({
   );
   const archiveEvidenceUrl = useObjectUrl(archiveEvidenceBlob);
 
-  function validateGenerationInputs(): asserts sourceFile is File {
+  function validateGenerationInputs(): void {
     if (!sourceFile || !sourceText || !plan || !planJson || running) {
       throw new Error("Select a governed SVG and complete a valid motion plan first.");
     }
@@ -807,14 +807,14 @@ export default function LottieReview({
     }
   }
 
-  function requestForm(format: "json", includeAnimationId: boolean): FormData {
+  function requestForm(includeAnimationId: boolean): FormData {
     if (!sourceFile || !plan || !planJson) {
       throw new Error("The source and normalized motion plan are required.");
     }
     const form = new FormData();
     form.set("file", sourceFile);
     form.set("motion", planJson);
-    form.set("format", format);
+    form.set("format", "json");
     form.set("frameRate", String(frameRate));
     form.set("precision", String(precision));
     form.set("name", plan.name);
@@ -838,7 +838,7 @@ export default function LottieReview({
         headers: token.trim()
           ? { authorization: `Bearer ${token.trim()}` }
           : undefined,
-        body: requestForm("json", false),
+        body: requestForm(false),
       });
       const payload = await response.json() as LottieApiResponse & {
         error?: string;
@@ -851,11 +851,14 @@ export default function LottieReview({
           `Lottie generation failed with HTTP ${response.status}.`,
         );
       }
-      await verifyLottieResponse(payload, sourceText, plan!);
+      if (!plan || !planJson || !sourceFile) {
+        throw new Error("The source or motion plan changed during Lottie generation.");
+      }
+      await verifyLottieResponse(payload, sourceText, plan);
       setLottieResult(Object.freeze({
         response: payload,
-        submittedSource: sourceFile!,
-        submittedPlanJson: planJson!,
+        submittedSource: sourceFile,
+        submittedPlanJson: planJson,
         frameRate,
         precision,
         verifiedAt: new Date().toISOString(),
@@ -890,7 +893,7 @@ export default function LottieReview({
         headers: token.trim()
           ? { authorization: `Bearer ${token.trim()}` }
           : undefined,
-        body: requestForm("json", true),
+        body: requestForm(true),
       });
       const payload = await response.json() as DotLottieApiResponse & {
         error?: string;
@@ -903,17 +906,20 @@ export default function LottieReview({
           `dotLottie generation failed with HTTP ${response.status}.`,
         );
       }
+      if (!plan || !planJson || !sourceFile) {
+        throw new Error("The source or motion plan changed during dotLottie generation.");
+      }
       const bytes = await verifyDotLottieResponse(
         payload,
         sourceText,
-        plan!,
+        plan,
         animationId,
       );
       setArchiveResult(Object.freeze({
         response: payload,
         archiveBytes: bytes,
-        submittedSource: sourceFile!,
-        submittedPlanJson: planJson!,
+        submittedSource: sourceFile,
+        submittedPlanJson: planJson,
         frameRate,
         precision,
         animationId,
