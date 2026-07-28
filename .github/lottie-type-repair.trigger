@@ -1,1 +1,1 @@
-apply exact strict Lottie source type repair with workspace install
+execute exact guarded Lottie source repair and retire workflow
