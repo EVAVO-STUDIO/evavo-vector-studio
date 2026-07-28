@@ -4,6 +4,7 @@ import {
   DEFAULT_MAX_INPUT_BYTES,
   RasterEngineError,
   traceRaster,
+  type RasterCandidateMode,
   type RasterTraceProfileSelection,
 } from "@evavo/raster-engine";
 
@@ -11,6 +12,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PROFILES = new Set<RasterTraceProfileSelection>(["auto", "logo", "icon", "line-art", "illustration", "photo"]);
+const CANDIDATE_MODES = new Set<RasterCandidateMode>(["adaptive", "single"]);
 const MULTIPART_OVERHEAD_ALLOWANCE = 1024 * 1024;
 
 function noStoreHeaders(extra: HeadersInit = {}): Headers {
@@ -79,6 +81,8 @@ export function GET(): Response {
     endpoint: "/api/v1/trace",
     input: "multipart/form-data with a file field",
     supportedProfiles: [...PROFILES],
+    candidateModes: [...CANDIDATE_MODES],
+    adaptiveCandidateBudget: { threeCandidatesThroughPixels: 4_000_000, twoCandidatesThroughPixels: 12_000_000, otherwise: 1 },
     limits: { maxInputBytes: DEFAULT_MAX_INPUT_BYTES, maxDecodedPixels: 40_000_000 },
     authentication: "Bearer VECTOR_API_TOKEN in production",
     visualEvidence: "alpha-aware multi-scale source-versus-SVG render comparison",
@@ -106,6 +110,10 @@ export async function POST(request: Request): Promise<Response> {
     if (!PROFILES.has(rawProfile as RasterTraceProfileSelection)) {
       return json({ error: "RASTER_OPTIONS_INVALID", field: "profile", allowed: [...PROFILES] }, 400);
     }
+    const rawCandidateMode = stringField(form, "candidateMode") ?? "adaptive";
+    if (!CANDIDATE_MODES.has(rawCandidateMode as RasterCandidateMode)) {
+      return json({ error: "RASTER_OPTIONS_INVALID", field: "candidateMode", allowed: [...CANDIDATE_MODES] }, 400);
+    }
     const format = stringField(form, "format") ?? "json";
     if (format !== "json" && format !== "svg") {
       return json({ error: "RASTER_OPTIONS_INVALID", field: "format", allowed: ["json", "svg"] }, 400);
@@ -120,6 +128,7 @@ export async function POST(request: Request): Promise<Response> {
     const result = await traceRaster(source, {
       sourceName: file.name,
       profile: rawProfile as RasterTraceProfileSelection,
+      candidateMode: rawCandidateMode as RasterCandidateMode,
       maxColours,
       preservePalette: booleanField(form, "preservePalette", true),
       optimise: booleanField(form, "optimise", true),
@@ -138,6 +147,8 @@ export async function POST(request: Request): Promise<Response> {
           "x-vector-render-quality": result.evidence.comparison.quality,
           "x-vector-visual-mae": String(result.evidence.comparison.aggregate.visualMae),
           "x-vector-mismatch-fraction": String(result.evidence.comparison.aggregate.mismatchFraction),
+          "x-vector-selected-candidate": result.evidence.selection.selectedCandidateId,
+          "x-vector-candidate-count": String(result.evidence.selection.attemptedCandidateCount),
         }),
       });
     }
