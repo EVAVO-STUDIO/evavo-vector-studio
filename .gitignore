@@ -1,0 +1,50 @@
+﻿# Dependencies
+node_modules/
+.pnpm-store/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Builds and generated output
+dist/
+build/
+.next/
+out/
+coverage/
+artifacts/
+outputs/
+renders/
+temp/
+tmp/
+
+# Local configuration
+.env
+.env.*
+!.env.example
+*.local
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test output
+playwright-report/
+test-results/
+.pytest_cache/
+
+# Large source assets should be added deliberately
+*.psd
+*.ai
+*.tif
+*.tiff
