@@ -12,6 +12,20 @@ export const CANDIDATE_ASPECT_RATIO_TOLERANCE = 0.001;
 export const THREE_CANDIDATE_MAXIMUM_PIXELS = 4_000_000;
 export const TWO_CANDIDATE_MAXIMUM_PIXELS = 12_000_000;
 
+export const VISUAL_COST_WEIGHTS = Object.freeze({
+  visualMae: 1,
+  mismatchFraction: 0.25,
+  alphaMae: 0.1,
+  aspectRatioDelta: 2,
+});
+
+export const GEOMETRY_COST_WEIGHTS = Object.freeze({
+  estimatedAnchorCount: 1,
+  pathCount: 2,
+  commandCount: 0.25,
+  byteDivisor: 512,
+});
+
 export type SelectableTraceCandidate = Readonly<{
   id: string;
   comparison: RasterRenderComparison;
@@ -45,19 +59,19 @@ function qualityRank(quality: RasterComparisonQuality): number {
 export function calculateCandidateVisualCost(comparison: RasterRenderComparison): number {
   const metrics = comparison.aggregate;
   return round(
-    metrics.visualMae +
-      metrics.mismatchFraction * 0.25 +
-      metrics.alphaMae * 0.1 +
-      metrics.aspectRatioDelta * 2,
+    metrics.visualMae * VISUAL_COST_WEIGHTS.visualMae +
+      metrics.mismatchFraction * VISUAL_COST_WEIGHTS.mismatchFraction +
+      metrics.alphaMae * VISUAL_COST_WEIGHTS.alphaMae +
+      metrics.aspectRatioDelta * VISUAL_COST_WEIGHTS.aspectRatioDelta,
   );
 }
 
 export function calculateCandidateGeometryCost(output: TraceOutputEvidence): number {
   return round(
-    output.estimatedAnchorCount +
-      output.pathCount * 2 +
-      output.commandCount * 0.25 +
-      output.bytes / 512,
+    output.estimatedAnchorCount * GEOMETRY_COST_WEIGHTS.estimatedAnchorCount +
+      output.pathCount * GEOMETRY_COST_WEIGHTS.pathCount +
+      output.commandCount * GEOMETRY_COST_WEIGHTS.commandCount +
+      output.bytes / GEOMETRY_COST_WEIGHTS.byteDivisor,
     4,
   );
 }
