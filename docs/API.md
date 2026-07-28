@@ -2,7 +2,7 @@
 
 ## Runtime boundary
 
-`POST /api/v1/trace` performs bounded raster inspection, one or more bounded SVG candidates, structural validation, multi-scale visual comparison, candidate selection and optional difference-image generation synchronously.
+`POST /api/v1/trace` performs bounded raster inspection, one or more bounded SVG candidates, structural and topology validation, multi-scale visual comparison, candidate selection and optional difference-image generation synchronously.
 
 It is intended for interactive use and agent calls that can wait for the response. It is not a durable queue: persistence, resumability, object storage, retries and long-running workers belong in a later worker service.
 
@@ -16,13 +16,21 @@ GET /api/v1/trace
 
 The response declares contract version `1.4`, profiles, candidate modes, input limits, adaptive budgets and difference-artefact bounds.
 
+The static raster container policy has a separate dependency-free discovery endpoint:
+
+```http
+GET /api/v1/input-policy
+```
+
+It returns the shared `one-static-image-per-trace` policy, accepted static classes, pre-decode rejected container classes, application limits and rejection code `RASTER_MULTI_IMAGE_UNSUPPORTED`.
+
 ## Request
 
 Send `multipart/form-data` with:
 
 | Field | Required | Values |
 | --- | --- | --- |
-| `file` | yes | PNG, JPEG, WebP, GIF, BMP or classic TIFF |
+| `file` | yes | one static PNG, ordinary JPEG, static WebP, single-frame GIF, BMP or single-page classic TIFF |
 | `profile` | no | `auto`, `logo`, `icon`, `line-art`, `illustration`, `photo` |
 | `candidateMode` | no | `adaptive` or `single`, default `adaptive` |
 | `maxColours` | no | integer from 1 to 256; a reconstruction target, not a hard palette guarantee |
@@ -36,6 +44,8 @@ Send `multipart/form-data` with:
 `includeDifference=true` requires `format=json`. A direct SVG response cannot safely carry a second PNG file and its evidence, so the API rejects that combination rather than silently discarding the requested artefact.
 
 The application-level encoded file limit is 25 MiB. Header-declared and decoded canvases must remain at or below 40 million pixels. A hosting provider may impose a smaller request-body or execution limit; deployment readiness must verify the actual target platform rather than assuming the application limit overrides it.
+
+Animated APNG, GIF and WebP, JPEG MPO, multi-page TIFF and BigTIFF are not flattened. Known multi-image containers are rejected before native decoding because choosing the first frame or page would discard source intent.
 
 ## Adaptive execution limits
 
@@ -102,12 +112,16 @@ A successful JSON response contains:
 - requested and resolved trace profiles;
 - exact reconstruction settings used by each candidate;
 - SVG paths, commands, estimated anchors, groups, gradients and byte counts;
+- topology counts for IDs, references, open/closed subpaths, compound paths, text, instances, styles, clips, masks and transforms;
+- structural findings such as duplicate IDs, unresolved references, unoutlined text and duplicate path data;
 - per-scale and aggregate visual comparison evidence for each completed candidate;
 - candidate failures, if any;
 - selected and best-visual candidate IDs;
 - eligible candidate IDs, selection reason, pixel budgets, tolerances and complete cost weights;
 - optional difference artefact metadata and base64 PNG data;
 - warnings and quality-gate state.
+
+Duplicate IDs and unresolved local references make the generated SVG invalid and reject the candidate. Other topology and editability findings remain explicit for review.
 
 The difference response shape is:
 
@@ -137,7 +151,9 @@ The difference response shape is:
 }
 ```
 
-The object in `artifacts.difference` also repeats the audited metadata so consumers can validate the bytes without guessing which candidate or settings produced them.
+The object in `artifacts.difference` repeats the audited metadata so consumers can validate the bytes without guessing which candidate or settings produced them.
+
+The web client uses the shared `@evavo/vector-core` verifier before display. It checks base64 transport, decoded bytes, PNG signature, IHDR dimensions, selected-candidate binding and SHA-256. Other clients should apply the same checks rather than trusting metadata without validating the bytes.
 
 ## Visual evidence and selection
 
@@ -161,7 +177,7 @@ When `format=svg` and `includeDifference` is false, the response body is the sel
 - `X-Vector-Selected-Candidate`
 - `X-Vector-Candidate-Count`
 
-Use `format=json` whenever the complete evidence record or difference PNG is required.
+Use `format=json` whenever the complete inspection, topology, candidate evidence or difference PNG is required.
 
 ## Error contract
 
@@ -171,6 +187,7 @@ Expected rejections return a stable `error` code and an appropriate HTTP status.
 - `RASTER_FORMAT_UNSUPPORTED`
 - `RASTER_HEADER_INVALID`
 - `RASTER_PIXEL_LIMIT_EXCEEDED`
+- `RASTER_MULTI_IMAGE_UNSUPPORTED`
 - `RASTER_OPTIONS_INVALID`
 - `RASTER_DECODE_FAILED`
 - `RASTER_OUTPUT_INVALID`
