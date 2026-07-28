@@ -167,7 +167,7 @@ requireTokens(files.docs, sources.docs, [
   "motion:validate",
   "animate-svg",
   "new-file-only",
-  "normalized plan remains a valid motion v1 input",
+  "The JSON result includes the normalized plan",
   "Lottie remains unavailable",
 ]);
 forbidTokens(files.animatedSvg, sources.animatedSvg, ["<script>", "eval(", "new Function("]);
