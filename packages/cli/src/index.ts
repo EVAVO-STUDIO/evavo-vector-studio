@@ -6,12 +6,14 @@ import {
   RasterEngineError,
   inspectRaster,
   traceRaster,
+  type RasterCandidateMode,
   type RasterTraceOptions,
   type RasterTraceProfileSelection,
 } from "@evavo/raster-engine";
 
 const VERSION = "0.2.0";
 const TRACE_PROFILES = new Set<RasterTraceProfileSelection>(["auto", "logo", "icon", "line-art", "illustration", "photo"]);
+const CANDIDATE_MODES = new Set<RasterCandidateMode>(["adaptive", "single"]);
 
 type JsonRecord = Record<string, unknown>;
 
@@ -33,8 +35,9 @@ function usage(): string {
     "  evavo-vector optimise <input.svg> [--out output.svg]",
     "  evavo-vector raster:inspect <input.png>",
     "  evavo-vector trace <input.png> [--out output.svg] [--profile auto|logo|icon|line-art|illustration|photo]",
-    "                     [--max-colours 1..256] [--preserve-palette|--simplify-palette]",
-    "                     [--no-optimise] [--title \"Accessible title\"]",
+    "                     [--candidate-mode adaptive|single] [--max-colours 1..256]",
+    "                     [--preserve-palette|--simplify-palette] [--no-optimise]",
+    "                     [--title \"Accessible title\"]",
     "  evavo-vector manifest",
     "  evavo-vector --version",
     "",
@@ -64,6 +67,10 @@ function traceOptions(sourcePath: string, args: readonly string[]): RasterTraceO
   if (!TRACE_PROFILES.has(rawProfile as RasterTraceProfileSelection)) {
     fail({ error: "VECTOR_CLI_OPTION_INVALID", option: "--profile", value: rawProfile, allowed: [...TRACE_PROFILES] });
   }
+  const rawCandidateMode = option(args, "--candidate-mode") ?? "adaptive";
+  if (!CANDIDATE_MODES.has(rawCandidateMode as RasterCandidateMode)) {
+    fail({ error: "VECTOR_CLI_OPTION_INVALID", option: "--candidate-mode", value: rawCandidateMode, allowed: [...CANDIDATE_MODES] });
+  }
   if (has(args, "--preserve-palette") && has(args, "--simplify-palette")) {
     fail({ error: "VECTOR_CLI_OPTION_CONFLICT", options: ["--preserve-palette", "--simplify-palette"] });
   }
@@ -71,6 +78,7 @@ function traceOptions(sourcePath: string, args: readonly string[]): RasterTraceO
   return {
     sourceName: basename(sourcePath),
     profile: rawProfile as RasterTraceProfileSelection,
+    candidateMode: rawCandidateMode as RasterCandidateMode,
     preservePalette: !has(args, "--simplify-palette"),
     maxColours,
     optimise: !has(args, "--no-optimise"),
@@ -130,6 +138,8 @@ async function traceRasterFile(input: string, args: readonly string[]): Promise<
     outputPath,
     approval: result.evidence.qualityGates.productionApproval,
     renderComparison: result.evidence.qualityGates.renderComparison,
+    selectedCandidate: result.evidence.selection.selectedCandidateId,
+    candidateCount: result.evidence.selection.attemptedCandidateCount,
     inspection: result.inspection,
     evidence: result.evidence,
   });
@@ -139,28 +149,31 @@ function manifest(): JsonRecord {
   return {
     name: "evavo-vector",
     version: VERSION,
-    contractVersion: "1.2",
+    contractVersion: "1.3",
     deterministicCommands: ["inspect", "optimise", "raster:inspect"],
     boundedCommands: ["trace"],
     commands: {
-      inspect: { input: "path to SVG", output: "JSON safety and structure inspection" },
+      inspect: { input: "path to SVG", output: "JSON safety, geometry and structure inspection" },
       optimise: { input: "path to SVG", options: { "--out": "output path" }, output: "optimised SVG plus JSON evidence" },
       "raster:inspect": { input: "path to PNG, JPEG, WebP, GIF, BMP or classic TIFF", output: "JSON source analysis and profile recommendation" },
       trace: {
         input: "path to supported raster",
-        output: "SVG file plus source, geometry and alpha-aware multi-scale render evidence",
+        options: { "--candidate-mode": ["adaptive", "single"] },
+        output: "selected SVG plus source, candidate, geometry and alpha-aware render evidence",
         approvalState: "human-review-required",
       },
     },
     safety: {
       scriptsRejected: true,
       foreignObjectRejected: true,
+      externalReferencesRejected: true,
       sourceOverwrittenByDefault: false,
       maxInputBytes: 26214400,
       maxDecodedPixels: 40000000,
       rasterTracingAvailable: true,
       renderComparisonAvailable: true,
       renderComparisonMaximumDimensions: [64, 256, 1024],
+      adaptiveCandidateMaximums: { threeCandidatesThroughPixels: 4000000, twoCandidatesThroughPixels: 12000000, otherwise: 1 },
       productionAutoApprovalAvailable: false,
     },
   };
