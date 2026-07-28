@@ -205,6 +205,21 @@ export type TraceSelectionEvidence = Readonly<{
   visualTolerance: Readonly<{
     visualCost: number;
     mismatchFraction: number;
+    aspectRatioDelta: number;
+  }>;
+  costModel: Readonly<{
+    visual: Readonly<{
+      visualMaeWeight: number;
+      mismatchFractionWeight: number;
+      alphaMaeWeight: number;
+      aspectRatioDeltaWeight: number;
+    }>;
+    geometry: Readonly<{
+      estimatedAnchorCountWeight: number;
+      pathCountWeight: number;
+      commandCountWeight: number;
+      byteDivisor: number;
+    }>;
   }>;
   pixelBudgetPolicy: Readonly<{
     threeCandidateMaximumPixels: number;
@@ -213,10 +228,10 @@ export type TraceSelectionEvidence = Readonly<{
 }>;
 
 export type RasterTraceEvidence = Readonly<{
-  contractVersion: "1.2";
+  contractVersion: "1.3";
   engine: Readonly<{
     name: "@neplex/vectorizer";
-    adapterVersion: "0.3.0";
+    adapterVersion: "0.3.1";
   }>;
   analysis: RasterAnalysis;
   trace: TraceConfigurationEvidence;
