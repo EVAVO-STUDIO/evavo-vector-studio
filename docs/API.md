@@ -1,9 +1,10 @@
 # EVAVO Vector Studio API
 
-Vector Studio currently exposes two bounded synchronous production endpoints:
+Vector Studio exposes three bounded synchronous production endpoints:
 
 - `POST /api/v1/trace` for static raster reconstruction;
-- `POST /api/v1/motion/svg` for validated animated SVG creation.
+- `POST /api/v1/motion/svg` for validated animated SVG creation;
+- `POST /api/v1/motion/lottie` for governed path-based Lottie JSON export.
 
 They are intended for interactive use and agent calls that can wait for the response. They are not durable queues: persistence, resumability, object storage, retries and long-running workers belong in a later worker service.
 
@@ -23,17 +24,10 @@ Native work is protected by per-instance timeout and concurrency limits.
 
 ```http
 GET /api/v1/trace
-```
-
-The response declares contract version `1.4`, profiles, candidate modes, input limits, adaptive budgets, runtime state and difference-artefact bounds.
-
-The static raster container policy has a separate dependency-free discovery endpoint:
-
-```http
 GET /api/v1/input-policy
 ```
 
-It returns the shared `one-static-image-per-trace` policy, accepted static classes, pre-decode rejected container classes, application limits and rejection code `RASTER_MULTI_IMAGE_UNSUPPORTED`.
+The trace response declares contract version `1.4`, profiles, candidate modes, input limits, adaptive budgets, runtime state and difference-artefact bounds. The policy endpoint returns the shared `one-static-image-per-trace` policy and rejection code `RASTER_MULTI_IMAGE_UNSUPPORTED`.
 
 ## Trace request
 
@@ -44,61 +38,21 @@ Send `multipart/form-data` with:
 | `file` | yes | one static PNG, ordinary JPEG, static WebP, single-frame GIF, BMP or single-page classic TIFF |
 | `profile` | no | `auto`, `logo`, `icon`, `line-art`, `illustration`, `photo` |
 | `candidateMode` | no | `adaptive` or `single`, default `adaptive` |
-| `maxColours` | no | integer from 1 to 256; a reconstruction target, not a hard palette guarantee |
+| `maxColours` | no | integer from 1 to 256 |
 | `preservePalette` | no | `true` or `false`, default `true` |
 | `optimise` | no | `true` or `false`, default `true` |
-| `title` | no | SVG accessibility title; the engine bounds it to 200 characters |
+| `title` | no | SVG accessibility title, maximum 200 characters |
 | `includeDifference` | no | `true` or `false`, default `false` |
 | `differenceMaxDimension` | no | integer from 32 to 1024; requires `includeDifference=true`, default 512 |
 | `format` | no | `json` or `svg`, default `json` |
 
-`includeDifference=true` requires `format=json`. A direct SVG response cannot safely carry a second PNG file and its evidence, so the API rejects that combination rather than silently discarding the requested artefact.
+`includeDifference=true` requires `format=json`. A direct SVG response cannot carry a second PNG file and its evidence, so the API rejects that combination rather than discarding the requested artefact.
 
-The application-level encoded file limit is 25 MiB. Header-declared and decoded canvases must remain at or below 40 million pixels. A hosting provider may impose a smaller request-body or execution limit; deployment readiness must verify the actual target platform rather than assuming the application limit overrides it.
+The encoded file limit is 25 MiB. Header-declared and decoded canvases must remain at or below 40 million pixels. Animated APNG, GIF and WebP, JPEG MPO, multi-page TIFF and BigTIFF are not flattened.
 
-Animated APNG, GIF and WebP, JPEG MPO, multi-page TIFF and BigTIFF are not flattened. Known multi-image containers are rejected before native decoding because choosing the first frame or page would discard source intent.
-
-## Adaptive execution limits
-
-Adaptive candidate execution is bounded by decoded source size:
-
-- at most three candidates through 4,000,000 pixels;
-- at most two candidates through 12,000,000 pixels;
-- one candidate above 12,000,000 pixels.
-
-The base candidate is mandatory. Alternative fidelity or economy candidates may fail without discarding a valid base result; their failure is retained in evidence.
+Adaptive execution permits at most three candidates through 4,000,000 pixels, two through 12,000,000 pixels, and one above 12,000,000 pixels.
 
 ## Trace PowerShell example
-
-```powershell
-$Headers = @{ Authorization = "Bearer $env:VECTOR_API_TOKEN" }
-$Form = @{
-    file = Get-Item ".\fixtures\mark.png"
-    profile = "logo"
-    candidateMode = "adaptive"
-    maxColours = "16"
-    preservePalette = "true"
-    optimise = "true"
-    includeDifference = "true"
-    differenceMaxDimension = "512"
-    title = "Brand mark"
-    format = "json"
-}
-
-$result = Invoke-RestMethod `
-    -Method Post `
-    -Uri "http://localhost:3000/api/v1/trace" `
-    -Headers $Headers `
-    -Form $Form
-
-$result.svg | Set-Content -Path ".\outputs\mark.svg" -Encoding UTF8
-[IO.File]::WriteAllBytes(
-    ".\outputs\mark.difference.png",
-    [Convert]::FromBase64String($result.artifacts.difference.data)
-)
-```
-
-Windows PowerShell 5.1 does not provide the same `-Form` behaviour as modern PowerShell. Use `curl.exe` for a portable multipart request:
 
 ```powershell
 curl.exe -X POST "http://localhost:3000/api/v1/trace" `
@@ -114,27 +68,9 @@ curl.exe -X POST "http://localhost:3000/api/v1/trace" `
 
 ## Trace JSON response
 
-A successful JSON response contains:
+A successful JSON response contains the selected SVG, source analysis, candidate settings and failures, topology and editability evidence, multi-scale render metrics, selection evidence and optional difference PNG.
 
-- a unique job ID and `complete` execution status;
-- the selected SVG string;
-- detected source type, dimensions and SHA-256 evidence;
-- sampled palette, alpha, tonal and edge analysis;
-- requested and resolved trace profiles;
-- exact reconstruction settings used by each candidate;
-- SVG paths, commands, estimated anchors, groups, gradients and byte counts;
-- topology counts for IDs, references, open/closed subpaths, compound paths, text, instances, styles, clips, masks and transforms;
-- structural findings such as duplicate IDs, unresolved references, unoutlined text and duplicate path data;
-- per-scale and aggregate visual comparison evidence for each completed candidate;
-- candidate failures, if any;
-- selected and best-visual candidate IDs;
-- eligible candidate IDs, selection reason, pixel budgets, tolerances and complete cost weights;
-- optional difference artefact metadata and base64 PNG data;
-- warnings and quality-gate state.
-
-Duplicate IDs and unresolved local references make the generated SVG invalid and reject the candidate. Other topology and editability findings remain explicit for review.
-
-The difference response shape is:
+The difference response shape includes exact bytes and metadata:
 
 ```json
 {
@@ -146,10 +82,6 @@ The difference response shape is:
       "height": 320,
       "bytes": 12345,
       "sha256": "...",
-      "requestedMaxDimension": 512,
-      "displayAmplification": 4,
-      "colourMap": "white-to-red",
-      "sourceSampling": "bilinear",
       "selectedCandidateId": "base"
     }
   },
@@ -162,52 +94,11 @@ The difference response shape is:
 }
 ```
 
-The object in `artifacts.difference` repeats the audited metadata so consumers can validate the bytes without guessing which candidate or settings produced them.
+The web client validates base64 transport, byte count, PNG signature, IHDR dimensions, selected-candidate binding and SHA-256 before display.
 
-The web client uses the shared `@evavo/vector-core` verifier before display. It checks base64 transport, decoded bytes, PNG signature, IHDR dimensions, selected-candidate binding and SHA-256. Other clients should apply the same checks rather than trusting metadata without validating the bytes.
+When `format=svg`, the body is the selected SVG. Compact headers include `X-Vector-Job-Id`, `X-Vector-Review-Required`, `X-Vector-Render-Quality`, `X-Vector-Visual-Mae`, `X-Vector-Mismatch-Fraction`, `X-Vector-Selected-Candidate`, `X-Vector-Candidate-Count`, `X-Vector-Runtime-Timeout-Ms` and `X-Vector-Runtime-Max-Concurrent`.
 
-## Visual evidence and selection
-
-Every completed candidate is rasterised at up to 64, 256 and 1024 pixels on the longest edge, capped by source size. The comparison evaluates premultiplied RGB, alpha, black compositing and white compositing. It records visual mean absolute error, root-mean-square visual error, mismatch fraction and aspect-ratio drift, plus exact classification thresholds.
-
-Adaptive selection is visual-first. When all candidates require review, the best visual result wins. Otherwise, candidates must match the best quality class and remain inside declared visual-cost, mismatch-fraction and aspect-ratio tolerances. From those eligible candidates, the engine selects the lowest geometry cost.
-
-The optional heatmap is produced only for the selected candidate. White represents measured agreement; red represents visual difference. A declared `4×` display amplification makes small errors visible. The heatmap is evidence, not approval.
-
-`status: complete` means synchronous execution, comparison, selection and any requested artefact generation finished. It does not mean the artwork is professionally approved. `productionApproval` remains `review-required` because pixel similarity cannot prove deliberate path topology, anchor economy, negative-space construction, layer quality or brand fidelity.
-
-## Direct traced SVG response
-
-When `format=svg` and `includeDifference` is false, the response body is the selected SVG. Evidence that fits safely into headers is retained:
-
-- `X-Vector-Job-Id`
-- `X-Vector-Review-Required: true`
-- `X-Vector-Render-Quality`
-- `X-Vector-Visual-Mae`
-- `X-Vector-Mismatch-Fraction`
-- `X-Vector-Selected-Candidate`
-- `X-Vector-Candidate-Count`
-- `X-Vector-Runtime-Timeout-Ms`
-- `X-Vector-Runtime-Max-Concurrent`
-
-Use `format=json` whenever the complete inspection, topology, candidate evidence or difference PNG is required.
-
-## Trace error contract
-
-Expected rejections include:
-
-- `RASTER_INPUT_TOO_LARGE`
-- `RASTER_FORMAT_UNSUPPORTED`
-- `RASTER_HEADER_INVALID`
-- `RASTER_PIXEL_LIMIT_EXCEEDED`
-- `RASTER_MULTI_IMAGE_UNSUPPORTED`
-- `RASTER_OPTIONS_INVALID`
-- `RASTER_DECODE_FAILED`
-- `RASTER_OUTPUT_INVALID`
-- `RASTER_RENDER_COMPARISON_FAILED`
-- `RASTER_DIFFERENCE_ARTIFACT_FAILED`
-- `RASTER_RUNTIME_BUSY`
-- `RASTER_RUNTIME_TIMEOUT`
+Expected trace errors include `RASTER_INPUT_TOO_LARGE`, `RASTER_FORMAT_UNSUPPORTED`, `RASTER_HEADER_INVALID`, `RASTER_PIXEL_LIMIT_EXCEEDED`, `RASTER_MULTI_IMAGE_UNSUPPORTED`, `RASTER_OPTIONS_INVALID`, `RASTER_DECODE_FAILED`, `RASTER_OUTPUT_INVALID`, `RASTER_RENDER_COMPARISON_FAILED`, `RASTER_DIFFERENCE_ARTIFACT_FAILED`, `RASTER_RUNTIME_BUSY` and `RASTER_RUNTIME_TIMEOUT`.
 
 # Animated SVG API
 
@@ -217,9 +108,7 @@ Expected rejections include:
 GET /api/v1/motion/svg
 ```
 
-The response declares motion contract version `1.0`, supported properties, request fields, byte limits, track and keyframe limits, reduced-motion requirements, authentication and approval policy.
-
-Lottie remains unavailable. The endpoint does not convert unsupported motion into a Lottie approximation.
+The response declares motion contract version `1.0`, request fields, byte limits, supported properties, reduced-motion requirements, authentication and approval policy. It also points to the separately governed Lottie endpoint without presenting player validation or dotLottie as available.
 
 ## Motion request
 
@@ -232,22 +121,13 @@ Lottie remains unavailable. The endpoint does not convert unsupported motion int
 | `motionFile` | one of two | uploaded motion v1 JSON file |
 | `format` | no | `json` or `svg`, default `json` |
 
-Exactly one of `motion` and `motionFile` is required. Sending both or neither returns `MOTION_SPEC_INVALID`.
+Exactly one of `motion` and `motionFile` is required. The SVG limit is 5 MiB and the plan limit is 256 KiB. A plan supports 1 to 64 tracks and 2 to 100 keyframes per track.
 
-Application limits:
+The endpoint rejects unknown or duplicate multipart fields, malformed multipart bodies, unknown motion properties, duplicate targets, missing IDs, no-op tracks, pre-existing animation and unsafe base transforms.
 
-- SVG input: 5 MiB;
-- motion plan: 256 KiB;
-- tracks: 1 to 64;
-- keyframes per track: 2 to 100.
+## Motion examples
 
-The endpoint validates the same motion v1 rules as CLI and MCP: unknown properties, duplicate targets, missing IDs, no-op tracks, pre-existing animation and unsafe base transforms are rejected.
-
-The source remains static input. The endpoint adds deterministic internal CSS animation, no script and no external reference. Every generated SVG includes a `prefers-reduced-motion` fallback.
-
-## Motion PowerShell example with inline plan
-
-Modern PowerShell:
+Wrapper JSON with an inline plan:
 
 ```powershell
 $Headers = @{ Authorization = "Bearer $env:VECTOR_API_TOKEN" }
@@ -257,18 +137,14 @@ $Form = @{
     motion = $Motion
     format = "json"
 }
-
 $result = Invoke-RestMethod `
     -Method Post `
     -Uri "http://localhost:3000/api/v1/motion/svg" `
     -Headers $Headers `
     -Form $Form
-
-$result.svg | Set-Content ".\outputs\gentle-entrance.animated.svg" -Encoding UTF8
-$result.evidence | ConvertTo-Json -Depth 20 | Set-Content ".\outputs\gentle-entrance.motion.evidence.json" -Encoding UTF8
 ```
 
-Windows PowerShell 5.1 with a plan file:
+Direct animated SVG from a plan file:
 
 ```powershell
 curl.exe -X POST "http://localhost:3000/api/v1/motion/svg" `
@@ -279,61 +155,144 @@ curl.exe -X POST "http://localhost:3000/api/v1/motion/svg" `
   --output "outputs\gentle-entrance.animated.svg"
 ```
 
-## Motion JSON response
+The JSON result includes the normalized plan, animated SVG, inspection, source and output hashes, deterministic motion identity, reduced-motion evidence and review state.
 
-With `format=json`, the response contains:
+Direct SVG headers include `X-Vector-Job-Id`, `X-Vector-Motion-Contract`, `X-Vector-Motion-Id`, `X-Vector-Review-Required`, `X-Vector-Source-Sha256`, `X-Vector-Output-Sha256` and `X-Vector-Reduced-Motion`.
+
+Expected motion errors include `MOTION_REQUEST_MEDIA_TYPE_UNSUPPORTED`, `MOTION_REQUEST_TOO_LARGE`, `MOTION_REQUEST_FIELD_UNSUPPORTED`, `MOTION_REQUEST_FIELD_DUPLICATE`, `MOTION_MULTIPART_INVALID`, `MOTION_SVG_FILE_REQUIRED`, `MOTION_SVG_INPUT_EMPTY`, `MOTION_SVG_INPUT_TOO_LARGE`, `MOTION_FORMAT_INVALID`, `MOTION_SPEC_INVALID`, `MOTION_SOURCE_INVALID`, `MOTION_SOURCE_ALREADY_ANIMATED`, `MOTION_TARGET_MISSING`, `MOTION_TARGET_DUPLICATE`, `MOTION_TARGET_BASE_TRANSFORM_UNSUPPORTED`, `MOTION_OUTPUT_INVALID` and `MOTION_REQUEST_ABORTED`.
+
+# Lottie JSON API
+
+## Lottie service discovery
+
+```http
+GET /api/v1/motion/lottie
+```
+
+The response declares Lottie contract version `1.0`, strict request fields, frame-rate and precision bounds, input and output limits, accepted and rejected source semantics, the supported motion subset and compatibility non-claims.
+
+Structural inspection is available. Independent player-render comparison is not performed, and dotLottie remains unavailable.
+
+## Lottie request
+
+`POST /api/v1/motion/lottie` requires `multipart/form-data`.
+
+| Field | Required | Values |
+| --- | --- | --- |
+| `file` | yes | one governed path-based static SVG |
+| `motion` | one of two | inline motion v1 JSON string |
+| `motionFile` | one of two | uploaded motion v1 JSON file |
+| `format` | no | `json` or `lottie`, default `json` |
+| `frameRate` | no | integer from 1 to 120, default 60 |
+| `precision` | no | integer from 0 to 6, default 4 |
+| `name` | no | composition name, 1 to 120 characters |
+
+Exactly one of `motion` and `motionFile` is required. Unknown and duplicate fields are rejected.
+
+Application limits:
+
+- SVG input: 5 MiB;
+- motion plan: 256 KiB;
+- parsed request fields: bounded by SVG, plan and 1 MiB multipart allowance;
+- generated Lottie JSON: 20 MiB;
+- tracks: 1 to 64;
+- keyframes per track: 2 to 100.
+
+The initial source subset supports path geometry, compound subpaths, solid fill, solid stroke, nonzero fill and even-odd fill. It rejects unflattened transforms, group opacity, gradients, text, images, masks, filters, expressions, precompositions and dashed strokes.
+
+The motion subset supports exactly one normal cycle, `forwards` or `both` fill mode, opacity, translation, uniform scale and rotation.
+
+## Lottie wrapper JSON example
+
+```powershell
+$Headers = @{ Authorization = "Bearer $env:VECTOR_API_TOKEN" }
+$Motion = Get-Content ".\fixtures\motion\gentle-entrance.motion.json" -Raw
+$Form = @{
+    file = Get-Item ".\fixtures\motion\gentle-entrance.source.svg"
+    motion = $Motion
+    frameRate = "60"
+    precision = "4"
+    name = "Gentle entrance"
+    format = "json"
+}
+$result = Invoke-RestMethod `
+    -Method Post `
+    -Uri "http://localhost:3000/api/v1/motion/lottie" `
+    -Headers $Headers `
+    -Form $Form
+$result.lottie.data | Set-Content ".\outputs\gentle-entrance.lottie.json" -Encoding UTF8
+```
+
+The wrapper contains:
 
 - unique job ID and `complete` status;
 - `review-required` approval;
-- source file name, declared type, bytes and SHA-256;
-- plan source mode, optional uploaded plan name, declared type and bytes;
-- normalized motion plan with defaults made explicit;
-- animated SVG string;
-- governed motion and source SVG inspection;
-- source/output hashes, motion identity and style identity;
-- playback settings, target IDs, track and keyframe counts;
-- script-free, external-reference-free and reduced-motion assertions;
-- warnings and review state.
+- source descriptor and SHA-256;
+- motion source descriptor and normalized plan;
+- exact serialized Lottie JSON in `lottie.data` with `encoding: utf8-json`;
+- structural inspection;
+- source, motion, subset, compatibility and output evidence.
 
-The API returns the SVG body because an HTTP client explicitly requested a response payload. The local MCP tool follows a different context policy and returns file receipts instead of SVG markup.
+The SHA-256 and byte count in evidence apply to the exact `lottie.data` string.
 
-## Direct animated SVG response
+## Direct Lottie response
 
-With `format=svg`, the response body is the generated animated SVG. Headers retain compact evidence:
+Request `format=lottie` for the exact file body:
 
-- `X-Vector-Job-Id`
-- `X-Vector-Motion-Contract: 1.0`
-- `X-Vector-Motion-Id`
-- `X-Vector-Review-Required: true`
-- `X-Vector-Source-Sha256`
-- `X-Vector-Output-Sha256`
-- `X-Vector-Reduced-Motion: true`
+```powershell
+curl.exe -X POST "http://localhost:3000/api/v1/motion/lottie" `
+  -H "Authorization: Bearer $env:VECTOR_API_TOKEN" `
+  -F "file=@fixtures\motion\gentle-entrance.source.svg;type=image/svg+xml" `
+  -F "motionFile=@fixtures\motion\gentle-entrance.motion.json;type=application/json" `
+  -F "frameRate=60" `
+  -F "precision=4" `
+  -F "format=lottie" `
+  --output "outputs\gentle-entrance.lottie.json"
+```
 
-Use JSON when normalized plan and complete evidence are required. Use direct animated SVG when the caller only needs the file plus compact headers.
+The response uses `Content-Type: video/lottie+json` and includes:
 
-## Motion error contract
+- `X-Vector-Job-Id`;
+- `X-Vector-Lottie-Contract: 1.0`;
+- `X-Vector-Review-Required: true`;
+- `X-Vector-Source-Sha256`;
+- `X-Vector-Output-Sha256`;
+- `X-Vector-Lottie-Structural-Inspection: passed`;
+- `X-Vector-Lottie-Player-Validation: not-performed`;
+- `X-Vector-DotLottie: unavailable`;
+- `X-Vector-Lottie-Layer-Count`;
+- `X-Vector-Lottie-Path-Count`.
+
+## Lottie error contract
 
 Expected rejections include:
 
-- `MOTION_REQUEST_MEDIA_TYPE_UNSUPPORTED`
-- `MOTION_REQUEST_TOO_LARGE`
-- `MOTION_SVG_FILE_REQUIRED`
-- `MOTION_SVG_INPUT_EMPTY`
-- `MOTION_SVG_INPUT_TOO_LARGE`
-- `MOTION_FORMAT_INVALID`
-- `MOTION_SPEC_INVALID`
-- `MOTION_SOURCE_INVALID`
-- `MOTION_SOURCE_ALREADY_ANIMATED`
-- `MOTION_TARGET_MISSING`
-- `MOTION_TARGET_DUPLICATE`
-- `MOTION_TARGET_BASE_TRANSFORM_UNSUPPORTED`
-- `MOTION_OUTPUT_INVALID`
-- `MOTION_REQUEST_ABORTED`
+- `LOTTIE_REQUEST_MEDIA_TYPE_UNSUPPORTED`;
+- `LOTTIE_REQUEST_TOO_LARGE`;
+- `LOTTIE_REQUEST_FIELD_UNSUPPORTED`;
+- `LOTTIE_REQUEST_FIELD_DUPLICATE`;
+- `LOTTIE_MULTIPART_INVALID`;
+- `LOTTIE_SVG_FILE_REQUIRED`;
+- `LOTTIE_SVG_INPUT_EMPTY`;
+- `LOTTIE_SVG_INPUT_TOO_LARGE`;
+- `LOTTIE_FORMAT_INVALID`;
+- `LOTTIE_OPTIONS_INVALID`;
+- `LOTTIE_SOURCE_INVALID`;
+- `LOTTIE_SOURCE_UNSUPPORTED`;
+- `LOTTIE_TARGET_MISSING`;
+- `LOTTIE_TARGET_DUPLICATE`;
+- `LOTTIE_TARGET_OVERLAP`;
+- `LOTTIE_PATH_INVALID`;
+- `LOTTIE_STYLE_UNSUPPORTED`;
+- `LOTTIE_MOTION_UNSUPPORTED`;
+- `LOTTIE_OUTPUT_INVALID`;
+- `LOTTIE_OUTPUT_TOO_LARGE`;
+- `LOTTIE_REQUEST_ABORTED`.
 
-`MOTION_SPEC_INVALID` is a request error. Source and target incompatibilities are reviewable unprocessable inputs. `MOTION_OUTPUT_INVALID` is treated as an internal generation failure because a deterministic output failed its own governed inspection.
+`LOTTIE_OPTIONS_INVALID` is a request error. Source, target, path, style and motion incompatibilities are unprocessable inputs. `LOTTIE_OUTPUT_INVALID` is an internal failure because generated JSON failed its own structural inspector.
 
 # Shared approval boundary
 
 A successful API response means the requested synchronous processing completed. It does not grant production approval.
 
-Human review remains mandatory for tracing geometry, topology, negative space, logo fidelity, motion timing, easing, transform origins, reduced-motion experience and final delivery compatibility.
+Human review remains mandatory for tracing geometry, topology, negative space, logo fidelity, motion timing, easing, transform origins, reduced-motion delivery, Lottie paint order, player fidelity and final platform compatibility.
