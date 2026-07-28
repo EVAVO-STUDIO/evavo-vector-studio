@@ -89,11 +89,19 @@ jobs:
 
       - name: Verify dotLottie archive contract
         if: ${{ !cancelled() }}
-        run: node scripts/check-dotlottie-contract.mjs
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          node scripts/check-dotlottie-contract.mjs 2>&1 | tee .ci/dotlottie-contract.log
 
       - name: Verify dotLottie API contract
         if: ${{ !cancelled() }}
-        run: node scripts/check-dotlottie-api-contract.mjs
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          node scripts/check-dotlottie-api-contract.mjs 2>&1 | tee .ci/dotlottie-api-contract.log
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
