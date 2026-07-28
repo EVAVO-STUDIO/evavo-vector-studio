@@ -2,7 +2,7 @@ import { VECTOR_PIPELINE } from "@evavo/vector-core";
 import TraceWorkspace from "./components/TraceWorkspace";
 
 const outputCards = [
-  ["Clean SVG", "Available now", "Editable spline paths, compound shapes, source evidence and structural validation."],
+  ["Clean SVG", "Available now", "Adaptive spline reconstruction, measured candidate selection, geometry inspection and optional difference PNG evidence."],
   ["Animated SVG", "Planned", "Layer-aware motion, morph-safe geometry, reduced-motion fallback and explicit review gates."],
   ["Lottie", "Planned", "Portable timelines with supported-feature validation and renderer compatibility evidence."],
 ] as const;
@@ -26,7 +26,7 @@ export default function HomePage() {
       <section id="top" className="hero">
         <p className="eyebrow">EVAVO PRODUCTION TOOL  /  VECTOR 01</p>
         <h1>Trace less.<br /><em>Reconstruct properly.</em></h1>
-        <p className="lede">A governed raster-to-vector workspace that inspects the source, selects bounded reconstruction settings, creates editable SVG geometry and records exactly what still needs human review.</p>
+        <p className="lede">A governed raster-to-vector workspace that inspects the source, compares bounded reconstruction candidates, measures the selected SVG and shows exactly where human review is still required.</p>
         <div className="heroActions">
           <a className="primary" href="#workspace">Open workspace</a>
           <a className="secondary" href="#pipeline">Inspect the process</a>
@@ -43,12 +43,14 @@ export default function HomePage() {
       <section id="automation" className="section outputs">
         <div className="sectionIntro"><p className="eyebrow">ONE ENGINE, THREE SURFACES</p><h2>UI for judgement. API and CLI for repeatability.</h2></div>
         <div className="outputGrid">{outputCards.map(([title, status, copy]) => <article key={title}><span>{status}</span><h3>{title}</h3><p>{copy}</p></article>)}</div>
-        <pre><code>{`curl.exe -X POST http://localhost:3000/api/v1/trace \\
-  -H "Authorization: Bearer $env:VECTOR_API_TOKEN" \\
-  -F "file=@mark.png" \\
-  -F "profile=logo" \\
-  -F "maxColours=16" \\
-  -F "format=svg" --output mark.svg`}</code></pre>
+        <pre><code>{`curl.exe -X POST http://localhost:3000/api/v1/trace \
+  -H "Authorization: Bearer $env:VECTOR_API_TOKEN" \
+  -F "file=@mark.png" \
+  -F "profile=logo" \
+  -F "candidateMode=adaptive" \
+  -F "includeDifference=true" \
+  -F "differenceMaxDimension=512" \
+  -F "format=json" --output mark.trace.json`}</code></pre>
       </section>
 
       <footer><span>EVAVO VECTOR STUDIO</span><span>Deliberate geometry. Verifiable output.</span></footer>
