@@ -171,8 +171,9 @@ requireTokens(files.docs, sources.docs, [
   "new-file-only",
   "The JSON result includes the normalized plan",
   "Lottie JSON export is available",
-  "Independent player-render validation",
-  "dotLottie remain unavailable",
+  "Deterministic dotLottie packaging is available",
+  "Browser archive-load validation is available",
+  "independent source-to-player",
 ]);
 forbidTokens(files.animatedSvg, sources.animatedSvg, ["<script>", "eval(", "new Function("]);
 forbidTokens(files.cli, sources.cli, [
@@ -230,8 +231,9 @@ process.stdout.write(`${JSON.stringify({
   normalizedPlansReusable: true,
   lottieDerivation: {
     coreAndCliJsonExport: true,
+    dotLottiePackaging: true,
+    browserArchiveLoadValidation: true,
     playerRenderValidation: false,
-    dotLottie: false,
   },
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
