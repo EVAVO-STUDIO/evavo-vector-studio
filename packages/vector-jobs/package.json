@@ -20,11 +20,7 @@
     "test": "tsc -p tsconfig.json && node --test dist/*.test.js"
   },
   "dependencies": {
-    "@evavo/job-engine": "workspace:*",
-    "@evavo/lottie-engine": "workspace:*",
-    "@evavo/motion-engine": "workspace:*",
-    "@evavo/raster-engine": "workspace:*",
-    "@evavo/vector-core": "workspace:*"
+    "@evavo/vector-cli": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
