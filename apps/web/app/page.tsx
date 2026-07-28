@@ -3,7 +3,7 @@ import TraceWorkspace from "./components/TraceWorkspace";
 
 const outputCards = [
   ["Clean SVG", "Available now", "Adaptive spline reconstruction, measured candidate selection, geometry inspection and optional difference PNG evidence."],
-  ["Animated SVG", "UI + API + CLI + MCP", "Direct ID-targeted opacity and transform motion in the browser, then verify deterministic CSS, reduced-motion fallback and output evidence."],
+  ["Animated SVG", "UI + API + CLI + MCP available", "Direct ID-targeted opacity and transform motion in the browser, then verify deterministic CSS, reduced-motion fallback and output evidence."],
   ["Lottie", "Planned", "Portable timelines remain unavailable until feature-subset, schema and renderer compatibility validation is implemented."],
 ] as const;
 
