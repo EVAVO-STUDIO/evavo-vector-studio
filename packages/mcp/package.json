@@ -15,10 +15,12 @@
     "test": "tsc -p tsconfig.json && node --test dist/*.test.js"
   },
   "dependencies": {
+    "@evavo/job-engine": "workspace:*",
     "@evavo/lottie-engine": "workspace:*",
     "@evavo/motion-engine": "workspace:*",
     "@evavo/raster-engine": "workspace:*",
     "@evavo/vector-core": "workspace:*",
+    "@evavo/vector-jobs": "workspace:*",
     "@modelcontextprotocol/sdk": "1.30.0",
     "zod": "3.25.76"
   },
