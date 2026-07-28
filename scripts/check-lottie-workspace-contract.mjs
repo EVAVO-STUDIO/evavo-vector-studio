@@ -154,7 +154,7 @@ requireTokens(files.home, sources.home, [
 ]);
 requireTokens(files.readme, sources.readme, [
   "browser Lottie player preview",
-  "independent player-render validation remains unavailable",
+  "player-render validation remains unavailable",
   "/api/v1/motion/lottie",
 ]);
 requireTokens(files.motionDocs, sources.motionDocs, [
