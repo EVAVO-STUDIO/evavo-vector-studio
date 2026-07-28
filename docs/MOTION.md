@@ -17,7 +17,10 @@ Implemented now:
 - required `prefers-reduced-motion` fallback;
 - source and output SHA-256 evidence;
 - animated SVG inspection;
-- CLI creation and optional JSON evidence output.
+- CLI creation and optional JSON evidence output;
+- MCP inline and file-based plan validation;
+- MCP animated SVG creation with atomic output receipts;
+- MCP animated SVG inspection without returning SVG markup into model context.
 
 Not implemented in motion v1:
 
@@ -27,6 +30,7 @@ Not implemented in motion v1:
 - separate X and Y scale;
 - spring or physics simulation;
 - timeline editing in the web workspace;
+- motion authoring through the HTTP API;
 - Lottie export;
 - dotLottie packaging.
 
@@ -113,7 +117,7 @@ Every generated file includes a `prefers-reduced-motion: reduce` rule. The plan 
 - `first-frame`: disable animation and apply the first normalized keyframe;
 - `last-frame`: disable animation and apply the final normalized keyframe.
 
-The fallback is mandatory and is checked by `motion:inspect`.
+The fallback is mandatory and is checked by CLI `motion:inspect` and MCP `vector_inspect_animated_svg`.
 
 ## CLI workflow
 
@@ -143,6 +147,66 @@ pnpm vector:motion:inspect -- `
 
 Output commands use atomic new-file-only transactions. Existing destinations and path collisions are rejected. When both SVG and evidence are requested, either both commit or the transaction rolls back.
 
+## MCP workflow
+
+MCP contract `1.1` exposes three motion tools:
+
+- `vector_validate_motion_plan`;
+- `vector_animate_svg`;
+- `vector_inspect_animated_svg`.
+
+A motion plan may be provided inline or by `motionPath`. Exactly one source is required.
+
+### Validate an inline plan
+
+```json
+{
+  "motionPlan": {
+    "version": "1.0",
+    "name": "Gentle entrance",
+    "durationMs": 900,
+    "reducedMotion": "last-frame",
+    "tracks": [
+      {
+        "targetId": "mark",
+        "keyframes": [
+          {
+            "offset": 0,
+            "opacity": 0,
+            "translateY": 8
+          },
+          {
+            "offset": 1,
+            "opacity": 1,
+            "translateY": 0
+          }
+        ]
+      }
+    ]
+  },
+  "normalizedOutputPath": "C:\\EVAVO\\VectorAssets\\plans\\mark.motion.normalized.json"
+}
+```
+
+`normalizedOutputPath` is optional. When present, the MCP server writes a new canonical JSON plan and returns a path, MIME, byte-count and SHA-256 receipt.
+
+### Create animated SVG from a plan file
+
+```json
+{
+  "inputPath": "C:\\EVAVO\\VectorAssets\\source\\mark.svg",
+  "motionPath": "C:\\EVAVO\\VectorAssets\\plans\\mark.motion.json",
+  "outputSvgPath": "C:\\EVAVO\\VectorAssets\\output\\mark.animated.svg",
+  "evidenceOutputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.motion.evidence.json"
+}
+```
+
+The animated SVG and optional evidence JSON are committed atomically with new-file-only semantics. Existing destinations and path collisions are rejected.
+
+The tool response contains inspections, evidence and file receipts. It does not contain the generated SVG markup. The evidence JSON also avoids embedding a duplicate SVG body.
+
+See [`MCP.md`](MCP.md) for allowed-root configuration and the complete agent contract.
+
 ## Generated output
 
 The engine injects:
@@ -167,7 +231,7 @@ The result records:
 - script-free and reduced-motion safety assertions;
 - warnings and approval state.
 
-The optional CLI evidence file does not embed a second copy of the SVG.
+Optional CLI and MCP evidence files do not embed a second copy of the SVG.
 
 ## Approval boundary
 
