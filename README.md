@@ -141,7 +141,7 @@ The authenticated API exposes:
 - `POST /api/v1/trace` for static raster reconstruction, candidate evidence and optional difference PNG;
 - `POST /api/v1/motion/svg` for validated animated SVG creation from an inline or uploaded motion v1 plan.
 
-Both support JSON evidence or direct SVG delivery where the output contract permits it. Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token.
+Both support JSON evidence or direct SVG delivery where the output contract permits it. In trace JSON mode, the optional base64 difference PNG is returned with its dimensions, byte count, SHA-256 and selected-candidate binding so clients can verify it before display. Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token.
 
 The motion endpoint limits one SVG to 5 MiB and one plan to 256 KiB, returns normalized plan and full evidence in JSON mode, and emits compact identity, hash, reduced-motion and review headers in direct SVG mode.
 
