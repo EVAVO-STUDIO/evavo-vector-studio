@@ -3,6 +3,13 @@
   "version": "0.4.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./batch-operations": {
+      "types": "./src/batch-operations.ts",
+      "import": "./dist/batch-operations.js",
+      "default": "./dist/batch-operations.js"
+    }
+  },
   "bin": {
     "evavo-vector": "./dist/index.js",
     "evavo-dotlottie": "./dist/dotlottie-cli.js",
