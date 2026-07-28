@@ -4,7 +4,7 @@ import TraceWorkspace from "./components/TraceWorkspace";
 const outputCards = [
   ["Clean SVG", "Available now", "Adaptive spline reconstruction, measured candidate selection, geometry inspection and optional difference PNG evidence."],
   ["Animated SVG", "UI + API + CLI + MCP available", "Direct ID-targeted opacity and transform motion in the browser, then verify deterministic CSS, reduced-motion fallback and output evidence."],
-  ["Lottie", "Core + CLI + API available", "Governed path-based shape-layer JSON export and structural inspection are available. Independent player-render validation, MCP, browser preview and dotLottie remain planned."],
+  ["Lottie", "Core + CLI + API available · MCP available", "Governed path-based shape-layer JSON export and structural inspection are available through automation surfaces. Independent player-render validation, browser preview and dotLottie remain planned."],
 ] as const;
 
 export default function HomePage() {
@@ -63,17 +63,17 @@ frameRate=60
 precision=4
 format=lottie
 
-pnpm vector:lottie:export -- \\
-  mark.svg \\
-  --motion mark.motion.json \\
-  --out mark.lottie.json \\
+pnpm vector:lottie:export -- \
+  mark.svg \
+  --motion mark.motion.json \
+  --out mark.lottie.json \
   --evidence-out mark.lottie.evidence.json
 
-vector_animate_svg {
+vector_export_lottie {
   "inputPath": "mark.svg",
   "motionPath": "mark.motion.json",
-  "outputSvgPath": "mark.animated.svg",
-  "evidenceOutputPath": "mark.motion.evidence.json"
+  "outputLottiePath": "mark.lottie.json",
+  "evidenceOutputPath": "mark.lottie.evidence.json"
 }`}</code></pre>
       </section>
 
