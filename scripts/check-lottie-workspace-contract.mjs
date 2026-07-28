@@ -28,13 +28,13 @@ async function readJson(relativePath) {
 
 function requireTokens(relativePath, source, tokens) {
   for (const token of tokens) {
-    if (!source.includes(token)) errors.push(`${relativePath} is missing browser Lottie token: ${token}`);
+    if (!source.includes(token)) errors.push(`${relativePath} is missing browser Lottie JSON token: ${token}`);
   }
 }
 
 function forbidTokens(relativePath, source, tokens) {
   for (const token of tokens) {
-    if (source.includes(token)) errors.push(`${relativePath} contains prohibited browser Lottie token: ${token}`);
+    if (source.includes(token)) errors.push(`${relativePath} contains prohibited browser Lottie JSON token: ${token}`);
   }
 }
 
@@ -47,7 +47,6 @@ const files = {
   preview: "apps/web/app/motion/components/LottiePreview.tsx",
   styles: "apps/web/app/motion/components/LottieReview.module.css",
   api: "apps/web/app/api/v1/motion/lottie/route.ts",
-  dotLottieApi: "apps/web/app/api/v1/motion/dotlottie/route.ts",
   home: "apps/web/app/page.tsx",
   readme: "README.md",
   motionDocs: "docs/MOTION.md",
@@ -93,7 +92,8 @@ requireTokens(files.review, sources.review, [
   'form.set("precision", String(precision))',
   'globalThis.crypto.subtle.digest("SHA-256"',
   "verifyLottieResponse",
-  "JSON.parse(response.lottie.data)",
+  "parseAndVerifyLottieDocument",
+  "JSON.parse(source)",
   'playerRenderValidation !== "not-yet-performed"',
   'dotLottiePackaging !== "not-yet-available"',
   "independent source-to-player render validation has not been performed",
@@ -115,12 +115,12 @@ forbidTokens(files.review, sources.review, [
   'approval: "approved"',
 ]);
 requireTokens(files.preview, sources.preview, [
-  'dynamic(',
-  '@lottiefiles/dotlottie-react',
-  'ssr: false',
-  'data={data}',
-  'autoplay={autoplay}',
-  'loop={loop}',
+  "dynamic(",
+  "@lottiefiles/dotlottie-react",
+  "ssr: false",
+  "data={data}",
+  "autoplay={autoplay}",
+  "loop={loop}",
   'layout={{ fit: "contain", align: [0.5, 0.5] }}',
   "Official LottieFiles player preview",
 ]);
@@ -144,17 +144,13 @@ requireTokens(files.styles, sources.styles, [
 requireTokens(files.api, sources.api, [
   'endpoint: "/api/v1/motion/lottie"',
   'format: ["json", "lottie"]',
-  'data: result.json',
-  'playerRenderValidation: false',
-  'dotLottiePackaging: false',
-]);
-requireTokens(files.dotLottieApi, sources.dotLottieApi, [
-  'endpoint: "/api/v1/motion/dotlottie"',
-  'browserArchiveLoadValidation: false',
+  "data: result.json",
+  "playerRenderValidation: false",
+  "dotLottiePackaging: false",
 ]);
 requireTokens(files.home, sources.home, [
   "Lottie + dotLottie",
-  "UI + API + CLI + MCP available",
+  "UI + API + CLI + MCP available for Lottie",
   "Independent source-to-player render validation",
 ]);
 requireTokens(files.readme, sources.readme, [
@@ -164,26 +160,24 @@ requireTokens(files.readme, sources.readme, [
 ]);
 requireTokens(files.motionDocs, sources.motionDocs, [
   "browser Lottie player preview",
-  "Independent player-render validation",
+  "independent player-render validation",
 ]);
 requireTokens(files.lottieDocs, sources.lottieDocs, [
   "browser Lottie player preview",
   "@lottiefiles/dotlottie-react",
   "not independent source-to-player validation",
-  "/api/v1/motion/dotlottie",
 ]);
 requireTokens(files.apiDocs, sources.apiDocs, [
   "/api/v1/motion/lottie",
   "browser Motion Director",
   "player preview",
-  "/api/v1/motion/dotlottie",
 ]);
 
 if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-studio-lottie-workspace-contract",
     ok: false,
-    contractVersion: "1.0",
+    contractVersion: "1.1",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -192,12 +186,12 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-lottie-workspace-contract",
   ok: true,
-  contractVersion: "1.0",
+  contractVersion: "1.1",
   player: "@lottiefiles/dotlottie-react@0.19.12",
-  separateDotLottieEndpoint: "/api/v1/motion/dotlottie",
   verifiedBoundaries: [
     "exact JSON transport verification",
     "source and output SHA-256",
+    "parsed governed JSON",
     "structural inspection",
     "isolated client-only player",
     "reduced-motion autoplay suppression",
