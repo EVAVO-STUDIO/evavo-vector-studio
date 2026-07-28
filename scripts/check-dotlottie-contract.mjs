@@ -112,11 +112,13 @@ requireTokens(files.engine, sources.engine, [
   "Encrypted ZIP entries are not permitted",
   "Multi-disk ZIP archives are not supported",
   "Every governed dotLottie entry must use DEFLATE compression",
-  "The inspector rejects oversized declared content before decompression",
+  "uncompressedBytes > MAX_DOTLOTTIE_LOTTIE_BYTES",
+  "totalUncompressedBytes > MAX_DOTLOTTIE_TOTAL_UNCOMPRESSED_BYTES",
+  "The ZIP declares uncompressed content beyond the configured limits.",
   "createDotLottiePackage",
   "inspectDotLottie",
   'compression: "deflate"',
-  'manifestVersion: "2"',
+  'manifestVersion: DOTLOTTIE_MANIFEST_VERSION',
   'deterministic: true',
   'playerRenderValidation: "not-yet-performed"',
   'browserArchiveLoadValidation: "not-yet-performed"',
@@ -175,10 +177,13 @@ requireTokens(files.docs, sources.docs, [
 ]);
 requireTokens(files.lottieDocs, sources.lottieDocs, [
   "dotLottie packaging",
+  "createDotLottiePackage",
+  "inspectDotLottie",
 ]);
 requireTokens(files.readme, sources.readme, [
-  "dotLottie packaging",
+  "deterministic dotLottie v2 packaging",
   "vector:dotlottie:package",
+  "hostile-archive inspection",
 ]);
 requireTokens(files.workflow, sources.workflow, [
   "Verify dotLottie archive contract",
