@@ -127,7 +127,7 @@ requireTokens(files.apiDocs, sources.apiDocs, [
   "dotLottie remains unavailable",
 ]);
 requireTokens(files.lottieDocs, sources.lottieDocs, [
-  "Lottie HTTP API workflow",
+  "## HTTP API workflow",
   "/api/v1/motion/lottie",
   "format=lottie",
   "playerRenderValidation: not-yet-performed",
