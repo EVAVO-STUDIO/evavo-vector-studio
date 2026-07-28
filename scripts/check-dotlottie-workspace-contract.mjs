@@ -91,8 +91,8 @@ requireTokens(files.review, sources.review, [
   "Download dotLottie archive",
   "Download dotLottie evidence",
   'new Blob([archiveBuffer], { type: "application/zip+dotlottie" })',
-  'browserArchiveLoadValidation:',
-  'playerRenderValidation: false',
+  "browserArchiveLoadValidation:",
+  "playerRenderValidation: false",
 ]);
 forbidTokens(files.review, sources.review, [
   "dangerouslySetInnerHTML",
@@ -103,7 +103,7 @@ forbidTokens(files.review, sources.review, [
   "<embed",
   "eval(",
   "new Function(",
-  'playerRenderValidation: true',
+  "playerRenderValidation: true",
   'approval: "approved"',
 ]);
 requireTokens(files.preview, sources.preview, [
@@ -128,28 +128,35 @@ requireTokens(files.api, sources.api, [
   'endpoint: "/api/v1/motion/dotlottie"',
   'encoding: "base64"',
   'Buffer.from(packaged.bytes).toString("base64")',
-  'browserArchiveLoadValidation: false',
-  'playerRenderValidation: false',
+  "browserArchiveLoadValidation: false",
+  "playerRenderValidation: false",
 ]);
 requireTokens(files.home, sources.home, [
-  "API + CLI + MCP for dotLottie",
-  "browser archive-load validation",
+  "Lottie + dotLottie",
+  "UI + API + CLI + MCP available",
+  "official-player loading",
 ]);
 requireTokens(files.readme, sources.readme, [
-  "Browser dotLottie archive generation and browser archive-load validation are not yet exposed",
+  "generate deterministic dotLottie v2",
+  "Browser archive-load validation is available after exact archive verification",
+  "Independent player-render validation remains unavailable",
   "POST /api/v1/motion/dotlottie",
 ]);
 requireTokens(files.motionDocs, sources.motionDocs, [
   "browser Lottie player preview",
-  "dotLottie packaging",
+  "Deterministic dotLottie packaging is available",
+  "Browser archive-load validation is available",
 ]);
 requireTokens(files.lottieDocs, sources.lottieDocs, [
   "/api/v1/motion/dotlottie",
   "browser dotLottie archive-load validation",
+  "@lottiefiles/dotlottie-react",
 ]);
 requireTokens(files.dotLottieDocs, sources.dotLottieDocs, [
+  "## Browser Motion Director workflow",
   "browser archive-load validation",
   "@lottiefiles/dotlottie-react",
+  "does not establish source-to-player render equivalence",
 ]);
 requireTokens(files.apiDocs, sources.apiDocs, [
   "# dotLottie API",
@@ -161,7 +168,7 @@ if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-studio-dotlottie-workspace-contract",
     ok: false,
-    contractVersion: "1.0",
+    contractVersion: "1.1",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -170,7 +177,7 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-dotlottie-workspace-contract",
   ok: true,
-  contractVersion: "1.0",
+  contractVersion: "1.1",
   player: "@lottiefiles/dotlottie-react@0.19.12",
   verifiedBoundaries: [
     "base64 archive decoding",
