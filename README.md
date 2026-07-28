@@ -1,59 +1,86 @@
 # EVAVO Vector Studio
 
-EVAVO Vector Studio is a governed raster-to-vector production workspace for reconstructing logos, icons, line art, illustrations and selected photographic sources as editable SVG assets.
+EVAVO Vector Studio is a governed raster-to-vector and motion-production workspace for reconstructing logos, icons, line art, illustrations and selected photographic sources as editable vector assets.
 
-The objective is not to call one automatic trace “finished”. The system inspects the source, builds bounded candidates, measures visual equivalence, records geometric and topology evidence, selects transparently and keeps professional approval separate from machine completion.
+The system does not call one automatic trace “finished”. It inspects the source, creates bounded candidates, measures visual equivalence, records geometry and topology evidence, selects transparently and keeps professional approval separate from machine completion.
 
-## Implemented foundation
+## Available production surfaces
+
+### Clean SVG
+
+Available through the browser, authenticated HTTP API, CLI, MCP and resumable batch runner.
 
 - guarded static PNG, JPEG, WebP, GIF, BMP and single-page classic TIFF preflight;
-- pre-decode rejection of APNG, animated GIF, animated WebP, MPO JPEG and multi-page TIFF;
+- pre-decode rejection of APNG, animated GIF, animated WebP, MPO JPEG, multi-page TIFF and BigTIFF;
 - 25 MiB encoded-input and 40 million decoded-pixel limits;
-- native RGBA decoding and spline-based raster reconstruction;
-- source SHA-256, alpha, palette, tonal, entropy and edge analysis;
+- native RGBA decoding and spline reconstruction;
 - automatic or explicit logo, icon, line-art, illustration and photo profiles;
 - adaptive base, fidelity and economy candidates under source-pixel budgets;
-- explicit visual-cost, geometry-cost and candidate-selection evidence;
 - safe multipass SVG optimisation;
-- SVG path-command, subpath and estimated-anchor inspection;
-- topology checks for duplicate IDs, unresolved references, duplicate paths, open filled subpaths, unoutlined text and document indirection;
-- rejection of scripts, `foreignObject`, inline handlers, `javascript:` links and network-dependent references;
-- alpha-aware source-versus-SVG rendering at up to 64, 256 and 1024 pixels;
-- visual MAE, RMS error, alpha error, black/white composite error, mismatch fraction and aspect-ratio evidence;
-- optional audited white-to-red visual-difference heatmap PNGs with bounded dimensions and SHA-256 evidence;
-- browser-side verification of returned PNG bytes, signature, dimensions, selected candidate and SHA-256;
-- responsive browser review for source, selected SVG, difference image, topology, candidates, metrics and downloads;
-- authenticated multipart APIs for bounded synchronous tracing, animated SVG, Lottie JSON and dotLottie v2 creation;
-- JSON-first CLI suitable for people, ChatGPT, Claude and workers;
-- deterministic, script-free animated SVG generation from validated ID-targeted motion plans;
-- opacity, translation, scale and rotation keyframes with easing and mandatory reduced-motion fallback;
-- motion-plan JSON Schema, normalized-plan validation, animated-SVG inspection and SHA-256 evidence;
-- responsive browser Motion Director with source screening, target discovery, presets, tracks, keyframes, playback controls, replay and verified downloads;
-- browser verification of source/output SHA-256, motion identity, style identity, target order, reduced-motion fallback and script-free evidence;
-- governed path-based Lottie JSON engine with SVG command conversion, source-order preservation, solid fill and stroke support, layer-transform motion and structural inspection;
-- Lottie CLI export and inspection with atomic new-file-only output, SHA-256 evidence and explicit player-compatibility non-claims;
-- authenticated Lottie HTTP API with strict fields, bounded inputs and outputs, exact serialized JSON delivery and compact evidence headers;
-- browser Lottie player preview through the official LottieFiles React player after exact JSON, source hash, output hash and structural evidence verification;
-- reduced-motion-aware Lottie autoplay suppression, stale-result signalling, replay controls and separate JSON and evidence downloads;
-- deterministic dotLottie v2 packaging with fixed ZIP metadata, DEFLATE compression, strict manifest layout and SHA-256 evidence;
-- hostile-archive inspection for traversal, duplicates, ZIP64, encryption, entry overlap, unsupported semantics and oversized declared content;
-- atomic new-file-only `evavo-dotlottie` CLI packaging and inspection with optional evidence output;
-- authenticated dotLottie API with direct archive delivery or bounded base64 wrapper evidence;
-- browser dotLottie archive generation, base64 decoding, ZIP-signature and SHA-256 verification, deterministic manifest checks and `.lottie` download;
-- browser archive-load validation from the official player `load` and `loadError` lifecycle without claiming render equivalence;
-- local stdio MCP contract 1.3 with thirteen governed raster, SVG, motion, Lottie and dotLottie tools;
-- receipt-only Lottie MCP export and inspection with canonical allowed-root access, no-overwrite transactions and no generated JSON body in model context;
-- receipt-only dotLottie MCP packaging and inspection with atomic archive/evidence commit and no archive bytes or embedded JSON in model context;
-- tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, Lottie geometry, Lottie structural output, dotLottie determinism, hostile ZIPs, MCP SDK, path-policy and transaction boundaries;
-- dependency-free contract gates plus the GitHub Actions quality workflow.
+- SVG safety, geometry, topology and editability inspection;
+- alpha-aware multi-scale render comparison;
+- optional visual-difference heatmap PNG with selected-candidate binding and SHA-256;
+- browser verification of the base64 difference PNG before display or download;
+- no production auto-approval.
 
-Animated SVG production is available through the browser Motion Director, core motion package, HTTP API, CLI and MCP.
+### Animated SVG
 
-Governed Lottie JSON export and inspection are available through the core Lottie package, CLI and HTTP API. MCP and browser review use the same governed Lottie contract.
+Available through the browser Motion Director, core package, API, CLI, MCP and resumable batch runner.
 
-Deterministic dotLottie packaging and inspection are available through the core package, CLI, `POST /api/v1/motion/dotlottie`, MCP and the browser Motion Director. Browser archive-load validation is available after exact archive verification. Independent player-render validation remains unavailable.
+- ID-targeted opacity, translation, uniform scale and rotation;
+- validated timing, delay, easing, iteration, direction and fill mode;
+- deterministic script-free CSS keyframes;
+- mandatory `prefers-reduced-motion` fallback;
+- source and output SHA-256 evidence;
+- normalized motion plans that remain reusable across surfaces;
+- animated-SVG inspection and separate evidence output.
 
-All execution surfaces remain `human-review-required`. Successful processing, archive loading and evidence verification do not grant artistic, brand, accessibility or player-equivalence approval.
+### Lottie JSON
+
+Governed Lottie JSON export and inspection are available through the core Lottie package, CLI and HTTP API. MCP, the browser Motion Director and the resumable batch runner use the same governed Lottie contract.
+
+- path-based shape layers;
+- SVG path command conversion including curves and arcs;
+- solid fill and stroke;
+- opacity, translation, uniform scale and rotation;
+- deterministic JSON and structural inspection;
+- expression, image, text, precomposition, gradient, mask and filter rejection;
+- browser Lottie player preview after exact JSON and SHA-256 verification;
+- reduced-motion-aware autoplay and looping suppression.
+
+### dotLottie
+
+Deterministic dotLottie v2 packaging is available through core, CLI, `POST /api/v1/motion/dotlottie`, MCP, the browser Motion Director and the resumable batch runner.
+
+- exact `manifest.json` plus `a/<animation-id>.json` layout;
+- DEFLATE compression and fixed ZIP metadata;
+- deterministic bytes and SHA-256;
+- hostile-archive inspection for traversal, duplicates, encryption, ZIP64, overlap and oversized declared content;
+- authenticated direct archive delivery or bounded base64 wrapper evidence;
+- browser archive byte, ZIP-signature, SHA-256 and manifest verification;
+- official-player `load` and `loadError` lifecycle evidence;
+- separate `.lottie` and evidence downloads.
+
+Browser archive-load validation is available after exact archive verification. Independent player-render validation remains unavailable.
+
+### Durable batch automation
+
+The `evavo-vector-batch` CLI provides a crash-resumable local runner for ChatGPT, Claude, scripts and production operators.
+
+- strict batch-v1 manifests;
+- persistent atomic `state.json`;
+- append-only `events.ndjson`;
+- exclusive runner locks and stale-lock recovery;
+- immutable manifest SHA-256 per job ID;
+- input revision SHA-256 per item;
+- output receipt re-verification before reuse;
+- interrupted-item recovery;
+- `continue` and `fail-fast` modes;
+- failure isolation;
+- explicit evidence outputs;
+- no existing-file overwrite.
+
+The current runner resumes when invoked again. It is not yet a hosted background queue or multi-node worker service.
 
 ## Quick start on Windows PowerShell
 
@@ -70,85 +97,65 @@ Open:
 
 ```text
 http://localhost:3000          trace and evidence workspace
-http://localhost:3000/motion   browser Motion Director, Lottie review and dotLottie archive delivery
+http://localhost:3000/motion   Motion Director, Lottie review and dotLottie delivery
 ```
 
-For a protected production deployment, set a long server-only `VECTOR_API_TOKEN`. The browser accepts it per tab and does not require a public environment variable.
+For protected production deployment, configure a long server-only `VECTOR_API_TOKEN`. The browser accepts it per tab and does not require a public environment variable.
 
 ## Browser workflows
 
 ### Trace workspace
 
-The trace workspace can:
+The trace workspace previews the selected raster locally, resolves a trace profile, runs adaptive or single-candidate reconstruction, compares source and selected SVG, verifies optional difference evidence, displays topology and geometry, and downloads the SVG and optional PNG separately.
 
-1. preview the selected raster locally;
-2. choose an automatic or directed trace profile;
-3. choose adaptive candidate review or a single candidate;
-4. control palette intent and safe optimisation;
-5. request a bounded difference PNG;
-6. compare the source, selected SVG and visual-difference heatmap;
-7. verify difference bytes and SHA-256 in the browser;
-8. inspect topology, editability, candidate and geometry evidence;
-9. download the SVG and optional difference PNG separately.
-
-White regions in the visual-difference heatmap are measured matches. Red regions mark visual difference using a declared display amplification. The heatmap is review evidence, not a substitute for inspecting curves, compound paths, negative space and brand geometry.
+White regions in the visual-difference heatmap are measured matches. Red regions identify measured difference using a declared amplification. This evidence does not replace curve, negative-space, compound-path or brand review.
 
 ### Motion Director
 
-Open `/motion` to author motion against a governed, ID-structured SVG. The browser Motion Director can:
+Open `/motion` to:
 
-1. screen the SVG for scripts, external references, duplicate IDs and pre-existing animation before preview;
-2. discover portable target IDs and flag base transforms;
-3. add multiple target tracks;
-4. apply fade, rise, slide, soft-pop, rotate-settle and drift-loop presets;
-5. edit offsets, opacity, translation, scale, rotation, easing, transform box and transform origin;
-6. control duration, delay, iteration, direction, fill mode and reduced-motion strategy;
-7. generate through `POST /api/v1/motion/svg`;
-8. verify source/output SHA-256, motion/style identity, target order, reduced-motion fallback and script-free evidence before display;
-9. replay and download the animated SVG, normalized motion plan and evidence record;
-10. mark the displayed result stale when the editor changes after generation;
-11. preflight the smaller Lottie playback subset and generate through `POST /api/v1/motion/lottie`;
-12. verify exact Lottie JSON bytes, SHA-256, parsed metadata, layers, structural inspection and compatibility non-claims;
-13. load only verified JSON into the official client-only LottieFiles player, with autoplay and looping disabled when reduced motion is preferred;
-14. download Lottie JSON and a separate browser evidence record without embedding duplicate animation data;
-15. generate deterministic dotLottie v2 through `POST /api/v1/motion/dotlottie`;
-16. decode and verify base64 archive bytes, ZIP signature, SHA-256, manifest identity, entry order and retained archive inspection;
-17. pass only verified `ArrayBuffer` archive data to the official player and record its `load` or `loadError` event;
-18. download the `.lottie` archive and a separate browser evidence record without duplicating archive bytes.
+1. screen a static SVG for active content, external references, duplicate IDs and existing animation;
+2. discover portable target IDs;
+3. author multiple motion tracks and keyframes;
+4. generate through `POST /api/v1/motion/svg`;
+5. verify animated-SVG hashes, motion identity and reduced-motion evidence;
+6. generate through `POST /api/v1/motion/lottie`;
+7. verify exact Lottie JSON and open the browser Lottie player preview;
+8. generate deterministic dotLottie v2 through `POST /api/v1/motion/dotlottie`;
+9. verify archive bytes, manifest and inspection evidence;
+10. pass verified archive `ArrayBuffer` data to the official player;
+11. retain browser archive-load evidence without claiming source-to-player equivalence.
 
-The animated-SVG editor uses Blob-backed `<img>` previews rather than injecting returned SVG markup into the application document. The browser Lottie player preview uses `@lottiefiles/dotlottie-react` with exact verified JSON or verified `.lottie` `ArrayBuffer` data. Archive-load validation proves that the selected browser player accepted the archive. It does not prove source-to-player pixel equivalence, paint fidelity, timing fidelity or artistic approval.
+Every browser output remains `human-review-required` or `review-required`.
 
-## CLI
+## Single-file CLI
 
 ```powershell
-# Inspect a static raster without creating output
+# Inspect one raster
 pnpm vector:raster:inspect -- .\fixtures\mark.png
 
-# Create a governed SVG and optional difference PNG
+# Trace one raster, including optional difference evidence
 pnpm vector:trace -- `
   .\fixtures\mark.png `
   --out .\outputs\mark.vector.svg `
-  --profile auto `
+  --profile logo `
   --candidate-mode adaptive `
-  --max-colours 16 `
-  --diff-out .\outputs\mark.vector.difference.png `
-  --difference-max-dimension 512 `
-  --title "Brand mark"
+  --diff-out .\outputs\mark.difference.png `
+  --difference-max-dimension 512
 
-# Inspect or conservatively optimise an existing SVG
+# Inspect and optimise SVG
 pnpm vector:inspect -- .\fixtures\mark.svg
 pnpm vector:optimise -- .\fixtures\mark.svg --out .\outputs\mark.optimised.svg
 
-# Validate and apply a governed animated-SVG motion plan
+# Animated SVG
 pnpm vector:motion:validate -- .\fixtures\motion\gentle-entrance.motion.json
 pnpm vector:animate-svg -- `
   .\fixtures\motion\gentle-entrance.source.svg `
   --motion .\fixtures\motion\gentle-entrance.motion.json `
   --out .\outputs\gentle-entrance.animated.svg `
   --evidence-out .\outputs\gentle-entrance.motion.evidence.json
-pnpm vector:motion:inspect -- .\outputs\gentle-entrance.animated.svg
 
-# Export and inspect governed Lottie JSON
+# Lottie JSON
 pnpm vector:lottie:export -- `
   .\fixtures\motion\gentle-entrance.source.svg `
   --motion .\fixtures\motion\gentle-entrance.motion.json `
@@ -156,7 +163,7 @@ pnpm vector:lottie:export -- `
   --evidence-out .\outputs\gentle-entrance.lottie.evidence.json
 pnpm vector:lottie:inspect -- .\outputs\gentle-entrance.lottie.json
 
-# Package and inspect deterministic dotLottie v2
+# dotLottie
 pnpm vector:dotlottie:package -- `
   .\outputs\gentle-entrance.lottie.json `
   --out .\outputs\gentle-entrance.lottie `
@@ -164,108 +171,116 @@ pnpm vector:dotlottie:package -- `
   --evidence-out .\outputs\gentle-entrance.dotlottie.evidence.json
 pnpm vector:dotlottie:inspect -- .\outputs\gentle-entrance.lottie
 pnpm vector:dotlottie:capabilities
-
-# Print machine-readable contracts
-pnpm vector:input-policy
-pnpm vector:manifest
 ```
 
-CLI output commands use atomic new-file-only transactions. Existing destinations, source/output collisions and multi-output collisions are rejected. See [`docs/CLI.md`](docs/CLI.md), [`docs/MOTION.md`](docs/MOTION.md), [`docs/LOTTIE.md`](docs/LOTTIE.md) and [`docs/DOTLOTTIE.md`](docs/DOTLOTTIE.md).
+Single-file output commands use atomic new-file-only transactions. Existing destinations and path collisions are rejected.
+
+## Resumable batch CLI
+
+Create a manifest using [`schemas/batch-v1.schema.json`](schemas/batch-v1.schema.json), then run:
+
+```powershell
+pnpm vector:batch:capabilities
+
+pnpm vector:batch:run -- `
+  .\batches\brand-assets.batch.json `
+  --root C:\EVAVO\VectorAssets
+
+pnpm vector:batch:inspect -- `
+  .\batches\brand-assets.batch.json `
+  --root C:\EVAVO\VectorAssets `
+  --event-limit 50
+```
+
+Supported operations:
+
+```text
+trace-raster
+optimise-svg
+animate-svg
+export-lottie
+package-dotlottie
+```
+
+Completed items are reused only when their current input revision and all output receipts still verify. See [`docs/BATCH.md`](docs/BATCH.md).
 
 ## Local MCP automation
 
-Build and start the local stdio server with:
+Build and start the stdio server:
 
 ```powershell
 $env:VECTOR_MCP_ALLOWED_ROOTS = "C:\GitRepos\evavo-vector-studio;C:\EVAVO\VectorAssets"
 pnpm vector:mcp
 ```
 
-MCP contract `1.3` exposes:
+MCP contract `1.3` exposes thirteen tools, including:
 
-- `vector_capabilities`;
-- `vector_input_policy`;
-- `vector_inspect_raster`;
-- `vector_trace_raster`;
-- `vector_inspect_svg`;
-- `vector_optimise_svg`;
-- `vector_validate_motion_plan`;
-- `vector_animate_svg`;
-- `vector_inspect_animated_svg`;
-- `vector_export_lottie`;
-- `vector_inspect_lottie`;
-- `vector_package_dotlottie`;
-- `vector_inspect_dotlottie`.
+```text
+vector_trace_raster
+vector_inspect_svg
+vector_optimise_svg
+vector_animate_svg
+vector_export_lottie
+vector_inspect_lottie
+vector_package_dotlottie
+vector_inspect_dotlottie
+```
 
-MCP inputs must be existing regular files beneath a configured canonical root. Outputs use new-files-only semantics: existing destinations, path collisions and ordinary symlink escapes are rejected. Related outputs commit atomically and return path, MIME type, byte count and SHA-256 receipts instead of complete generated bodies.
+The Lottie MCP and dotLottie MCP operations use canonical allowed roots, new-file-only transactions and receipt-only results. Generated SVG, PNG, Lottie JSON and ZIP bodies remain outside model context.
 
-`vector_trace_raster` supports compact `summary` and complete `full` evidence. Motion and Lottie plans may be supplied inline or through allowed-root JSON files. `vector_export_lottie` creates Lottie JSON and optional evidence atomically; `vector_inspect_lottie` checks the committed result.
+## Authenticated API
 
-`vector_package_dotlottie` packages one governed Lottie JSON file into a new deterministic archive and optional evidence JSON. `vector_inspect_dotlottie` validates ZIP safety, manifest-v2 semantics and embedded Lottie structure. Neither tool places generated archive bytes or embedded JSON in model context.
+```text
+POST /api/v1/trace
+POST /api/v1/motion/svg
+POST /api/v1/motion/lottie
+POST /api/v1/motion/dotlottie
+```
 
-Every MCP operation remains `human-review-required`; successful execution records completion and evidence, not artistic or player approval. See [`docs/MCP.md`](docs/MCP.md).
+The endpoints are bounded synchronous surfaces with `Cache-Control: no-store`. Production access closes when `VECTOR_API_TOKEN` is absent.
 
-## API
+The current API is not a durable queue. Use the local resumable batch CLI for restartable file production. A future hosted worker still requires database-backed jobs, object storage, leases, heartbeats, retries, cancellation and workspace authorisation.
 
-The authenticated API exposes:
+## Quality and approval
 
-- `POST /api/v1/trace` for static raster reconstruction, candidate evidence and optional base64 difference PNG;
-- `POST /api/v1/motion/svg` for validated animated SVG creation from an inline or uploaded motion-v1 plan;
-- `POST /api/v1/motion/lottie` for governed path-based Lottie JSON from the same validated motion plan;
-- `POST /api/v1/motion/dotlottie` for deterministic dotLottie v2 packaging from the same SVG and motion inputs.
+Machine completion, structural validity, measured render quality, archive loading and production approval are separate states.
 
-All endpoints use strict bounded synchronous execution and no-store responses. Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token.
+The system can retain safety checks, settings, revisions, candidate selection, topology, render metrics, hashes, archive structure and output receipts. It cannot automatically establish ideal Bézier placement, semantic layer design, optical brand correction, creative motion direction or cross-player pixel equivalence.
 
-The Lottie endpoint accepts one SVG up to 5 MiB and one plan up to 256 KiB, limits the generated body to 20 MiB, and supports wrapper JSON evidence or direct `video/lottie+json` delivery. Its operation-level evidence preserves `playerRenderValidation: not-yet-performed` because source-to-player equivalence is not measured.
-
-The dotLottie API uses the same source and plan limits, creates deterministic manifest-v2 archives up to 25 MiB, supports direct `application/zip+dotlottie` delivery, and permits wrapper base64 only through 8 MiB. Its server evidence retains archive, embedded-Lottie, player-render and browser archive-load states separately. The browser Motion Director can add a later `browserArchiveLoadValidation: passed` result after verifying the exact response bytes and receiving the official player `load` event.
-
-See [`docs/API.md`](docs/API.md) for complete fields, limits, response shapes and error contracts.
-
-## Quality model
-
-A trace, animated SVG build, Lottie JSON export or dotLottie package can finish successfully while remaining `review-required`.
-
-The tracing engine may choose a lower-complexity candidate only when it remains inside explicit visual-cost, mismatch and aspect-ratio tolerances relative to the best visual candidate. If every candidate requires review, the best measured visual result wins rather than sacrificing fidelity for smaller geometry.
-
-Every trace retains exact settings, attempted candidates, selected and best-visual IDs, geometry and topology counts, multi-scale render metrics, difference artefact evidence, warnings and timings. Animated SVG retains normalized playback, target and keyframe counts, hashes, deterministic identity, reduced-motion and script-free safety evidence. Lottie retains source and output hashes, normalized motion, dimensions, frame rate, layer and path counts, structural inspection and exact compatibility non-claims.
-
-Every dotLottie package retains source and embedded JSON hashes, exact manifest, archive hash, entry order, compressed and uncompressed byte totals, deterministic ZIP policy, archive inspection, embedded-Lottie inspection and player/browser validation states.
-
-A base64 difference PNG, deterministic CSS animation, structurally valid Lottie file, deterministic dotLottie archive or successful browser player load cannot prove deliberate Bézier placement, compound-path quality, future editability, motion direction, player render equivalence or brand fidelity. Production auto-approval therefore remains unavailable.
-
-Detailed contracts:
-
-- [`docs/QUALITY-EVIDENCE.md`](docs/QUALITY-EVIDENCE.md)
-- [`docs/INPUT-SAFETY.md`](docs/INPUT-SAFETY.md)
-- [`docs/MOTION.md`](docs/MOTION.md)
-- [`docs/LOTTIE.md`](docs/LOTTIE.md)
-- [`docs/DOTLOTTIE.md`](docs/DOTLOTTIE.md)
-- [`docs/MCP.md`](docs/MCP.md)
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+Production auto-approval is unavailable. All generated assets remain review-required.
 
 ## Repository layout
 
 ```text
-apps/web                  Next.js trace workspace, Motion Director, Lottie and dotLottie review, and authenticated APIs
-packages/vector-core      shared job, SVG safety, geometry and topology contracts
-packages/raster-engine    guarded decoding, analysis, tracing, comparison and difference evidence
-packages/motion-engine    validated deterministic animated SVG production
-packages/lottie-engine    governed Lottie JSON plus deterministic dotLottie packaging and inspection
-packages/cli              JSON-first tracing, optimisation, motion, Lottie and dotLottie automation
-packages/mcp              local stdio tracing, SVG, motion, Lottie and dotLottie tools with allowed-root policies
-schemas                   machine-readable governed production contracts
-fixtures                  deterministic raster, SVG, motion, Lottie and archive validation inputs
-scripts                   dependency-free release, topology, browser, MCP, motion, Lottie, dotLottie, API and workspace gates
-docs                      architecture and production contracts
+apps/web                  trace workspace, Motion Director and authenticated APIs
+packages/vector-core      SVG safety, geometry and topology
+packages/raster-engine    raster preflight, reconstruction and visual evidence
+packages/motion-engine    governed animated SVG
+packages/lottie-engine    Lottie JSON and deterministic dotLottie
+packages/job-engine       persistent resumable batch state and runner
+packages/cli              single-file and durable batch automation
+packages/mcp              local stdio agent tools
+schemas                   motion and batch contracts
+fixtures                  deterministic validation fixtures
+scripts                   dependency-free contract gates
+docs                      architecture, API, CLI, MCP, motion, archive and batch contracts
 ```
+
+## Detailed contracts
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/QUALITY-EVIDENCE.md`](docs/QUALITY-EVIDENCE.md)
+- [`docs/INPUT-SAFETY.md`](docs/INPUT-SAFETY.md)
+- [`docs/CLI.md`](docs/CLI.md)
+- [`docs/API.md`](docs/API.md)
+- [`docs/MOTION.md`](docs/MOTION.md)
+- [`docs/LOTTIE.md`](docs/LOTTIE.md)
+- [`docs/DOTLOTTIE.md`](docs/DOTLOTTIE.md)
+- [`docs/MCP.md`](docs/MCP.md)
+- [`docs/BATCH.md`](docs/BATCH.md)
 
 ## Deployment boundary
 
-The EVAVO website hub integration remains a signed federated candidate. This repository does not mark itself client-released until deployment, authentication, runtime limits and live smoke evidence are verified.
-
-The current APIs are bounded synchronous surfaces, not durable queues. Persistent jobs, resumability, object storage, worker retries and signed hub handoff belong in a later deployment phase. The local stdio MCP server is also synchronous and bounded; it does not claim durable background execution.
-
-## Philosophy
+The EVAVO website hub integration remains a signed federated candidate. The repository does not mark itself released until deployment, authentication, host limits, signed launch and live smoke evidence are verified.
 
 Preserve source intent. Reconstruct deliberate geometry. Minimise unnecessary anchors. Keep outputs editable. Direct motion intentionally. Translate formats explicitly. Record material decisions. Reject unsafe or misleading results instead of silently producing something different.
