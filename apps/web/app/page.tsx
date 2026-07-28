@@ -3,7 +3,7 @@ import TraceWorkspace from "./components/TraceWorkspace";
 
 const outputCards = [
   ["Clean SVG", "Available now", "Adaptive spline reconstruction, measured candidate selection, geometry inspection and optional difference PNG evidence."],
-  ["Animated SVG", "API + CLI + MCP available", "Validated ID-targeted opacity and transform motion, deterministic CSS, reduced-motion fallback and review evidence. Browser authoring is planned."],
+  ["Animated SVG", "UI + API + CLI + MCP", "Direct ID-targeted opacity and transform motion in the browser, then verify deterministic CSS, reduced-motion fallback and output evidence."],
   ["Lottie", "Planned", "Portable timelines remain unavailable until feature-subset, schema and renderer compatibility validation is implemented."],
 ] as const;
 
@@ -16,7 +16,8 @@ export default function HomePage() {
           <span>VECTOR STUDIO</span>
         </a>
         <nav aria-label="Workspace navigation">
-          <a href="#workspace">Workspace</a>
+          <a href="#workspace">Trace workspace</a>
+          <a href="/motion">Motion Director</a>
           <a href="#pipeline">Pipeline</a>
           <a href="#automation">Automation</a>
         </nav>
@@ -28,8 +29,8 @@ export default function HomePage() {
         <h1>Trace less.<br /><em>Reconstruct properly.</em></h1>
         <p className="lede">A governed raster-to-vector workspace that inspects the source, compares bounded reconstruction candidates, measures the selected SVG and shows exactly where human review is still required.</p>
         <div className="heroActions">
-          <a className="primary" href="#workspace">Open workspace</a>
-          <a className="secondary" href="#pipeline">Inspect the process</a>
+          <a className="primary" href="#workspace">Open trace workspace</a>
+          <a className="secondary" href="/motion">Direct SVG motion</a>
         </div>
       </section>
 
