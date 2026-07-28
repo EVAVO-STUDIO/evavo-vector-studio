@@ -81,7 +81,8 @@ export function GET(): Response {
     supportedProfiles: [...PROFILES],
     limits: { maxInputBytes: DEFAULT_MAX_INPUT_BYTES, maxDecodedPixels: 40_000_000 },
     authentication: "Bearer VECTOR_API_TOKEN in production",
-    approval: "withheld until render-comparison evidence is implemented",
+    visualEvidence: "alpha-aware multi-scale source-versus-SVG render comparison",
+    approval: "human review required even when render comparison passes",
   });
 }
 
@@ -134,6 +135,9 @@ export async function POST(request: Request): Promise<Response> {
           "content-disposition": `attachment; filename="${safeDownloadName(file.name)}"`,
           "x-vector-job-id": jobId,
           "x-vector-review-required": "true",
+          "x-vector-render-quality": result.evidence.comparison.quality,
+          "x-vector-visual-mae": String(result.evidence.comparison.aggregate.visualMae),
+          "x-vector-mismatch-fraction": String(result.evidence.comparison.aggregate.mismatchFraction),
         }),
       });
     }
