@@ -39,8 +39,9 @@ The objective is not to call one automatic trace “finished”. The system insp
 - hostile-archive inspection for traversal, duplicates, ZIP64, encryption, entry overlap, unsupported semantics and oversized declared content;
 - atomic new-file-only `evavo-dotlottie` CLI packaging and inspection with optional evidence output;
 - authenticated dotLottie API with direct archive delivery or bounded base64 wrapper evidence;
-- local stdio MCP contract 1.2 with eleven governed raster, SVG, motion and Lottie tools;
+- local stdio MCP contract 1.3 with thirteen governed raster, SVG, motion, Lottie and dotLottie tools;
 - receipt-only Lottie MCP export and inspection with canonical allowed-root access, no-overwrite transactions and no generated JSON body in model context;
+- receipt-only dotLottie MCP packaging and inspection with atomic archive/evidence commit and no archive bytes or embedded JSON in model context;
 - tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, Lottie geometry, Lottie structural output, dotLottie determinism, hostile ZIPs, MCP SDK, path-policy and transaction boundaries;
 - dependency-free contract gates plus the GitHub Actions quality workflow.
 
@@ -48,7 +49,7 @@ Animated SVG production is available through the browser Motion Director, core m
 
 Governed Lottie JSON export and inspection are available through the core Lottie package, CLI and HTTP API. MCP and browser review use the same governed Lottie contract.
 
-Deterministic dotLottie packaging and inspection are available through the core package, CLI and `POST /api/v1/motion/dotlottie`. MCP archive tools and browser archive-load validation remain unavailable. Independent player-render and browser archive-load validation also remain unavailable.
+Deterministic dotLottie packaging and inspection are available through the core package, CLI, `POST /api/v1/motion/dotlottie` and MCP. Browser archive-load validation remains unavailable. Independent player-render and browser archive-load validation also remain unavailable.
 
 All execution surfaces remain `human-review-required`. Successful processing and verification do not grant artistic, brand, accessibility or player-equivalence approval.
 
@@ -109,9 +110,9 @@ Open `/motion` to author motion against a governed, ID-structured SVG. The brows
 13. load only verified JSON into the official client-only LottieFiles player, with autoplay and looping disabled when reduced motion is preferred;
 14. download Lottie JSON and a separate browser evidence record without embedding duplicate animation data.
 
-The animated-SVG editor uses Blob-backed `<img>` previews rather than injecting returned SVG markup into the application document. The Lottie preview uses `@lottiefiles/dotlottie-react` with the exact verified JSON string. Neither preview grants approval: the Lottie player surface is a delivery-context check, not independent source-to-player validation.
+The animated-SVG editor uses Blob-backed `<img>` previews rather than injecting returned SVG markup into the application document. The browser Lottie player preview uses `@lottiefiles/dotlottie-react` with the exact verified JSON string. Neither preview grants approval: the player surface is a delivery-context check, not independent source-to-player validation.
 
-Browser dotLottie archive generation and archive-load validation are not yet exposed.
+Browser dotLottie archive generation and browser archive-load validation are not yet exposed.
 
 ## CLI
 
@@ -176,7 +177,7 @@ $env:VECTOR_MCP_ALLOWED_ROOTS = "C:\GitRepos\evavo-vector-studio;C:\EVAVO\Vector
 pnpm vector:mcp
 ```
 
-MCP contract `1.2` exposes:
+MCP contract `1.3` exposes:
 
 - `vector_capabilities`;
 - `vector_input_policy`;
@@ -188,13 +189,17 @@ MCP contract `1.2` exposes:
 - `vector_animate_svg`;
 - `vector_inspect_animated_svg`;
 - `vector_export_lottie`;
-- `vector_inspect_lottie`.
+- `vector_inspect_lottie`;
+- `vector_package_dotlottie`;
+- `vector_inspect_dotlottie`.
 
 MCP inputs must be existing regular files beneath a configured canonical root. Outputs use new-files-only semantics: existing destinations, path collisions and ordinary symlink escapes are rejected. Related outputs commit atomically and return path, MIME type, byte count and SHA-256 receipts instead of complete generated bodies.
 
-`vector_trace_raster` supports compact `summary` and complete `full` evidence. Motion and Lottie plans may be supplied inline or through allowed-root JSON files. `vector_export_lottie` creates Lottie JSON and optional evidence atomically; `vector_inspect_lottie` checks the committed result. The Lottie MCP contract never places generated Lottie JSON into model context.
+`vector_trace_raster` supports compact `summary` and complete `full` evidence. Motion and Lottie plans may be supplied inline or through allowed-root JSON files. `vector_export_lottie` creates Lottie JSON and optional evidence atomically; `vector_inspect_lottie` checks the committed result.
 
-MCP dotLottie archive packaging is not yet exposed. Every MCP operation remains `human-review-required`; successful execution records completion and evidence, not artistic or player approval. See [`docs/MCP.md`](docs/MCP.md).
+`vector_package_dotlottie` packages one governed Lottie JSON file into a new deterministic archive and optional evidence JSON. `vector_inspect_dotlottie` validates ZIP safety, manifest-v2 semantics and embedded Lottie structure. Neither tool places generated archive bytes or embedded JSON in model context.
+
+Every MCP operation remains `human-review-required`; successful execution records completion and evidence, not artistic or player approval. See [`docs/MCP.md`](docs/MCP.md).
 
 ## API
 
@@ -244,7 +249,7 @@ packages/raster-engine    guarded decoding, analysis, tracing, comparison and di
 packages/motion-engine    validated deterministic animated SVG production
 packages/lottie-engine    governed Lottie JSON plus deterministic dotLottie packaging and inspection
 packages/cli              JSON-first tracing, optimisation, motion, Lottie and dotLottie automation
-packages/mcp              local stdio tracing, SVG, motion and Lottie tools with allowed-root policies
+packages/mcp              local stdio tracing, SVG, motion, Lottie and dotLottie tools with allowed-root policies
 schemas                   machine-readable governed production contracts
 fixtures                  deterministic raster, SVG, motion, Lottie and archive validation inputs
 scripts                   dependency-free release, topology, browser, MCP, motion, Lottie, dotLottie, API and workspace gates
