@@ -6,18 +6,20 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createRasterRuntimeGuard } from "@evavo/raster-engine";
-import {
-  VECTOR_MCP_DOTLOTTIE_CONTRACT_VERSION,
-  VECTOR_MCP_DOTLOTTIE_TOOL_NAMES,
-} from "./dotlottie-tools.js";
+import { VECTOR_MCP_BATCH_TOOL_NAMES } from "./batch-tools.js";
+import { VECTOR_MCP_DOTLOTTIE_TOOL_NAMES } from "./dotlottie-tools.js";
 import { VECTOR_MCP_LOTTIE_TOOL_NAMES } from "./lottie-tools.js";
 import { VECTOR_MCP_TOOL_NAMES } from "./operations.js";
-import { createVectorMcpServer } from "./server.js";
+import {
+  createVectorMcpServer,
+  VECTOR_MCP_SERVER_CONTRACT_VERSION,
+} from "./server.js";
 
 const ALL_TOOL_NAMES = Object.freeze([
   ...VECTOR_MCP_TOOL_NAMES,
   ...VECTOR_MCP_LOTTIE_TOOL_NAMES,
   ...VECTOR_MCP_DOTLOTTIE_TOOL_NAMES,
+  ...VECTOR_MCP_BATCH_TOOL_NAMES,
 ]);
 
 const MOTION_PLAN = Object.freeze({
@@ -68,6 +70,7 @@ test("performs an MCP handshake and exposes the governed tool set", async () => 
     assert.match(client.getInstructions() ?? "", /new files only|new-files-only/i);
     assert.match(client.getInstructions() ?? "", /Lottie/i);
     assert.match(client.getInstructions() ?? "", /dotLottie/i);
+    assert.match(client.getInstructions() ?? "", /durable batch|resumable/i);
 
     const result = await client.callTool({
       name: "vector_capabilities",
@@ -79,7 +82,7 @@ test("performs an MCP handshake and exposes the governed tool set", async () => 
     assert.equal(payload?.transport, "stdio");
     assert.equal(
       payload?.mcpContractVersion,
-      VECTOR_MCP_DOTLOTTIE_CONTRACT_VERSION,
+      VECTOR_MCP_SERVER_CONTRACT_VERSION,
     );
     assert.equal(payload?.approval, "human-review-required");
     const outputs = payload?.outputs as Record<string, unknown> | undefined;
