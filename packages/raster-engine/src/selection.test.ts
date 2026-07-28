@@ -60,7 +60,7 @@ test("selects lower geometry cost when visual evidence remains within tolerance"
   ]);
   assert.equal(result.bestVisualCandidateId, "fidelity");
   assert.equal(result.selectedCandidateId, "economy");
-  assert.deepEqual(result.eligibleCandidateIds.sort(), ["economy", "fidelity"]);
+  assert.deepEqual([...result.eligibleCandidateIds].sort(), ["economy", "fidelity"]);
   assert.equal(result.reason, "lowest-geometry-cost-within-visual-tolerance");
 });
 
