@@ -47,15 +47,18 @@ const files = {
   types: "packages/job-engine/src/types.ts",
   errors: "packages/job-engine/src/errors.ts",
   manifest: "packages/job-engine/src/manifest.ts",
+  pathPolicy: "packages/job-engine/src/path-policy.ts",
   store: "packages/job-engine/src/store.ts",
   runner: "packages/job-engine/src/runner.ts",
   inspection: "packages/job-engine/src/inspection.ts",
   manifestTests: "packages/job-engine/src/manifest.test.ts",
+  pathTests: "packages/job-engine/src/path-policy.test.ts",
   runnerTests: "packages/job-engine/src/runner.test.ts",
   operations: "packages/cli/src/batch-operations.ts",
   cli: "packages/cli/src/batch-cli.ts",
   cliTests: "packages/cli/src/batch-cli.test.ts",
   docs: "docs/BATCH.md",
+  pathDocs: "docs/BATCH-PATH-SAFETY.md",
   architecture: "docs/ARCHITECTURE.md",
   readme: "README.md",
   workflow: ".github/workflows/quality.yml",
@@ -115,6 +118,7 @@ if (
 requireTokens(files.index, sources.index, [
   'export * from "./runner.js"',
   'export * from "./inspection.js"',
+  'export * from "./path-policy.js"',
 ]);
 requireTokens(files.types, sources.types, [
   'BATCH_CONTRACT_VERSION = "1.0"',
@@ -131,14 +135,33 @@ requireTokens(files.errors, sources.errors, [
   '"BATCH_ITEM_REVISION_MISMATCH"',
   '"BATCH_COMPLETED_OUTPUT_INVALID"',
   '"BATCH_CANCELLED"',
+  '"BATCH_ROOT_INVALID"',
+  '"BATCH_PATH_OUTSIDE_ROOT"',
+  '"BATCH_INPUT_NOT_FOUND"',
+  '"BATCH_OUTPUT_PARENT_INVALID"',
+  '"BATCH_PATH_COLLISION"',
 ]);
 requireTokens(files.manifest, sources.manifest, [
   "validateBatchManifest",
   "canonicalBatchManifest",
   "batchManifestSha256",
+  '"$schema"',
   "Batch item identifiers must be unique",
   "Object.keys(source)",
   ".sort()",
+]);
+requireTokens(files.pathPolicy, sources.pathPolicy, [
+  "canonicalBatchRoot",
+  "createBatchPathPolicy",
+  "await realpath(absolute)",
+  "nearestExistingDirectory",
+  "resolveInputFile",
+  "resolveOutputPath",
+  "information.isSymbolicLink()",
+  "A durable batch output path may not be a symbolic link",
+  "BATCH_PATH_OUTSIDE_ROOT",
+  "BATCH_OUTPUT_PARENT_INVALID",
+  "BATCH_PATH_COLLISION",
 ]);
 requireTokens(files.store, sources.store, [
   'path.join(resolvedRoot, ".evavo-vector-jobs")',
@@ -152,6 +175,7 @@ requireTokens(files.store, sources.store, [
 ]);
 requireTokens(files.runner, sources.runner, [
   "runDurableBatch",
+  "canonicalBatchRoot",
   "recoverInterruptedItems",
   "validateDescriptor",
   "validateResult",
@@ -163,14 +187,24 @@ requireTokens(files.runner, sources.runner, [
 ]);
 requireTokens(files.inspection, sources.inspection, [
   "inspectDurableBatch",
+  "canonicalBatchRoot(options.rootPath)",
   "percentComplete",
   "recentEvents",
   "lock",
 ]);
 requireTokens(files.manifestTests, sources.manifestTests, [
   "canonicalizes equivalent manifests",
+  "accepts the schema annotation",
   "duplicate IDs",
   "unsafe operation names",
+]);
+requireTokens(files.pathTests, sources.pathTests, [
+  "resolves canonical inputs",
+  "rejects lexical paths outside",
+  "symlink escapes",
+  "output path that is itself a symlink",
+  "BATCH_PATH_OUTSIDE_ROOT",
+  "BATCH_OUTPUT_PARENT_INVALID",
 ]);
 requireTokens(files.runnerTests, sources.runnerTests, [
   "reuses verified completed items",
@@ -187,6 +221,11 @@ requireTokens(files.operations, sources.operations, [
   '"export-lottie"',
   '"package-dotlottie"',
   "createVectorBatchOperationRegistry",
+  "createBatchPathPolicy",
+  "policy.resolveInputFile",
+  "policy.resolveOutputPath",
+  "policy.assertDistinct",
+  "canonicalRoot: policy.root",
   "traceRaster",
   "optimiseSvg",
   "createAnimatedSvg",
@@ -223,8 +262,18 @@ requireTokens(files.docs, sources.docs, [
   "crash-resumable local runner",
   "not yet a hosted background queue",
 ]);
+requireTokens(files.pathDocs, sources.pathDocs, [
+  "canonical execution root",
+  "input symlink",
+  "output-directory symlink",
+  "existing regular output",
+  "BATCH_PATH_OUTSIDE_ROOT",
+  "BATCH_OUTPUT_PARENT_INVALID",
+  "hostile local account",
+]);
 requireTokens(files.architecture, sources.architecture, [
   "Durable batch",
+  "canonical",
 ]);
 requireTokens(files.readme, sources.readme, [
   "vector:batch:run",
@@ -242,6 +291,10 @@ forbidTokens(files.runner, sources.runner, [
 ]);
 forbidTokens(files.operations, sources.operations, [
   'approval: "approved"',
+  "eval(",
+  "new Function(",
+]);
+forbidTokens(files.pathPolicy, sources.pathPolicy, [
   "eval(",
   "new Function(",
 ]);
@@ -269,6 +322,9 @@ process.stdout.write(`${JSON.stringify({
   ],
   durability: {
     manifestImmutable: true,
+    canonicalRoot: true,
+    symlinkEscapesRejected: true,
+    outputSymlinksRejected: true,
     inputRevisionVerified: true,
     completedOutputsReverified: true,
     interruptedItemsResumable: true,
