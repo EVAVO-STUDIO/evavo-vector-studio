@@ -25,10 +25,12 @@ The objective is not to call one automatic trace “finished”. The system insp
 - responsive browser review for source, selected SVG, difference image, topology, candidates, metrics and downloads;
 - authenticated multipart API for bounded synchronous execution;
 - JSON-first CLI suitable for people, ChatGPT, Claude and workers;
-- tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison and PNG boundaries;
+- local stdio MCP server with six governed tools for ChatGPT-compatible MCP hosts, Claude, editors and agent runtimes;
+- canonical allowed-root access, new-files-only output, atomic multi-file commit and SHA-256 file receipts for MCP operations;
+- tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, MCP path-policy and transaction boundaries;
 - dependency-free contract gates plus the GitHub Actions quality workflow source.
 
-Animated SVG and Lottie production remain planned. The interface describes those intended outputs without claiming that timeline authoring or Lottie export is implemented.
+Animated SVG and Lottie production remain planned. The interface and capability contracts describe those intended outputs without claiming that timeline authoring or Lottie export is implemented.
 
 ## Quick start on Windows PowerShell
 
@@ -82,11 +84,36 @@ pnpm vector:trace -- `
 pnpm vector:inspect -- .\fixtures\mark.svg
 pnpm vector:optimise -- .\fixtures\mark.svg --out .\outputs\mark.optimised.svg
 
-# Print the machine-readable automation contract
+# Print machine-readable contracts
+pnpm vector:input-policy
 pnpm vector:manifest
 ```
 
 The CLI refuses to overwrite its source, rejects SVG/difference output collisions and will not silently ignore a requested difference artefact. See [`docs/CLI.md`](docs/CLI.md) for the complete contract.
+
+## Local MCP automation
+
+Build and start the local stdio MCP server with:
+
+```powershell
+$env:VECTOR_MCP_ALLOWED_ROOTS = "C:\GitRepos\evavo-vector-studio;C:\EVAVO\VectorAssets"
+pnpm vector:mcp
+```
+
+The server exposes:
+
+- `vector_capabilities`;
+- `vector_input_policy`;
+- `vector_inspect_raster`;
+- `vector_trace_raster`;
+- `vector_inspect_svg`;
+- `vector_optimise_svg`.
+
+MCP inputs must be existing regular files beneath a configured canonical root. Outputs use new-files-only semantics: existing destinations, path collisions and ordinary symlink escapes are rejected. A trace writes its SVG and optional difference PNG through one no-overwrite transaction, then returns path, MIME type, byte count and SHA-256 receipts instead of placing full SVG markup or binary PNG data into model context.
+
+`vector_trace_raster` supports compact `summary` evidence and complete `full` evidence. Both remain `human-review-required`; a successful tool call records completion and evidence, not artistic approval.
+
+See [`docs/MCP.md`](docs/MCP.md) for generic host configuration, allowed-root policy, tool inputs, runtime limits and the recommended agent workflow.
 
 ## API
 
@@ -120,6 +147,7 @@ Detailed contracts:
 
 - [`docs/QUALITY-EVIDENCE.md`](docs/QUALITY-EVIDENCE.md) explains source, reconstruction, topology, render, selection and approval evidence.
 - [`docs/INPUT-SAFETY.md`](docs/INPUT-SAFETY.md) explains the one-static-image policy and pre-decode rejection rules.
+- [`docs/MCP.md`](docs/MCP.md) defines the local agent tool and filesystem contract.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) defines runtime boundaries and the path toward durable workers.
 
 ## Repository layout
@@ -129,15 +157,16 @@ apps/web                  Next.js studio UI and authenticated API
 packages/vector-core      shared job, SVG safety, geometry and topology contracts
 packages/raster-engine    guarded decoding, analysis, tracing, comparison and difference evidence
 packages/cli              JSON-first local and agent automation surface
-scripts                   dependency-free release and topology contract gates
-docs                      architecture, CLI, API, quality, input safety and hub-integration records
+packages/mcp              local stdio MCP tools with allowed-root and no-overwrite policies
+scripts                   dependency-free release, topology, browser-evidence and MCP contract gates
+docs                      architecture, CLI, API, MCP, quality, input safety and hub-integration records
 ```
 
 ## Deployment boundary
 
 The EVAVO website hub integration remains a signed federated candidate. This repository does not mark itself client-released until its deployment, authentication, runtime limits and live smoke evidence are verified.
 
-The current API is a bounded synchronous surface, not a durable queue. Persistent jobs, resumability, object storage, worker retries and signed hub handoff belong in the next deployment phase.
+The current API is a bounded synchronous surface, not a durable queue. Persistent jobs, resumability, object storage, worker retries and signed hub handoff belong in the next deployment phase. The local stdio MCP server is also synchronous and bounded; it does not claim durable background execution.
 
 ## Philosophy
 
