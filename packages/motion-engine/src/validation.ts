@@ -20,6 +20,35 @@ const TRANSFORM_BOXES = new Set<MotionTransformBox>(["fill-box", "view-box"]);
 const REDUCED_MOTION = new Set<ReducedMotionStrategy>(["source", "first-frame", "last-frame"]);
 const EASING_PRESETS = new Set(["linear", "ease", "ease-in", "ease-out", "ease-in-out"]);
 const SAFE_ID = /^[A-Za-z_][A-Za-z0-9_.:-]{0,255}$/;
+const ROOT_KEYS = new Set([
+  "$schema",
+  "version",
+  "name",
+  "durationMs",
+  "delayMs",
+  "iterations",
+  "direction",
+  "fillMode",
+  "reducedMotion",
+  "tracks",
+]);
+const TRACK_KEYS = new Set([
+  "targetId",
+  "transformBox",
+  "originXPercent",
+  "originYPercent",
+  "easing",
+  "keyframes",
+]);
+const KEYFRAME_KEYS = new Set([
+  "offset",
+  "opacity",
+  "translateX",
+  "translateY",
+  "scale",
+  "rotateDeg",
+]);
+const EASING_KEYS = new Set(["cubicBezier"]);
 
 function record(value: unknown, path: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -30,6 +59,21 @@ function record(value: unknown, path: string): Record<string, unknown> {
 
 function invalid(message: string, details?: Readonly<Record<string, unknown>>): MotionEngineError {
   return new MotionEngineError("MOTION_SPEC_INVALID", message, details);
+}
+
+function assertKnownKeys(
+  value: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+  path: string,
+): void {
+  const unknownKeys = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknownKeys.length > 0) {
+    throw invalid(`${path} contains unsupported properties.`, {
+      path,
+      unknownKeys: Object.freeze(unknownKeys),
+      allowedKeys: Object.freeze([...allowed]),
+    });
+  }
 }
 
 function finite(
@@ -82,6 +126,7 @@ function easing(value: unknown, path: string): MotionEasing {
     return value as MotionEasing;
   }
   const input = record(value, path);
+  assertKnownKeys(input, EASING_KEYS, path);
   const tuple = input.cubicBezier;
   if (!Array.isArray(tuple) || tuple.length !== 4) {
     throw invalid(`${path}.cubicBezier must contain four numbers.`, { path, value });
@@ -100,6 +145,7 @@ function easing(value: unknown, path: string): MotionEasing {
 
 function keyframe(value: unknown, path: string): NormalizedMotionKeyframe {
   const input = record(value, path) as MotionKeyframe & Record<string, unknown>;
+  assertKnownKeys(input, KEYFRAME_KEYS, path);
   return Object.freeze({
     offset: finite(input.offset, Number.NaN, 0, 1, `${path}.offset`),
     opacity: finite(input.opacity, 1, 0, 1, `${path}.opacity`),
@@ -121,6 +167,7 @@ function differs(
 function track(value: unknown, index: number): NormalizedMotionTrack {
   const path = `tracks[${index}]`;
   const input = record(value, path) as MotionTrack & Record<string, unknown>;
+  assertKnownKeys(input, TRACK_KEYS, path);
   if (typeof input.targetId !== "string" || !SAFE_ID.test(input.targetId)) {
     throw invalid(`${path}.targetId must be a portable XML/CSS identifier.`, {
       path: `${path}.targetId`,
@@ -167,6 +214,12 @@ function track(value: unknown, index: number): NormalizedMotionTrack {
 
 export function validateAnimatedSvgMotionSpec(input: unknown): NormalizedAnimatedSvgMotionSpec {
   const source = record(input, "motion");
+  assertKnownKeys(source, ROOT_KEYS, "motion");
+  if (source.$schema !== undefined && (typeof source.$schema !== "string" || source.$schema.length > 2048)) {
+    throw invalid("motion.$schema must be a string no longer than 2048 characters.", {
+      value: source.$schema,
+    });
+  }
   if (source.version !== MOTION_CONTRACT_VERSION) {
     throw invalid(`motion.version must be ${MOTION_CONTRACT_VERSION}.`, { version: source.version });
   }
