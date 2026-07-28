@@ -30,13 +30,24 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify dependency-free contracts
-        run: |
-          node scripts/check-release-contract.mjs
-          node scripts/check-topology-contract.mjs
-          node scripts/check-browser-evidence-contract.mjs
-          node scripts/check-mcp-contract.mjs
-          node scripts/check-motion-contract.mjs
+      - name: Verify release contract
+        run: node scripts/check-release-contract.mjs
+
+      - name: Verify topology contract
+        if: ${{ !cancelled() }}
+        run: node scripts/check-topology-contract.mjs
+
+      - name: Verify browser evidence contract
+        if: ${{ !cancelled() }}
+        run: node scripts/check-browser-evidence-contract.mjs
+
+      - name: Verify MCP contract
+        if: ${{ !cancelled() }}
+        run: node scripts/check-mcp-contract.mjs
+
+      - name: Verify motion contract
+        if: ${{ !cancelled() }}
+        run: node scripts/check-motion-contract.mjs
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
