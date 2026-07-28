@@ -79,6 +79,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-lottie-contract.mjs
 
+      - name: Verify Lottie API contract
+        if: ${{ !cancelled() }}
+        run: node scripts/check-lottie-api-contract.mjs
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
