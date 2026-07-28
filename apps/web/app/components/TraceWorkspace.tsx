@@ -17,13 +17,26 @@ type Profile = keyof typeof PROFILE_COLOURS;
 
 type TraceEvidence = {
   analysis: {
-    source: { width: number; height: number; bytes: number; mimeType: string; sha256: string };
+    source: { width: number; height: number; inputBytes: number; mimeType: string; sha256: string };
     suggestedProfile: string;
     colour: { estimatedColours: number; dominantColours: Array<{ hex: string; share: number }> };
     detail: { edgeDensity: number };
   };
+  trace: { requestedProfile: string; resolvedProfile: string };
   output: { bytes: number; pathCount: number; groupCount: number; viewBox: [number, number, number, number] | null };
-  qualityGates: { renderComparison: string; productionApproval: string };
+  comparison: {
+    quality: "excellent" | "good" | "review";
+    aggregate: {
+      visualMae: number;
+      alphaMae: number;
+      mismatchFraction: number;
+      aspectRatioDelta: number;
+      comparedPixelCount: number;
+      largestComparedDimension: number;
+    };
+    scales: Array<{ width: number; height: number; visualMae: number; mismatchFraction: number }>;
+  };
+  qualityGates: { renderComparison: "passed" | "review-required"; productionApproval: "review-required" };
   warnings: Array<{ code: string; severity: string; message: string }>;
 };
 
@@ -39,6 +52,10 @@ function readableBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function percentage(value: number, digits = 2): string {
+  return `${(value * 100).toFixed(digits)}%`;
 }
 
 function acceptedRaster(file: File): boolean {
@@ -189,8 +206,8 @@ export default function TraceWorkspace() {
           </label>
 
           <div className={styles.submitRow}>
-            <button className={styles.submitButton} type="submit" disabled={!file || running}>{running ? "Reconstructing…" : "Create governed SVG"}</button>
-            <span>{file ? "Source ready for bounded server processing." : "Select a source to begin."}</span>
+            <button className={styles.submitButton} type="submit" disabled={!file || running}>{running ? "Tracing and comparing…" : "Create governed SVG"}</button>
+            <span>{file ? "Source ready for bounded tracing and multi-scale render comparison." : "Select a source to begin."}</span>
           </div>
           {error ? <p className={styles.error} role="alert">{error}</p> : null}
         </form>
@@ -210,22 +227,26 @@ export default function TraceWorkspace() {
         </div>
 
         <div className={styles.metrics} aria-live="polite">
-          <span><b>Profile</b>{result ? `${result.evidence.analysis.suggestedProfile} → ${profile}` : "pending"}</span>
+          <span><b>Profile</b>{result ? `${result.evidence.trace.resolvedProfile}${result.evidence.trace.requestedProfile === "auto" ? " · auto" : " · directed"}` : "pending"}</span>
           <span><b>Geometry</b>{result ? `${result.evidence.output.pathCount.toLocaleString()} paths` : "pending"}</span>
-          <span><b>Render match</b>{result ? "withheld · comparison pending" : "pending"}</span>
+          <span><b>Render evidence</b>{result ? `${result.evidence.comparison.quality} · MAE ${percentage(result.evidence.comparison.aggregate.visualMae)}` : "pending"}</span>
         </div>
 
         {result ? (
           <div className={styles.resultPanel}>
             <div className={styles.resultHeader}>
-              <div><small>JOB {result.id}</small><strong>Structural validation passed</strong><span>Production approval remains review-gated until render comparison is available.</span></div>
+              <div>
+                <small>JOB {result.id}</small>
+                <strong>Visual comparison: {result.evidence.comparison.quality}</strong>
+                <span>Compared {result.evidence.comparison.aggregate.comparedPixelCount.toLocaleString()} rendered pixels across {result.evidence.comparison.scales.length} scale{result.evidence.comparison.scales.length === 1 ? "" : "s"}, up to {result.evidence.comparison.aggregate.largestComparedDimension}px. Human production approval remains required.</span>
+              </div>
               {svgUrl ? <a className={styles.download} href={svgUrl} download={`${file?.name.replace(/\.[^.]+$/, "") || "vector"}.svg`}>Download SVG</a> : null}
             </div>
             <dl className={styles.evidenceGrid}>
               <div><dt>Source</dt><dd>{result.evidence.analysis.source.width} × {result.evidence.analysis.source.height}</dd></div>
               <div><dt>Detected colours</dt><dd>{result.evidence.analysis.colour.estimatedColours.toLocaleString()}</dd></div>
-              <div><dt>Edge density</dt><dd>{(result.evidence.analysis.detail.edgeDensity * 100).toFixed(1)}%</dd></div>
-              <div><dt>SVG groups</dt><dd>{result.evidence.output.groupCount.toLocaleString()}</dd></div>
+              <div><dt>Visual MAE</dt><dd>{percentage(result.evidence.comparison.aggregate.visualMae)}</dd></div>
+              <div><dt>Mismatch pixels</dt><dd>{percentage(result.evidence.comparison.aggregate.mismatchFraction)}</dd></div>
             </dl>
             {result.evidence.warnings.length ? <ul className={styles.warningList}>{result.evidence.warnings.map((warning) => <li key={`${warning.code}-${warning.message}`}><b>{warning.code}</b><span>{warning.message}</span></li>)}</ul> : null}
           </div>
