@@ -7,8 +7,9 @@ import {
   validateBatchManifest,
 } from "./manifest.js";
 
-test("canonicalizes equivalent manifests and produces stable SHA-256", () => {
+test("canonicalizes equivalent manifests and accepts the schema annotation", () => {
   const first = validateBatchManifest({
+    $schema: "https://evavo.com.au/schemas/vector-studio/batch-v1.schema.json",
     version: "1.0",
     id: "brand-assets-01",
     name: "Brand assets",
@@ -88,6 +89,20 @@ test("rejects unknown fields, duplicate IDs and unsafe operation names", () => {
       name: "Job",
       failureMode: "continue",
       items: [{ id: "item-01", operation: "../unsafe", spec: {} }],
+    }),
+    (error: unknown) =>
+      error instanceof BatchEngineError &&
+      error.code === "BATCH_MANIFEST_INVALID",
+  );
+
+  assert.throws(
+    () => validateBatchManifest({
+      $schema: 42,
+      version: "1.0",
+      id: "job-01",
+      name: "Job",
+      failureMode: "continue",
+      items: [{ id: "item-01", operation: "copy-text", spec: {} }],
     }),
     (error: unknown) =>
       error instanceof BatchEngineError &&
