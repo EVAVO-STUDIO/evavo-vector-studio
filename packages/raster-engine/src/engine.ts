@@ -13,10 +13,13 @@ import { RasterEngineError, rasterFailure, throwIfAborted } from "./errors.js";
 import { inspectRasterHeader } from "./preflight.js";
 import { buildTraceCandidates, type TraceCandidateDefinition } from "./presets.js";
 import {
+  CANDIDATE_ASPECT_RATIO_TOLERANCE,
   CANDIDATE_MISMATCH_TOLERANCE,
   CANDIDATE_VISUAL_COST_TOLERANCE,
+  GEOMETRY_COST_WEIGHTS,
   THREE_CANDIDATE_MAXIMUM_PIXELS,
   TWO_CANDIDATE_MAXIMUM_PIXELS,
+  VISUAL_COST_WEIGHTS,
   maximumCandidateCount,
   selectTraceCandidate,
 } from "./selection.js";
@@ -353,8 +356,8 @@ export async function traceRaster(
 
   const totalFinished = performance.now();
   const evidence: RasterTraceEvidence = Object.freeze({
-    contractVersion: "1.2",
-    engine: Object.freeze({ name: "@neplex/vectorizer", adapterVersion: "0.3.0" }),
+    contractVersion: "1.3",
+    engine: Object.freeze({ name: "@neplex/vectorizer", adapterVersion: "0.3.1" }),
     analysis: prepared.analysis,
     trace: selected.definition.evidence,
     output: selected.output,
@@ -372,6 +375,21 @@ export async function traceRaster(
       visualTolerance: Object.freeze({
         visualCost: CANDIDATE_VISUAL_COST_TOLERANCE,
         mismatchFraction: CANDIDATE_MISMATCH_TOLERANCE,
+        aspectRatioDelta: CANDIDATE_ASPECT_RATIO_TOLERANCE,
+      }),
+      costModel: Object.freeze({
+        visual: Object.freeze({
+          visualMaeWeight: VISUAL_COST_WEIGHTS.visualMae,
+          mismatchFractionWeight: VISUAL_COST_WEIGHTS.mismatchFraction,
+          alphaMaeWeight: VISUAL_COST_WEIGHTS.alphaMae,
+          aspectRatioDeltaWeight: VISUAL_COST_WEIGHTS.aspectRatioDelta,
+        }),
+        geometry: Object.freeze({
+          estimatedAnchorCountWeight: GEOMETRY_COST_WEIGHTS.estimatedAnchorCount,
+          pathCountWeight: GEOMETRY_COST_WEIGHTS.pathCount,
+          commandCountWeight: GEOMETRY_COST_WEIGHTS.commandCount,
+          byteDivisor: GEOMETRY_COST_WEIGHTS.byteDivisor,
+        }),
       }),
       pixelBudgetPolicy: Object.freeze({
         threeCandidateMaximumPixels: THREE_CANDIDATE_MAXIMUM_PIXELS,
