@@ -108,11 +108,11 @@ forbidTokens(files.route, sources.route, [
 
 requireTokens(files.lottieRoute, sources.lottieRoute, [
   'endpoint: "/api/v1/motion/lottie"',
-  'playerRenderValidation: false',
+  "playerRenderValidation: false",
 ]);
 requireTokens(files.page, sources.page, [
-  "/api/v1/motion/dotlottie",
-  "dotLottie API",
+  "POST /api/v1/motion/dotlottie",
+  "format=dotlottie",
 ]);
 requireTokens(files.readme, sources.readme, [
   "POST /api/v1/motion/dotlottie",
