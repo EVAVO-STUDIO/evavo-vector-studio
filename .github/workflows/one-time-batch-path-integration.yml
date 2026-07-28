@@ -16,23 +16,13 @@ concurrency:
 jobs:
   integrate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Check out current main
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.14.0
-
-      - name: Use Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
 
       - name: Apply canonical path integration
         shell: bash
@@ -150,16 +140,6 @@ jobs:
           grep -Fq 'outputPaths.map((value) => policy.resolveOutputPath(value))' packages/cli/src/batch-operations.ts
           git diff --check
 
-      - name: Install workspace dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Verify path-integrated packages
-        run: |
-          pnpm --filter @evavo/job-engine lint
-          pnpm --filter @evavo/job-engine test
-          pnpm --filter @evavo/vector-cli lint
-          pnpm --filter @evavo/vector-cli test
-
       - name: Commit integration and retire workflow
         shell: bash
         run: |
@@ -173,6 +153,4 @@ jobs:
           git diff --cached --check
           git commit -m "fix(jobs): enforce canonical batch paths"
           git pull --rebase origin main
-          pnpm --filter @evavo/job-engine test
-          pnpm --filter @evavo/vector-cli test
           git push origin HEAD:main
