@@ -80,9 +80,7 @@ if (!String(rootPackage?.scripts?.check ?? "").includes("pnpm dotlottie:check"))
   errors.push("package.json check must include dotlottie:check before dependency-backed gates.");
 }
 
-requireTokens(files.index, sources.index, [
-  'export * from "./dotlottie.js"',
-]);
+requireTokens(files.index, sources.index, ['export * from "./dotlottie.js"']);
 requireTokens(files.errors, sources.errors, [
   '"DOTLOTTIE_OPTIONS_INVALID"',
   '"DOTLOTTIE_SOURCE_INVALID"',
@@ -119,7 +117,7 @@ requireTokens(files.engine, sources.engine, [
   "inspectDotLottie",
   'compression: "deflate"',
   'manifestVersion: DOTLOTTIE_MANIFEST_VERSION',
-  'deterministic: true',
+  "deterministic: true",
   'playerRenderValidation: "not-yet-performed"',
   'browserArchiveLoadValidation: "not-yet-performed"',
   'approval: "review-required"',
@@ -151,15 +149,15 @@ requireTokens(files.cli, sources.cli, [
   "commitNewOutputFiles",
   "DOTLOTTIE_MIME_TYPE",
   'outputMode: "new-files-only"',
-  'playerRenderValidation: false',
-  'browserArchiveLoadValidation: false',
+  "playerRenderValidation: false",
+  "browserArchiveLoadValidation: false",
   'approval: "human-review-required"',
 ]);
 requireTokens(files.cliTests, sources.cliTests, [
   "packages and inspects dotLottie through the CLI without overwriting",
   "reports machine-readable capabilities and governed option failures",
-  '"VECTOR_OUTPUT_TRANSACTION_FAILED"',
-  '"DOTLOTTIE_OPTIONS_INVALID"',
+  "VECTOR_OUTPUT_TRANSACTION_FAILED",
+  "DOTLOTTIE_OPTIONS_INVALID",
 ]);
 requireTokens(files.docs, sources.docs, [
   "dotLottie v2",
