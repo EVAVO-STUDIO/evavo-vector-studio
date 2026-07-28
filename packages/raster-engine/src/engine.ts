@@ -8,6 +8,7 @@ import {
 } from "@neplex/vectorizer";
 import { inspectSvg, optimiseSvg } from "@evavo/vector-core";
 import { analyseDecodedRaster } from "./analysis.js";
+import { compareRasterToSvg } from "./comparison.js";
 import { RasterEngineError, rasterFailure, throwIfAborted } from "./errors.js";
 import { inspectRasterHeader } from "./preflight.js";
 import { buildTraceConfiguration } from "./presets.js";
@@ -125,14 +126,30 @@ export async function traceRaster(
     });
   }
 
-  const warnings: RasterWarning[] = [
-    ...prepared.analysis.warnings,
-    {
-      code: "TRACE_RENDER_COMPARISON_PENDING",
+  const comparisonStarted = performance.now();
+  const comparison = await compareRasterToSvg(prepared.decoded, svg, options.signal);
+  const comparisonFinished = performance.now();
+  const warnings: RasterWarning[] = [...prepared.analysis.warnings];
+  if (comparison.quality === "review") {
+    warnings.push({
+      code: "TRACE_RENDER_MISMATCH_REVIEW",
       severity: "review",
-      message: "Structural SVG validation passed, but rasterised source-versus-output comparison is not implemented yet; production approval remains withheld.",
-    },
-  ];
+      message: `The multi-scale render comparison requires review (visual MAE ${comparison.aggregate.visualMae}, mismatch fraction ${comparison.aggregate.mismatchFraction}).`,
+    });
+  } else {
+    warnings.push({
+      code: "TRACE_HUMAN_REVIEW_REQUIRED",
+      severity: "review",
+      message: `The measured render match is ${comparison.quality}, but a person must still inspect curves, negative space, layer logic and brand fidelity before production approval.`,
+    });
+  }
+  if (comparison.aggregate.aspectRatioDelta > comparison.thresholds.good.aspectRatioDelta) {
+    warnings.push({
+      code: "TRACE_ASPECT_RATIO_MISMATCH",
+      severity: "review",
+      message: `The rendered SVG aspect ratio differs from the source by ${comparison.aggregate.aspectRatioDelta}.`,
+    });
+  }
   if (inspection.pathCount > 5_000) {
     warnings.push({
       code: "TRACE_HIGH_PATH_COUNT",
@@ -151,8 +168,8 @@ export async function traceRaster(
 
   const totalFinished = performance.now();
   const evidence: RasterTraceEvidence = Object.freeze({
-    contractVersion: "1.0",
-    engine: Object.freeze({ name: "@neplex/vectorizer", adapterVersion: "0.1.0" }),
+    contractVersion: "1.1",
+    engine: Object.freeze({ name: "@neplex/vectorizer", adapterVersion: "0.2.0" }),
     analysis: prepared.analysis,
     trace: traceConfiguration.evidence,
     output: Object.freeze({
@@ -163,17 +180,20 @@ export async function traceRaster(
       gradientCount: inspection.gradientCount,
       viewBox: inspection.viewBox,
     }),
+    comparison,
     qualityGates: Object.freeze({
       svgSafety: "passed",
       structuralValidation: "passed",
-      renderComparison: "not-run",
-      productionApproval: "withheld-pending-render-comparison",
+      renderComparison: comparison.quality === "review" ? "review-required" : "passed",
+      visualEvidenceAvailable: true,
+      productionApproval: "review-required",
       byteStableOutputGuaranteed: false,
     }),
     timingsMs: Object.freeze({
       decodeAndAnalyse: roundedDuration(decodeStarted, decodeFinished),
       trace: roundedDuration(traceStarted, traceFinished),
       optimise: roundedDuration(optimiseStarted, optimiseFinished),
+      compare: roundedDuration(comparisonStarted, comparisonFinished),
       total: roundedDuration(totalStarted, totalFinished),
     }),
     warnings: Object.freeze(warnings),
