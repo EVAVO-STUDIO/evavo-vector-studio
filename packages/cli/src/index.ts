@@ -4,7 +4,10 @@ import { basename, dirname, extname, resolve } from "node:path";
 import { inspectSvg, optimiseSvg } from "@evavo/vector-core";
 import {
   DEFAULT_DIFFERENCE_MAX_DIMENSION,
+  DEFAULT_MAX_INPUT_BYTES,
+  DEFAULT_MAX_PIXELS,
   MAX_DIFFERENCE_DIMENSION,
+  RASTER_INPUT_POLICY,
   RasterEngineError,
   inspectRaster,
   traceRaster,
@@ -41,6 +44,7 @@ function usage(): string {
     "                     [--preserve-palette|--simplify-palette] [--no-optimise]",
     "                     [--diff-out output.diff.png] [--difference-max-dimension 32..1024]",
     "                     [--title \"Accessible title\"]",
+    "  evavo-vector input-policy",
     "  evavo-vector manifest",
     "  evavo-vector --version",
     "",
@@ -160,7 +164,7 @@ async function inspectRasterFile(input: string): Promise<void> {
   const sourcePath = resolve(input);
   const source = await readFile(sourcePath);
   const analysis = await inspectRaster(source);
-  print({ command: "raster:inspect", sourcePath, analysis });
+  print({ command: "raster:inspect", sourcePath, policy: RASTER_INPUT_POLICY.mode, analysis });
 }
 
 async function traceRasterFile(input: string, args: readonly string[]): Promise<void> {
@@ -199,6 +203,7 @@ async function traceRasterFile(input: string, args: readonly string[]): Promise<
     sourcePath,
     outputPath,
     differenceOutputPath,
+    inputPolicy: RASTER_INPUT_POLICY.mode,
     approval: result.evidence.qualityGates.productionApproval,
     renderComparison: result.evidence.qualityGates.renderComparison,
     selectedCandidate: result.evidence.selection.selectedCandidateId,
@@ -208,36 +213,54 @@ async function traceRasterFile(input: string, args: readonly string[]): Promise<
   });
 }
 
+function inputPolicy(): JsonRecord {
+  return {
+    command: "input-policy",
+    contractVersion: "1.4",
+    policy: RASTER_INPUT_POLICY,
+    applicationLimits: {
+      maxInputBytes: DEFAULT_MAX_INPUT_BYTES,
+      maxDecodedPixels: DEFAULT_MAX_PIXELS,
+    },
+    rejectionCode: "RASTER_MULTI_IMAGE_UNSUPPORTED",
+  };
+}
+
 function manifest(): JsonRecord {
   return {
     name: "evavo-vector",
     version: VERSION,
     contractVersion: "1.4",
+    discoveryCommands: ["manifest", "input-policy"],
     deterministicCommands: ["inspect", "optimise", "raster:inspect"],
     boundedCommands: ["trace"],
     commands: {
-      inspect: { input: "path to SVG", output: "JSON safety, geometry and structure inspection" },
+      inspect: { input: "path to SVG", output: "JSON safety, geometry, topology and structure inspection" },
       optimise: { input: "path to SVG", options: { "--out": "output path" }, output: "optimised SVG plus JSON evidence" },
-      "raster:inspect": { input: "path to PNG, JPEG, WebP, GIF, BMP or classic TIFF", output: "JSON source analysis and profile recommendation" },
+      "raster:inspect": { input: "path to one supported static raster", output: "JSON source analysis and profile recommendation" },
       trace: {
-        input: "path to supported raster",
+        input: "path to one supported static raster",
         options: {
           "--candidate-mode": ["adaptive", "single"],
           "--diff-out": "optional visual difference PNG path",
           "--difference-max-dimension": { default: DEFAULT_DIFFERENCE_MAX_DIMENSION, range: [32, MAX_DIFFERENCE_DIMENSION] },
         },
-        output: "selected SVG plus source, candidate, geometry, render and optional difference artefact evidence",
+        output: "selected SVG plus source, candidate, topology, geometry, render and optional difference artefact evidence",
         approvalState: "human-review-required",
       },
+      "input-policy": { input: "none", output: "JSON accepted and pre-decode rejected raster container classes" },
     },
+    inputPolicy: RASTER_INPUT_POLICY,
     safety: {
       scriptsRejected: true,
       foreignObjectRejected: true,
       externalReferencesRejected: true,
+      duplicateIdsRejected: true,
+      unresolvedLocalReferencesRejected: true,
       sourceOverwrittenByDefault: false,
       outputPathCollisionsRejected: true,
-      maxInputBytes: 26214400,
-      maxDecodedPixels: 40000000,
+      maxInputBytes: DEFAULT_MAX_INPUT_BYTES,
+      maxDecodedPixels: DEFAULT_MAX_PIXELS,
       rasterTracingAvailable: true,
       renderComparisonAvailable: true,
       renderComparisonMaximumDimensions: [64, 256, 1024],
@@ -262,6 +285,10 @@ async function main(): Promise<void> {
   }
   if (command === "manifest") {
     print(manifest());
+    return;
+  }
+  if (command === "input-policy" || command === "raster:policy") {
+    print(inputPolicy());
     return;
   }
   const input = args[1];
