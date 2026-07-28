@@ -5,7 +5,8 @@
   "type": "module",
   "bin": {
     "evavo-vector": "./dist/index.js",
-    "evavo-dotlottie": "./dist/dotlottie-cli.js"
+    "evavo-dotlottie": "./dist/dotlottie-cli.js",
+    "evavo-vector-batch": "./dist/batch-cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -14,6 +15,7 @@
     "test": "tsc -p tsconfig.json && node --test dist/*.test.js"
   },
   "dependencies": {
+    "@evavo/job-engine": "workspace:*",
     "@evavo/lottie-engine": "workspace:*",
     "@evavo/motion-engine": "workspace:*",
     "@evavo/raster-engine": "workspace:*",
