@@ -159,7 +159,7 @@ async function resolveBatchRoot(
         { details: { requestedRoot, root } },
       );
     }
-    if (!pathPolicy.allowedRoots.some((allowed) => isWithin(allowed, root!))) {
+    if (!pathPolicy.roots.some((allowed) => isWithin(allowed, root!))) {
       throw new VectorMcpOperationError(
         "VECTOR_MCP_PATH_OUTSIDE_ROOT",
         "The requested MCP batch root is outside every configured allowed root.",
@@ -167,13 +167,13 @@ async function resolveBatchRoot(
           details: {
             requestedRoot,
             root,
-            allowedRoots: pathPolicy.allowedRoots,
+            allowedRoots: pathPolicy.roots,
           },
         },
       );
     }
   } else {
-    root = [...pathPolicy.allowedRoots]
+    root = [...pathPolicy.roots]
       .filter((allowed) => isWithin(allowed, resolvedManifestPath))
       .sort((left, right) => right.length - left.length)[0] ?? null;
   }
@@ -186,7 +186,7 @@ async function resolveBatchRoot(
         details: {
           resolvedManifestPath,
           selectedRoot: root,
-          allowedRoots: pathPolicy.allowedRoots,
+          allowedRoots: pathPolicy.roots,
         },
       },
     );
