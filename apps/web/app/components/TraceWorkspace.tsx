@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import styles from "./TraceWorkspace.module.css";
+import TopologyEvidence, { type TopologyFinding, type TopologyInspection } from "./TopologyEvidence";
 
 const MAX_INPUT_BYTES = 25 * 1024 * 1024;
 const DEFAULT_DIFFERENCE_MAX_DIMENSION = 512;
 const MAX_DIFFERENCE_DIMENSION = 1024;
+const PNG_SIGNATURE = Object.freeze([137, 80, 78, 71, 13, 10, 26, 10]);
 const PROFILE_COLOURS = {
   auto: 16,
   logo: 12,
@@ -112,6 +114,11 @@ type TraceResponse = {
   status: "complete";
   approval: "review-required";
   svg: string;
+  inspection: {
+    valid: boolean;
+    topology: TopologyInspection;
+    findings: TopologyFinding[];
+  };
   evidence: TraceEvidence;
   artifacts: { difference?: DifferencePayload };
 };
@@ -140,6 +147,41 @@ function selectionReason(reason: string): string {
 
 function baseName(file: File | null): string {
   return file?.name.replace(/\.[^.]+$/, "") || "vector";
+}
+
+function decodeBase64(value: string): Uint8Array {
+  const binary = window.atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+async function verifyDifferencePayload(payload: DifferencePayload): Promise<void> {
+  if (payload.encoding !== "base64" || payload.mimeType !== "image/png") {
+    throw new Error("The visual difference artefact uses an unsupported transport contract.");
+  }
+  const bytes = decodeBase64(payload.data);
+  if (bytes.byteLength !== payload.bytes) {
+    throw new Error(`The visual difference artefact byte count does not match its evidence (${bytes.byteLength} received, ${payload.bytes} declared).`);
+  }
+  if (bytes.byteLength < 24 || PNG_SIGNATURE.some((value, index) => bytes[index] !== value)) {
+    throw new Error("The visual difference artefact is not a valid PNG stream.");
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const width = view.getUint32(16, false);
+  const height = view.getUint32(20, false);
+  if (width !== payload.width || height !== payload.height) {
+    throw new Error(`The visual difference PNG dimensions do not match its evidence (${width} × ${height} received, ${payload.width} × ${payload.height} declared).`);
+  }
+  const digest = new Uint8Array(await window.crypto.subtle.digest("SHA-256", bytes));
+  const sha256 = bytesToHex(digest);
+  if (sha256 !== payload.sha256.toLowerCase()) {
+    throw new Error("The visual difference PNG failed SHA-256 verification.");
+  }
 }
 
 export default function TraceWorkspace() {
@@ -242,6 +284,9 @@ export default function TraceWorkspace() {
       });
       const payload = (await response.json()) as TraceResponse & { error?: string; message?: string };
       if (!response.ok) throw new Error(payload.message || payload.error || `Trace failed with HTTP ${response.status}.`);
+      if (!payload.inspection?.topology || !Array.isArray(payload.inspection.findings)) {
+        throw new Error("The trace response is missing governed topology inspection evidence.");
+      }
       if (includeDifference && !payload.artifacts?.difference) {
         throw new Error("The trace completed without the requested visual difference artefact.");
       }
@@ -252,6 +297,7 @@ export default function TraceWorkspace() {
       ) {
         throw new Error("The visual difference artefact does not match the selected trace candidate.");
       }
+      if (payloadDifference) await verifyDifferencePayload(payloadDifference);
       setResult(payload);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -354,12 +400,12 @@ export default function TraceWorkspace() {
               {difference ? `${difference.width} × ${difference.height} · ${readableBytes(difference.bytes)}` : includeDifference ? "Not generated" : "Disabled"}
             </figcaption>
             <div className={`${styles.checker} ${styles.differenceChecker}`}>
-              {differenceUrl ? <img src={differenceUrl} alt="White-to-red visual difference heatmap" /> : <p>{includeDifference ? "The audited heatmap will appear after tracing." : "Enable visual difference generation to inspect mismatch regions."}</p>}
+              {differenceUrl ? <img src={differenceUrl} alt="White-to-red visual difference heatmap" /> : <p>{includeDifference ? "The verified heatmap will appear after tracing." : "Enable visual difference generation to inspect mismatch regions."}</p>}
             </div>
             <div className={styles.differenceLegend}>
               <span><i className={styles.legendWhite} /> white is a measured match</span>
               <span><i className={styles.legendRed} /> red marks visual difference</span>
-              <small>{difference ? `${difference.displayAmplification}× display amplification · ${difference.sourceSampling} source sampling` : "Difference colours are evidence aids, not approval scores."}</small>
+              <small>{difference ? `${difference.displayAmplification}× display amplification · SHA-256 verified in this browser` : "Difference colours are evidence aids, not approval scores."}</small>
             </div>
           </figure>
         </div>
@@ -368,7 +414,7 @@ export default function TraceWorkspace() {
           <span><b>Profile</b>{result ? `${result.evidence.trace.resolvedProfile}${result.evidence.trace.requestedProfile === "auto" ? " · auto" : " · directed"}` : "pending"}</span>
           <span><b>Geometry</b>{result ? `${result.evidence.output.estimatedAnchorCount.toLocaleString()} anchors · ${result.evidence.output.pathCount.toLocaleString()} paths` : "pending"}</span>
           <span><b>Render evidence</b>{result ? `${result.evidence.comparison.quality} · MAE ${percentage(result.evidence.comparison.aggregate.visualMae)}` : "pending"}</span>
-          <span><b>Difference</b>{difference ? `${difference.width} × ${difference.height} · audited` : includeDifference ? "pending" : "not requested"}</span>
+          <span><b>Difference</b>{difference ? `${difference.width} × ${difference.height} · verified` : includeDifference ? "pending" : "not requested"}</span>
         </div>
 
         {result ? (
@@ -396,9 +442,11 @@ export default function TraceWorkspace() {
                 <div><small>Difference artefact</small><strong>{difference.width} × {difference.height} PNG</strong></div>
                 <span>{readableBytes(difference.bytes)}</span>
                 <code title={difference.sha256}>{difference.sha256.slice(0, 16)}…</code>
-                <span>candidate {difference.selectedCandidateId}</span>
+                <span>candidate {difference.selectedCandidateId} · verified</span>
               </div>
             ) : null}
+
+            <TopologyEvidence topology={result.inspection.topology} findings={result.inspection.findings} />
 
             <div className={styles.candidateReview}>
               <div className={styles.candidateHeading}>
