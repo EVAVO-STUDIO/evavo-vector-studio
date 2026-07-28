@@ -23,7 +23,7 @@ The objective is not to call one automatic trace “finished”. The system insp
 - optional audited white-to-red PNG difference heatmaps with bounded dimensions and SHA-256 evidence;
 - browser-side verification of returned PNG bytes, signature, dimensions, selected candidate and SHA-256;
 - responsive browser review for source, selected SVG, difference image, topology, candidates, metrics and downloads;
-- authenticated multipart APIs for bounded synchronous tracing and animated SVG creation;
+- authenticated multipart APIs for bounded synchronous tracing, animated SVG creation and governed Lottie JSON export;
 - JSON-first CLI suitable for people, ChatGPT, Claude and workers;
 - deterministic, script-free animated SVG generation from validated ID-targeted motion plans;
 - opacity, translation, scale and rotation keyframes with easing and mandatory reduced-motion fallback;
@@ -32,6 +32,7 @@ The objective is not to call one automatic trace “finished”. The system insp
 - browser verification of source/output SHA-256, motion identity, style identity, target order, reduced-motion fallback and script-free evidence;
 - governed path-based Lottie JSON engine with SVG command conversion, source-order preservation, solid fill and stroke support, layer-transform motion and structural inspection;
 - Lottie CLI export and inspection with atomic new-file-only output, SHA-256 evidence and explicit player-compatibility non-claims;
+- authenticated Lottie HTTP API with strict fields, bounded inputs and outputs, exact serialized JSON delivery and compact evidence headers;
 - atomic new-file-only CLI transactions for optimised, traced, animated and Lottie outputs;
 - local stdio MCP server with nine governed tracing, SVG and motion tools for ChatGPT-compatible MCP hosts, Claude, editors and agent runtimes;
 - canonical allowed-root access, new-files-only output, atomic multi-file commit and SHA-256 file receipts for MCP operations;
@@ -39,7 +40,7 @@ The objective is not to call one automatic trace “finished”. The system insp
 - tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, Lottie geometry, Lottie structural output, MCP SDK, path-policy and transaction boundaries;
 - dependency-free contract gates plus the GitHub Actions quality workflow source.
 
-Animated SVG production is available through the browser Motion Director, core motion package, HTTP API, CLI and MCP. Governed Lottie JSON export and inspection are available through the core Lottie package and CLI. Lottie HTTP API, Lottie MCP tools, browser player validation and dotLottie packaging remain unavailable.
+Animated SVG production is available through the browser Motion Director, core motion package, HTTP API, CLI and MCP. Governed Lottie JSON export and inspection are available through the core Lottie package, CLI and HTTP API. Lottie MCP tools, browser player preview and dotLottie packaging remain unavailable, and independent player-render validation remains unavailable.
 
 ## Quick start on Windows PowerShell
 
@@ -173,13 +174,14 @@ Lottie is not yet exposed through MCP. All current tools remain `human-review-re
 The authenticated API exposes:
 
 - `POST /api/v1/trace` for static raster reconstruction, candidate evidence and optional difference PNG;
-- `POST /api/v1/motion/svg` for validated animated SVG creation from an inline or uploaded motion v1 plan.
+- `POST /api/v1/motion/svg` for validated animated SVG creation from an inline or uploaded motion v1 plan;
+- `POST /api/v1/motion/lottie` for governed path-based Lottie JSON from the same validated motion plan.
 
-Both support JSON evidence or direct SVG delivery where the output contract permits it. In trace JSON mode, the optional base64 difference PNG is returned with its dimensions, byte count, SHA-256 and selected-candidate binding so clients can verify it before display. Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token.
+All endpoints use strict bounded synchronous execution and no-store responses. Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token.
 
-The motion endpoint limits one SVG to 5 MiB and one plan to 256 KiB, returns normalized plan and full evidence in JSON mode, and emits compact identity, hash, reduced-motion and review headers in direct SVG mode.
+The Lottie endpoint accepts one SVG up to 5 MiB and one plan up to 256 KiB, limits the generated Lottie body to 20 MiB, and supports wrapper JSON evidence or direct `video/lottie+json` delivery. Its evidence records structural inspection as passed while preserving `playerRenderValidation: not-yet-performed` and `dotLottiePackaging: not-yet-available`.
 
-Lottie is not yet exposed through the HTTP API. See [`docs/API.md`](docs/API.md) for complete fields, limits, response shapes and error contracts.
+See [`docs/API.md`](docs/API.md) for complete fields, limits, response shapes and error contracts.
 
 ## Quality model
 
@@ -232,7 +234,7 @@ Detailed contracts:
 ## Repository layout
 
 ```text
-apps/web                  Next.js trace workspace, Motion Director and authenticated APIs
+apps/web                  Next.js trace workspace, Motion Director and authenticated trace, animated-SVG and Lottie APIs
 packages/vector-core      shared job, SVG safety, geometry and topology contracts
 packages/raster-engine    guarded decoding, analysis, tracing, comparison and difference evidence
 packages/motion-engine    validated deterministic animated SVG production
