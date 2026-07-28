@@ -67,7 +67,7 @@
 
 .lottieControls {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(150px, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(150px, 1fr);
   gap: 10px;
   padding: 16px 18px 0;
 }
@@ -82,7 +82,8 @@
   text-transform: uppercase;
 }
 
-.lottieControls input[type="number"] {
+.lottieControls input[type="number"],
+.lottieControls input[type="text"] {
   width: 100%;
   min-height: 42px;
   padding: 10px 11px;
@@ -93,7 +94,12 @@
   font: 500 12px/1.2 Arial, Helvetica, sans-serif;
 }
 
-.lottieControls input[type="number"]:focus {
+.lottieControls input[type="text"] {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.lottieControls input[type="number"]:focus,
+.lottieControls input[type="text"]:focus {
   outline: 1px solid var(--red);
   outline-offset: 1px;
   border-color: var(--red);
@@ -135,7 +141,10 @@
 .lottieSubset,
 .lottieNotice,
 .reducedNotice,
-.error {
+.error,
+.archivePassed,
+.archiveFailed,
+.archivePending {
   margin: 14px 18px 0;
   padding: 12px 14px;
   font-size: 10px;
@@ -157,7 +166,8 @@
 
 .primaryButton,
 .secondaryButton,
-.downloads a {
+.downloads a,
+.previewSwitch button {
   border: 1px solid #393939;
   border-radius: 0;
   background: transparent;
@@ -186,21 +196,47 @@
 }
 
 .secondaryButton:hover:not(:disabled),
-.downloads a:hover {
+.downloads a:hover,
+.previewSwitch button:hover:not(:disabled) {
   border-color: var(--red);
   color: #fff;
 }
 
 .primaryButton:disabled,
-.secondaryButton:disabled {
+.secondaryButton:disabled,
+.previewSwitch button:disabled {
   cursor: not-allowed;
   opacity: 0.35;
 }
 
-.error {
+.error,
+.archiveFailed {
   border-left: 2px solid var(--red);
   background: rgba(255, 36, 78, 0.08);
   color: #ff91a5;
+}
+
+.previewSwitch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  padding: 0 18px 16px;
+}
+
+.previewSwitch button {
+  min-height: 38px;
+  padding: 0 14px;
+  background: #0d0d0d;
+  color: #777;
+  font: 700 9px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.previewSwitchActive {
+  border-color: var(--red) !important;
+  background: rgba(255, 36, 78, 0.08) !important;
+  color: #fff !important;
 }
 
 .lottiePreview {
@@ -268,7 +304,8 @@
   text-align: center;
 }
 
-.lottieNotice {
+.lottieNotice,
+.archivePending {
   border-left: 2px solid #64a8ff;
   background: rgba(100, 168, 255, 0.08);
   color: #98c5ff;
@@ -280,9 +317,25 @@
   color: #c0a46d;
 }
 
+.archivePassed {
+  border-left: 2px solid #71e09b;
+  background: rgba(113, 224, 155, 0.07);
+  color: #93dfaf;
+}
+
 .lottieEvidence {
   margin-top: 14px;
   border-top: 1px solid var(--line);
+}
+
+.evidenceLabel {
+  padding: 12px 17px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(255, 36, 78, 0.045), transparent 50%);
+  color: #8d8d8d;
+  font: 700 9px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
 }
 
 .metrics {
@@ -357,6 +410,12 @@
   font: 700 9px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
+@media (max-width: 1100px) {
+  .lottieControls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 760px) {
   .lottieHeader {
     align-items: flex-start;
@@ -364,8 +423,13 @@
   }
 
   .lottieControls,
-  .metrics {
+  .metrics,
+  .previewSwitch {
     grid-template-columns: 1fr;
+  }
+
+  .previewSwitch {
+    display: grid;
   }
 
   .metrics div,
@@ -382,7 +446,8 @@
 @media (prefers-reduced-motion: reduce) {
   .primaryButton,
   .secondaryButton,
-  .downloads a {
+  .downloads a,
+  .previewSwitch button {
     transition: none;
   }
 }
