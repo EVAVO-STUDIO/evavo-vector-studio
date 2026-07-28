@@ -87,6 +87,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-lottie-workspace-contract.mjs
 
+      - name: Verify dotLottie archive contract
+        if: ${{ !cancelled() }}
+        run: node scripts/check-dotlottie-contract.mjs
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
