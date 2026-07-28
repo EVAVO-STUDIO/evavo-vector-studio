@@ -47,6 +47,7 @@ const packagePaths = [
   "packages/vector-core/package.json",
   "packages/raster-engine/package.json",
   "packages/cli/package.json",
+  "packages/mcp/package.json",
   "apps/web/package.json",
 ];
 const packageDocuments = await Promise.all(packagePaths.map(async (relativePath) => [relativePath, await readJson(relativePath)]));
