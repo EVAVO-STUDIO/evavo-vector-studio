@@ -1,3 +1,5 @@
+import { inspectSvgTopology, type SvgTopologyInspection } from "./svg-topology.js";
+
 export type SvgFindingSeverity = "error" | "warning" | "info";
 
 export type SvgFinding = Readonly<{
@@ -49,6 +51,7 @@ export type SvgInspection = Readonly<{
   javascriptHrefCount: number;
   externalStyleReferenceCount: number;
   geometry: SvgGeometryInspection;
+  topology: SvgTopologyInspection;
   findings: readonly SvgFinding[];
 }>;
 
@@ -213,6 +216,7 @@ export function inspectSvg(source: string): SvgInspection {
   const javascriptHrefCount = count(trimmed, /(?:href|xlink:href)=["']\s*javascript:/gi);
   const externalStyleReferenceCount = count(trimmed, /(?:@import\s+|url\(\s*["']?https?:\/\/)/gi);
   const geometry = inspectGeometry(trimmed, pathCount);
+  const topology = inspectSvgTopology(trimmed);
 
   if (!hasRoot) findings.push({ code: "SVG_ROOT_INVALID", severity: "error", message: "The document must contain one complete SVG root element." });
   if (!viewBox) findings.push({ code: "SVG_VIEWBOX_MISSING", severity: "warning", message: "A valid viewBox is required for reliable responsive scaling." });
@@ -222,10 +226,17 @@ export function inspectSvg(source: string): SvgInspection {
   if (javascriptHrefCount > 0) findings.push({ code: "SVG_JAVASCRIPT_HREF_PRESENT", severity: "error", message: "javascript: references are not permitted in governed SVG output." });
   if (externalRasterCount > 0) findings.push({ code: "SVG_EXTERNAL_RASTER", severity: "error", message: "External raster references make the asset network-dependent and are not permitted." });
   if (externalStyleReferenceCount > 0) findings.push({ code: "SVG_EXTERNAL_STYLE_REFERENCE", severity: "error", message: "External stylesheet and URL references are not permitted in governed SVG output." });
+  if (topology.duplicateIdCount > 0) findings.push({ code: "SVG_DUPLICATE_ID", severity: "error", message: `${topology.duplicateIdCount} duplicate ID occurrence${topology.duplicateIdCount === 1 ? "" : "s"} can make references ambiguous.` });
+  if (topology.unresolvedReferenceCount > 0) findings.push({ code: "SVG_LOCAL_REFERENCE_UNRESOLVED", severity: "error", message: `${topology.unresolvedReferenceCount} local reference${topology.unresolvedReferenceCount === 1 ? "" : "s"} do not resolve to an element ID.` });
   if (embeddedRasterCount > 0) findings.push({ code: "SVG_EMBEDDED_RASTER", severity: "warning", message: "The SVG embeds raster imagery and is not a fully reconstructed vector asset." });
   if (geometry.pathsWithoutData > 0) findings.push({ code: "SVG_PATH_DATA_MISSING", severity: "warning", message: "One or more path elements do not contain path data." });
   if (geometry.parseIssueCount > 0) findings.push({ code: "SVG_PATH_PARSE_ISSUE", severity: "warning", message: "One or more path command sequences could not be counted exactly." });
   if (geometry.estimatedAnchorCount > 25_000) findings.push({ code: "SVG_ANCHOR_COUNT_HIGH", severity: "warning", message: "The estimated anchor count is high enough to impair editing and web delivery." });
+  if (topology.textElementCount > 0) findings.push({ code: "SVG_TEXT_NOT_OUTLINED", severity: "warning", message: "Text elements remain in the SVG and may depend on unavailable fonts or change across renderers." });
+  if (topology.duplicatePathDataCount > 0) findings.push({ code: "SVG_DUPLICATE_PATH_DATA", severity: "warning", message: `${topology.duplicatePathDataCount} path occurrence${topology.duplicatePathDataCount === 1 ? "" : "s"} duplicate existing path data and may be redundant.` });
+  if (topology.potentialOpenFilledPathCount > 0) findings.push({ code: "SVG_OPEN_FILLED_SUBPATH", severity: "info", message: `${topology.potentialOpenFilledPathCount} path${topology.potentialOpenFilledPathCount === 1 ? "" : "s"} contain open subpaths with a potential fill; inspect implicit closing edges before approval.` });
+  if (topology.useElementCount > 0) findings.push({ code: "SVG_USE_INSTANCE_PRESENT", severity: "info", message: "The SVG contains use instances; expand them when direct per-shape editing is required." });
+  if (topology.styleElementCount > 0) findings.push({ code: "SVG_STYLE_BLOCK_PRESENT", severity: "info", message: "The SVG contains a style block; verify that editing and target renderers preserve its cascade." });
   if (!/<title\b/i.test(trimmed)) findings.push({ code: "SVG_TITLE_MISSING", severity: "info", message: "Add a concise title when the asset conveys meaning." });
 
   return Object.freeze({
@@ -245,6 +256,7 @@ export function inspectSvg(source: string): SvgInspection {
     javascriptHrefCount,
     externalStyleReferenceCount,
     geometry,
+    topology,
     findings: Object.freeze(findings),
   });
 }
