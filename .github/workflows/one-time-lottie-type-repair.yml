@@ -1,0 +1,107 @@
+name: One-time Lottie type repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/lottie-type-repair.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-lottie-type-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply exact Lottie type repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              source = target.read_text(encoding="utf-8")
+              old_count = source.count(old)
+              new_count = source.count(new)
+              if old_count == 1 and new_count == 0:
+                  target.write_text(source.replace(old, new, 1), encoding="utf-8")
+                  return
+              if old_count == 0 and new_count == 1:
+                  return
+              raise SystemExit(
+                  f"LOTTIE_TYPE_REPAIR_SCOPE_INVALID:{path}:old={old_count}:new={new_count}"
+              )
+
+          replace_exact(
+              "packages/lottie-engine/src/path-data.ts",
+              "    const upper = command!.toUpperCase();",
+              "    const upper: string = command!.toUpperCase();",
+          )
+          replace_exact(
+              "packages/lottie-engine/src/path-data.ts",
+              "      const control =\n        previousCommand === \"Q\" || previousCommand === \"T\"",
+              "      const control: Point =\n        previousCommand === \"Q\" || previousCommand === \"T\"",
+          )
+          replace_exact(
+              "packages/lottie-engine/src/svg-source.ts",
+              "} from \"./path-data.js\";\n\nexport type LottieSolidPaint",
+              "} from \"./path-data.js\";\n\nexport type { LottiePathBounds } from \"./path-data.js\";\n\nexport type LottieSolidPaint",
+          )
+          PY
+
+          grep -Fq 'const upper: string = command!.toUpperCase();' packages/lottie-engine/src/path-data.ts
+          grep -Fq 'const control: Point =' packages/lottie-engine/src/path-data.ts
+          grep -Fq 'export type { LottiePathBounds } from "./path-data.js";' packages/lottie-engine/src/svg-source.ts
+          git diff --check
+
+      - name: Install locked workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Lottie package
+        run: |
+          pnpm --filter @evavo/lottie-engine lint
+          pnpm --filter @evavo/lottie-engine typecheck
+          pnpm --filter @evavo/lottie-engine test
+          pnpm --filter @evavo/lottie-engine build
+
+      - name: Commit verified source repair and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-lottie-type-repair.yml \
+            .github/lottie-type-repair.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "fix(lottie): resolve strict source type boundaries"
+          git pull --rebase origin main
+          grep -Fq 'const upper: string = command!.toUpperCase();' packages/lottie-engine/src/path-data.ts
+          grep -Fq 'const control: Point =' packages/lottie-engine/src/path-data.ts
+          grep -Fq 'export type { LottiePathBounds } from "./path-data.js";' packages/lottie-engine/src/svg-source.ts
+          pnpm --filter @evavo/lottie-engine typecheck
+          git push origin HEAD:main
