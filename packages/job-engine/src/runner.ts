@@ -1,6 +1,7 @@
 import path from "node:path";
 import { BatchEngineError, batchFailure } from "./errors.js";
 import { readBatchManifest } from "./manifest.js";
+import { canonicalBatchRoot } from "./path-policy.js";
 import {
   acquireBatchLock,
   appendBatchEvent,
@@ -316,7 +317,7 @@ export async function runDurableBatch(
   options: RunDurableBatchOptions,
 ): Promise<DurableBatchResult> {
   const manifestFile = await readBatchManifest(options.manifestPath);
-  const rootPath = path.resolve(
+  const rootPath = await canonicalBatchRoot(
     options.rootPath ?? path.dirname(manifestFile.path),
   );
   const paths = batchJobPaths(

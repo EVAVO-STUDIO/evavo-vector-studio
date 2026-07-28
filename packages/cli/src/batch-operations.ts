@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   BatchEngineError,
+  createBatchPathPolicy,
   type BatchOperationContext,
   type BatchOperationDescriptor,
   type BatchOperationHandler,
@@ -242,24 +243,39 @@ async function descriptor(
   inputPaths: readonly string[],
   outputPaths: readonly string[],
 ): Promise<BatchOperationDescriptor> {
+  const policy = await createBatchPathPolicy(context.rootPath);
+  const canonicalInputPaths = await Promise.all(
+    inputPaths.map((value) => policy.resolveInputFile(value)),
+  );
+  const canonicalOutputPaths = await Promise.all(
+    outputPaths.map((value) => policy.resolveOutputPath(value)),
+  );
+  policy.assertDistinct([
+    ...canonicalInputPaths,
+    ...canonicalOutputPaths,
+  ]);
+
   const hash = createHash("sha256");
   hash.update(context.item.operation, "utf8");
   hash.update("\0", "utf8");
   hash.update(JSON.stringify(stableValue(context.item.spec)), "utf8");
   let totalInputBytes = 0;
-  for (const inputPath of inputPaths) {
+  for (const inputPath of canonicalInputPaths) {
     const bytes = await readFile(inputPath);
     totalInputBytes += bytes.byteLength;
     hash.update("\0", "utf8");
-    hash.update(path.relative(context.rootPath, inputPath), "utf8");
+    hash.update(path.relative(policy.root, inputPath), "utf8");
     hash.update("\0", "utf8");
     hash.update(bytes);
   }
   return Object.freeze({
     revision: hash.digest("hex"),
-    inputPaths: Object.freeze([...inputPaths]),
-    outputPaths: Object.freeze([...outputPaths]),
-    summary: Object.freeze({ totalInputBytes }),
+    inputPaths: Object.freeze(canonicalInputPaths),
+    outputPaths: Object.freeze(canonicalOutputPaths),
+    summary: Object.freeze({
+      totalInputBytes,
+      canonicalRoot: policy.root,
+    }),
   });
 }
 

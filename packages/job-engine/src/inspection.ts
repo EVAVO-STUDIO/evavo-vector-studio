@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { BatchEngineError } from "./errors.js";
+import { canonicalBatchRoot } from "./path-policy.js";
 import { batchJobPaths } from "./store.js";
 import {
   BATCH_CONTRACT_VERSION,
@@ -190,8 +191,9 @@ export async function inspectDurableBatch(
       { details: { eventLimit } },
     );
   }
+  const rootPath = await canonicalBatchRoot(options.rootPath);
   const paths = batchJobPaths(
-    path.resolve(options.rootPath),
+    rootPath,
     options.jobId,
     options.stateRootPath,
   );
