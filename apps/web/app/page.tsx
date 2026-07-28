@@ -4,7 +4,7 @@ import TraceWorkspace from "./components/TraceWorkspace";
 const outputCards = [
   ["Clean SVG", "Available now", "Adaptive spline reconstruction, measured candidate selection, geometry inspection and optional difference PNG evidence."],
   ["Animated SVG", "UI + API + CLI + MCP available", "Direct ID-targeted opacity and transform motion in the browser, then verify deterministic CSS, reduced-motion fallback and output evidence."],
-  ["Lottie + dotLottie", "UI + API + CLI + MCP available for Lottie · API + CLI + MCP for dotLottie", "Governed shape-layer JSON, deterministic dotLottie v2 packaging, browser JSON verification and official-player review are available. Independent source-to-player and browser archive-load validation remain review work."],
+  ["Lottie + dotLottie", "UI + API + CLI + MCP available for Lottie · API + CLI + MCP for dotLottie", "Governed shape-layer JSON, deterministic dotLottie v2 packaging, browser JSON verification and official-player review are available. Independent source-to-player render validation and browser archive-load validation remain review work."],
 ] as const;
 
 export default function HomePage() {
