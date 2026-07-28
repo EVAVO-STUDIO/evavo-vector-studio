@@ -1,6 +1,12 @@
 #!/usr/bin/env node
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { basename, extname, resolve } from "node:path";
+import {
+  MotionEngineError,
+  createAnimatedSvg,
+  inspectAnimatedSvg,
+  validateAnimatedSvgMotionSpec,
+} from "@evavo/motion-engine";
 import { inspectSvg, optimiseSvg } from "@evavo/vector-core";
 import {
   DEFAULT_DIFFERENCE_MAX_DIMENSION,
@@ -15,12 +21,18 @@ import {
   type RasterTraceOptions,
   type RasterTraceProfileSelection,
 } from "@evavo/raster-engine";
+import {
+  CliOutputTransactionError,
+  commitNewOutputFiles,
+  type CliOutputReceipt,
+} from "./output-transaction.js";
 
 const VERSION = "0.4.0";
 const TRACE_PROFILES = new Set<RasterTraceProfileSelection>(["auto", "logo", "icon", "line-art", "illustration", "photo"]);
 const CANDIDATE_MODES = new Set<RasterCandidateMode>(["adaptive", "single"]);
 
 type JsonRecord = Record<string, unknown>;
+type LabelledPath = Readonly<{ label: string; path: string }>;
 
 function print(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
@@ -44,11 +56,15 @@ function usage(): string {
     "                     [--preserve-palette|--simplify-palette] [--no-optimise]",
     "                     [--diff-out output.diff.png] [--difference-max-dimension 32..1024]",
     "                     [--title \"Accessible title\"]",
+    "  evavo-vector motion:validate <motion.json>",
+    "  evavo-vector motion:inspect <animated.svg>",
+    "  evavo-vector animate-svg <input.svg> --motion motion.json [--out output.animated.svg]",
+    "                     [--evidence-out output.motion.evidence.json]",
     "  evavo-vector input-policy",
     "  evavo-vector manifest",
     "  evavo-vector --version",
     "",
-    "Operational results are JSON so people and agents can consume them safely.",
+    "Operational results are JSON. Output commands create new files only.",
   ].join("\n");
 }
 
@@ -66,6 +82,12 @@ function option(args: readonly string[], name: string): string | null {
   return value;
 }
 
+function requiredOption(args: readonly string[], name: string): string {
+  const value = option(args, name);
+  if (value === null) fail({ error: "VECTOR_CLI_OPTION_REQUIRED", option: name });
+  return value;
+}
+
 function parseIntegerOption(args: readonly string[], name: string): number | undefined {
   const raw = option(args, name);
   if (raw === null) return undefined;
@@ -74,8 +96,68 @@ function parseIntegerOption(args: readonly string[], name: string): number | und
   return value;
 }
 
+function pathKey(value: string): string {
+  const resolved = resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 function samePath(left: string, right: string): boolean {
-  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+  return pathKey(left) === pathKey(right);
+}
+
+function assertDistinctPaths(entries: readonly LabelledPath[]): void {
+  const seen = new Map<string, LabelledPath>();
+  for (const entry of entries) {
+    const key = pathKey(entry.path);
+    const previous = seen.get(key);
+    if (previous) {
+      fail({
+        error: "VECTOR_OUTPUT_PATH_COLLISION",
+        first: previous,
+        second: entry,
+      }, 2);
+    }
+    seen.set(key, entry);
+  }
+}
+
+function assertExtension(value: string, extension: string, field: string): void {
+  if (extname(value).toLowerCase() !== extension) {
+    fail({
+      error: "VECTOR_OUTPUT_EXTENSION_INVALID",
+      field,
+      value,
+      expectedExtension: extension,
+    }, 2);
+  }
+}
+
+function receiptFor(
+  receipts: readonly CliOutputReceipt[],
+  expectedPath: string,
+): CliOutputReceipt {
+  const receipt = receipts.find((item) => samePath(item.path, expectedPath));
+  if (!receipt) {
+    fail({
+      error: "VECTOR_OUTPUT_RECEIPT_MISSING",
+      expectedPath,
+      receiptPaths: receipts.map((item) => item.path),
+    }, 2);
+  }
+  return receipt;
+}
+
+async function readJsonFile(inputPath: string): Promise<unknown> {
+  const source = await readFile(inputPath, "utf8");
+  try {
+    return JSON.parse(source) as unknown;
+  } catch (error) {
+    fail({
+      error: "VECTOR_JSON_INVALID",
+      inputPath,
+      message: error instanceof Error ? error.message : String(error),
+    }, 2);
+  }
 }
 
 function traceOptions(sourcePath: string, args: readonly string[]): RasterTraceOptions {
@@ -130,10 +212,21 @@ function traceOptions(sourcePath: string, args: readonly string[]): RasterTraceO
   };
 }
 
-function defaultTraceOutput(sourcePath: string): string {
+function stem(sourcePath: string): string {
   const extension = extname(sourcePath);
-  const stem = extension ? sourcePath.slice(0, -extension.length) : sourcePath;
-  return `${stem}.vector.svg`;
+  return extension ? sourcePath.slice(0, -extension.length) : sourcePath;
+}
+
+function defaultTraceOutput(sourcePath: string): string {
+  return `${stem(sourcePath)}.vector.svg`;
+}
+
+function defaultOptimisedOutput(sourcePath: string): string {
+  return `${stem(sourcePath)}.optimised.svg`;
+}
+
+function defaultAnimatedOutput(sourcePath: string): string {
+  return `${stem(sourcePath)}.animated.svg`;
 }
 
 async function inspectSvgFile(input: string): Promise<void> {
@@ -146,8 +239,12 @@ async function inspectSvgFile(input: string): Promise<void> {
 
 async function optimiseSvgFile(input: string, args: readonly string[]): Promise<void> {
   const sourcePath = resolve(input);
-  const outputPath = resolve(option(args, "--out") ?? sourcePath.replace(/\.svg$/i, ".optimised.svg"));
-  if (samePath(outputPath, sourcePath)) fail({ error: "VECTOR_SOURCE_OVERWRITE_REJECTED", sourcePath }, 2);
+  const outputPath = resolve(option(args, "--out") ?? defaultOptimisedOutput(sourcePath));
+  assertExtension(outputPath, ".svg", "--out");
+  assertDistinctPaths([
+    { label: "source", path: sourcePath },
+    { label: "output", path: outputPath },
+  ]);
   const source = await readFile(sourcePath, "utf8");
   const result = optimiseSvg(source);
   if (!result.inspection.valid) {
@@ -155,9 +252,19 @@ async function optimiseSvgFile(input: string, args: readonly string[]): Promise<
     process.exitCode = 2;
     return;
   }
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, `${result.svg}\n`, "utf8");
-  print({ command: "optimise", written: true, sourcePath, outputPath, beforeBytes: result.beforeBytes, afterBytes: result.afterBytes, bytesSaved: result.bytesSaved, inspection: result.inspection });
+  const receipts = await commitNewOutputFiles([
+    { path: outputPath, data: `${result.svg}\n`, mimeType: "image/svg+xml" },
+  ]);
+  print({
+    command: "optimise",
+    written: true,
+    sourcePath,
+    output: receiptFor(receipts, outputPath),
+    beforeBytes: result.beforeBytes,
+    afterBytes: result.afterBytes,
+    bytesSaved: result.bytesSaved,
+    inspection: result.inspection,
+  });
 }
 
 async function inspectRasterFile(input: string): Promise<void> {
@@ -172,14 +279,13 @@ async function traceRasterFile(input: string, args: readonly string[]): Promise<
   const outputPath = resolve(option(args, "--out") ?? defaultTraceOutput(sourcePath));
   const rawDifferencePath = option(args, "--diff-out");
   const differenceOutputPath = rawDifferencePath ? resolve(rawDifferencePath) : null;
-
-  if (samePath(outputPath, sourcePath)) fail({ error: "VECTOR_SOURCE_OVERWRITE_REJECTED", sourcePath }, 2);
-  if (differenceOutputPath && samePath(differenceOutputPath, sourcePath)) {
-    fail({ error: "VECTOR_SOURCE_OVERWRITE_REJECTED", sourcePath, differenceOutputPath }, 2);
-  }
-  if (differenceOutputPath && samePath(differenceOutputPath, outputPath)) {
-    fail({ error: "VECTOR_OUTPUT_PATH_COLLISION", outputPath, differenceOutputPath }, 2);
-  }
+  assertExtension(outputPath, ".svg", "--out");
+  if (differenceOutputPath) assertExtension(differenceOutputPath, ".png", "--diff-out");
+  assertDistinctPaths([
+    { label: "source", path: sourcePath },
+    { label: "svg-output", path: outputPath },
+    ...(differenceOutputPath ? [{ label: "difference-output", path: differenceOutputPath }] : []),
+  ]);
 
   const source = await readFile(sourcePath);
   const result = await traceRaster(source, traceOptions(sourcePath, args));
@@ -191,23 +297,104 @@ async function traceRasterFile(input: string, args: readonly string[]): Promise<
     fail({ error: "VECTOR_DIFFERENCE_OUTPUT_PATH_MISSING" }, 2);
   }
 
-  await mkdir(dirname(outputPath), { recursive: true });
-  if (differenceOutputPath) await mkdir(dirname(differenceOutputPath), { recursive: true });
-  const writes: Promise<void>[] = [writeFile(outputPath, `${result.svg}\n`, "utf8")];
-  if (differenceOutputPath && differencePng) writes.push(writeFile(differenceOutputPath, differencePng));
-  await Promise.all(writes);
+  const receipts = await commitNewOutputFiles([
+    { path: outputPath, data: `${result.svg}\n`, mimeType: "image/svg+xml" },
+    ...(differenceOutputPath && differencePng
+      ? [{ path: differenceOutputPath, data: differencePng, mimeType: "image/png" }]
+      : []),
+  ]);
 
   print({
     command: "trace",
     written: true,
     sourcePath,
-    outputPath,
-    differenceOutputPath,
+    outputs: {
+      svg: receiptFor(receipts, outputPath),
+      differencePng: differenceOutputPath ? receiptFor(receipts, differenceOutputPath) : null,
+    },
     inputPolicy: RASTER_INPUT_POLICY.mode,
     approval: result.evidence.qualityGates.productionApproval,
     renderComparison: result.evidence.qualityGates.renderComparison,
     selectedCandidate: result.evidence.selection.selectedCandidateId,
     candidateCount: result.evidence.selection.attemptedCandidateCount,
+    inspection: result.inspection,
+    evidence: result.evidence,
+  });
+}
+
+async function validateMotionFile(input: string): Promise<void> {
+  const motionPath = resolve(input);
+  assertExtension(motionPath, ".json", "motion plan");
+  const plan = await readJsonFile(motionPath);
+  const normalized = validateAnimatedSvgMotionSpec(plan);
+  print({
+    command: "motion:validate",
+    motionPath,
+    contractVersion: "1.0",
+    valid: true,
+    normalized,
+  });
+}
+
+async function inspectAnimatedSvgFile(input: string): Promise<void> {
+  const sourcePath = resolve(input);
+  const source = await readFile(sourcePath, "utf8");
+  const inspection = inspectAnimatedSvg(source);
+  print({ command: "motion:inspect", sourcePath, ...inspection });
+  if (!inspection.valid) process.exitCode = 2;
+}
+
+async function animateSvgFile(input: string, args: readonly string[]): Promise<void> {
+  const sourcePath = resolve(input);
+  const motionPath = resolve(requiredOption(args, "--motion"));
+  const outputPath = resolve(option(args, "--out") ?? defaultAnimatedOutput(sourcePath));
+  const rawEvidencePath = option(args, "--evidence-out");
+  const evidenceOutputPath = rawEvidencePath ? resolve(rawEvidencePath) : null;
+
+  assertExtension(motionPath, ".json", "--motion");
+  assertExtension(outputPath, ".svg", "--out");
+  if (evidenceOutputPath) assertExtension(evidenceOutputPath, ".json", "--evidence-out");
+  assertDistinctPaths([
+    { label: "source", path: sourcePath },
+    { label: "motion-plan", path: motionPath },
+    { label: "animated-svg-output", path: outputPath },
+    ...(evidenceOutputPath ? [{ label: "motion-evidence-output", path: evidenceOutputPath }] : []),
+  ]);
+
+  const [source, motionPlan] = await Promise.all([
+    readFile(sourcePath, "utf8"),
+    readJsonFile(motionPath),
+  ]);
+  const result = createAnimatedSvg(source, motionPlan);
+  const evidenceDocument = {
+    command: "animate-svg",
+    contractVersion: "1.0",
+    sourcePath,
+    motionPath,
+    outputPath,
+    inspection: result.inspection,
+    evidence: result.evidence,
+  };
+  const receipts = await commitNewOutputFiles([
+    { path: outputPath, data: `${result.svg}\n`, mimeType: "image/svg+xml" },
+    ...(evidenceOutputPath
+      ? [{
+          path: evidenceOutputPath,
+          data: `${JSON.stringify(evidenceDocument, null, 2)}\n`,
+          mimeType: "application/json",
+        }]
+      : []),
+  ]);
+
+  print({
+    command: "animate-svg",
+    written: true,
+    sourcePath,
+    motionPath,
+    outputs: {
+      animatedSvg: receiptFor(receipts, outputPath),
+      evidence: evidenceOutputPath ? receiptFor(receipts, evidenceOutputPath) : null,
+    },
     inspection: result.inspection,
     evidence: result.evidence,
   });
@@ -231,21 +418,35 @@ function manifest(): JsonRecord {
     name: "evavo-vector",
     version: VERSION,
     contractVersion: "1.4",
+    motionContractVersion: "1.0",
     discoveryCommands: ["manifest", "input-policy"],
-    deterministicCommands: ["inspect", "optimise", "raster:inspect"],
+    deterministicCommands: ["inspect", "motion:inspect", "motion:validate", "raster:inspect"],
     boundedCommands: ["trace"],
+    productionCommands: ["optimise", "trace", "animate-svg"],
     commands: {
       inspect: { input: "path to SVG", output: "JSON safety, geometry, topology and structure inspection" },
-      optimise: { input: "path to SVG", options: { "--out": "output path" }, output: "optimised SVG plus JSON evidence" },
+      optimise: { input: "path to SVG", options: { "--out": "new SVG output path" }, output: "new optimised SVG plus JSON evidence" },
       "raster:inspect": { input: "path to one supported static raster", output: "JSON source analysis and profile recommendation" },
       trace: {
         input: "path to one supported static raster",
         options: {
           "--candidate-mode": ["adaptive", "single"],
-          "--diff-out": "optional visual difference PNG path",
+          "--diff-out": "optional new visual difference PNG path",
           "--difference-max-dimension": { default: DEFAULT_DIFFERENCE_MAX_DIMENSION, range: [32, MAX_DIFFERENCE_DIMENSION] },
         },
-        output: "selected SVG plus source, candidate, topology, geometry, render and optional difference artefact evidence",
+        output: "new selected SVG plus source, candidate, topology, geometry, render and optional difference evidence",
+        approvalState: "human-review-required",
+      },
+      "motion:validate": { input: "motion plan JSON", output: "normalized v1 motion contract" },
+      "motion:inspect": { input: "animated SVG", output: "motion metadata, rule and reduced-motion inspection" },
+      "animate-svg": {
+        input: "governed static SVG",
+        options: {
+          "--motion": "required v1 motion plan JSON",
+          "--out": "optional new animated SVG path",
+          "--evidence-out": "optional new JSON evidence path",
+        },
+        output: "new deterministic script-free CSS animated SVG plus optional evidence file",
         approvalState: "human-review-required",
       },
       "input-policy": { input: "none", output: "JSON accepted and pre-decode rejected raster container classes" },
@@ -258,7 +459,9 @@ function manifest(): JsonRecord {
       duplicateIdsRejected: true,
       unresolvedLocalReferencesRejected: true,
       sourceOverwrittenByDefault: false,
+      existingOutputsOverwritten: false,
       outputPathCollisionsRejected: true,
+      atomicMultiFileCommit: true,
       maxInputBytes: DEFAULT_MAX_INPUT_BYTES,
       maxDecodedPixels: DEFAULT_MAX_PIXELS,
       rasterTracingAvailable: true,
@@ -267,6 +470,10 @@ function manifest(): JsonRecord {
       differenceArtifactAvailable: true,
       differenceArtifactMaximumDimension: MAX_DIFFERENCE_DIMENSION,
       adaptiveCandidateMaximums: { threeCandidatesThroughPixels: 4000000, twoCandidatesThroughPixels: 12000000, otherwise: 1 },
+      animatedSvgAvailable: true,
+      animatedSvgProperties: ["opacity", "translateX", "translateY", "scale", "rotateDeg"],
+      reducedMotionFallbackRequired: true,
+      lottieAvailable: false,
       productionAutoApprovalAvailable: false,
     },
   };
@@ -298,12 +505,21 @@ async function main(): Promise<void> {
   if (command === "optimise") return optimiseSvgFile(input, commandArgs);
   if (command === "raster:inspect" || command === "analyse") return inspectRasterFile(input);
   if (command === "trace") return traceRasterFile(input, commandArgs);
+  if (command === "motion:validate") return validateMotionFile(input);
+  if (command === "motion:inspect") return inspectAnimatedSvgFile(input);
+  if (command === "animate-svg") return animateSvgFile(input, commandArgs);
   fail(`Unknown command: ${command}\n\n${usage()}`);
 }
 
 main().catch((error: unknown) => {
+  if (error instanceof MotionEngineError) {
+    fail({ error: error.code, message: error.message, details: error.details }, 2);
+  }
   if (error instanceof RasterEngineError) {
     fail({ error: error.code, message: error.message, status: error.status, details: error.details }, 2);
+  }
+  if (error instanceof CliOutputTransactionError) {
+    fail({ error: error.code, message: error.message, details: error.details }, 2);
   }
   const message = error instanceof Error ? error.message : String(error);
   fail({ error: "VECTOR_CLI_FAILED", message });
