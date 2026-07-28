@@ -1,30 +1,31 @@
 # EVAVO Vector Studio
 
-EVAVO Vector Studio is a governed raster-to-vector production workspace. It is being built to turn logos, icons, line art, illustrations and selected photographic sources into editable SVG assets through inspectable geometry and evidence, rather than treating one-click tracing as proof of quality.
+EVAVO Vector Studio is a governed raster-to-vector production workspace for reconstructing logos, icons, line art, illustrations and selected photographic sources as editable SVG assets.
 
-## Operational now
+The objective is not to call one automatic trace “finished”. The system inspects the source, builds bounded candidates, measures visual equivalence, records geometric cost, selects transparently and keeps professional approval separate from machine completion.
+
+## Implemented foundation
 
 - guarded PNG, JPEG, WebP, GIF, BMP and classic TIFF preflight;
 - 25 MiB encoded-input and 40 million decoded-pixel limits;
-- native RGBA decoding and spline-based raster tracing;
+- native RGBA decoding and spline-based raster reconstruction;
 - source SHA-256, alpha, palette, tonal, entropy and edge analysis;
 - automatic or explicit logo, icon, line-art, illustration and photo profiles;
-- bounded base, fidelity and economy candidate generation;
-- adaptive visual-first selection with explicit pixel budgets, tolerances and cost weights;
-- single-candidate mode for minimum-runtime deterministic execution;
+- adaptive base, fidelity and economy candidates under source-pixel budgets;
+- explicit visual-cost, geometry-cost and candidate-selection evidence;
 - safe multipass SVG optimisation;
-- independent SVG active-content, external-reference, embedded-raster and structure inspection;
-- path-command, subpath, curve, straight-segment and estimated-anchor evidence;
+- SVG path-command, subpath and estimated-anchor inspection;
+- rejection of scripts, `foreignObject`, inline handlers, `javascript:` links and network-dependent references;
 - alpha-aware source-versus-SVG rendering at up to 64, 256 and 1024 pixels;
 - visual MAE, RMS error, alpha error, black/white composite error, mismatch fraction and aspect-ratio evidence;
-- responsive browser workspace with local source preview, tracing controls, candidate review, safe output preview and SVG download;
-- authenticated multipart API for synchronous bounded execution;
+- optional audited white-to-red PNG difference heatmaps with bounded dimensions and SHA-256 evidence;
+- responsive browser review for source, selected SVG, difference image, candidates, metrics and downloads;
+- authenticated multipart API for bounded synchronous execution;
 - JSON-first CLI suitable for people, ChatGPT, Claude and workers;
-- path-count, anchor-count, output-size, visual-match and review warnings;
-- tests for format, decompression-bomb, SVG security, geometry accounting, alpha-aware comparison and candidate-selection boundaries;
-- GitHub Actions quality workflow.
+- tests for format, decompression-bomb, geometry, candidate-selection, alpha-comparison and PNG boundaries;
+- GitHub Actions quality workflow source.
 
-Animated SVG and Lottie production remain planned capabilities. They are shown as planned in the interface and are not claimed as implemented.
+Animated SVG and Lottie production remain planned. The interface describes those intended outputs without claiming that timeline authoring or Lottie export is implemented.
 
 ## Quick start on Windows PowerShell
 
@@ -39,19 +40,38 @@ pnpm dev
 
 Open `http://localhost:3000` for the studio workspace.
 
+For a protected production deployment, set a long server-only `VECTOR_API_TOKEN`. The browser accepts it per tab and does not require a public environment variable.
+
+## Browser workflow
+
+The workspace can:
+
+1. preview the selected raster locally;
+2. choose an automatic or directed trace profile;
+3. choose adaptive candidate review or a single candidate;
+4. control palette intent and safe optimisation;
+5. request a bounded difference PNG;
+6. compare the source, selected SVG and visual-difference heatmap;
+7. inspect candidate evidence and geometry;
+8. download the SVG and optional difference PNG separately.
+
+White regions in the heatmap are measured matches. Red regions mark visual difference using a declared display amplification. The heatmap is review evidence, not a substitute for inspecting curves, compound paths, negative space and brand geometry.
+
 ## CLI
 
 ```powershell
 # Inspect a raster without creating output
 pnpm vector:raster:inspect -- .\fixtures\mark.png
 
-# Create, compare and select a governed SVG with JSON evidence
+# Create a governed SVG, JSON evidence and visual-difference PNG
 pnpm vector:trace -- `
   .\fixtures\mark.png `
   --out .\outputs\mark.vector.svg `
   --profile auto `
   --candidate-mode adaptive `
   --max-colours 16 `
+  --diff-out .\outputs\mark.vector.difference.png `
+  --difference-max-dimension 512 `
   --title "Brand mark"
 
 # Inspect or conservatively optimise an existing SVG
@@ -62,36 +82,51 @@ pnpm vector:optimise -- .\fixtures\mark.svg --out .\outputs\mark.optimised.svg
 pnpm vector:manifest
 ```
 
-See [`docs/CLI.md`](docs/CLI.md) for candidate policy, visual evidence, geometry evidence and exit codes.
+The CLI refuses to overwrite its source, rejects SVG/difference output collisions and will not silently ignore a requested difference artefact. See [`docs/CLI.md`](docs/CLI.md) for the complete contract.
 
 ## API
 
-`POST /api/v1/trace` accepts `multipart/form-data` and returns either JSON evidence plus the selected SVG or a direct SVG download. Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token.
+`POST /api/v1/trace` accepts `multipart/form-data` and returns either:
 
-See [`docs/API.md`](docs/API.md) for the complete adaptive execution contract and PowerShell examples.
+- JSON containing the SVG, inspection, candidate evidence and optional base64 difference PNG; or
+- a direct SVG response when no separate difference artefact is requested.
+
+Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token. See [`docs/API.md`](docs/API.md) for fields, limits, response shapes and PowerShell examples.
+
+## Quality model
+
+A trace can finish successfully while remaining `review-required`.
+
+The engine may choose a lower-complexity candidate only when it remains inside explicit visual-cost, mismatch and aspect-ratio tolerances relative to the best visual candidate. If every candidate requires review, the best measured visual candidate wins rather than sacrificing fidelity for smaller geometry.
+
+Every trace retains:
+
+- exact reconstruction settings;
+- all attempted candidate outcomes;
+- selected and best-visual candidate IDs;
+- output bytes, paths, commands, subpaths and estimated anchors;
+- multi-scale render metrics and thresholds;
+- difference artefact dimensions, size, hash and selected-candidate binding when requested;
+- warnings and timing evidence.
+
+Pixel similarity cannot prove deliberate Bézier placement, compound-path quality, future editability or brand fidelity. Production auto-approval therefore remains unavailable.
 
 ## Repository layout
 
 ```text
-apps/web                  Next.js studio UI and API
-packages/vector-core      shared job, pipeline, SVG safety and geometry contracts
-packages/raster-engine    guarded decoding, analysis, candidate tracing, comparison and selection
+apps/web                  Next.js studio UI and authenticated API
+packages/vector-core      shared job, pipeline and SVG safety contracts
+packages/raster-engine    guarded decoding, analysis, tracing, comparison and difference evidence
 packages/cli              JSON-first local and agent automation surface
 docs                      architecture, CLI, API and hub-integration records
 ```
 
-The EVAVO website hub integration remains a signed federated candidate. This repository does not mark itself client-released until deployment, authentication and live smoke evidence exist.
+## Deployment boundary
 
-## Quality boundary
+The EVAVO website hub integration remains a signed federated candidate. This repository does not mark itself client-released until its deployment, authentication, runtime limits and live smoke evidence are verified.
 
-A structurally valid SVG can still be a poor reconstruction. Vector Studio therefore rasterises every completed candidate at multiple bounded scales and compares it against the decoded source using alpha-aware black and white compositing. The engine is visual-first: when every candidate is weak, the best visual result wins. When candidates meet the same quality class, the engine may choose a more editable result only when it remains inside the declared visual tolerances.
-
-The selected evidence includes the full visual and geometry formulas, estimated anchors, paths, commands, bytes, every completed or failed candidate and the exact reason for selection. These measurements remain evidence, not an unexplained quality score.
-
-Visual similarity still cannot prove deliberate Bézier placement, compound-path quality, negative-space construction, editability or brand fidelity. Production approval remains human review-gated even when the measured comparison is `excellent`.
-
-The next quality milestones are difference-image artefacts, topology and winding validation, stronger curve-economy diagnostics, synthetic visual regression fixtures, governed repair passes and then the animated SVG and Lottie authoring layers.
+The current API is a bounded synchronous surface, not a durable queue. Persistent jobs, resumability, object storage, worker retries and signed hub handoff belong in the next deployment phase.
 
 ## Philosophy
 
-Preserve source intent. Reconstruct deliberate geometry. Minimise unnecessary anchors. Keep outputs editable. Record every material decision. Reject unsafe or misleading results instead of silently producing something different.
+Preserve source intent. Reconstruct deliberate geometry. Minimise unnecessary anchors. Keep outputs editable. Record material decisions. Reject unsafe or misleading results instead of silently producing something different.
