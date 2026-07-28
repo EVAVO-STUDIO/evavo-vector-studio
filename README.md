@@ -23,7 +23,7 @@ The objective is not to call one automatic trace “finished”. The system insp
 - optional audited white-to-red visual-difference heatmap PNGs with bounded dimensions and SHA-256 evidence;
 - browser-side verification of returned PNG bytes, signature, dimensions, selected candidate and SHA-256;
 - responsive browser review for source, selected SVG, difference image, topology, candidates, metrics and downloads;
-- authenticated multipart APIs for bounded synchronous tracing, animated SVG creation and governed Lottie JSON export;
+- authenticated multipart APIs for bounded synchronous tracing, animated SVG, Lottie JSON and dotLottie v2 creation;
 - JSON-first CLI suitable for people, ChatGPT, Claude and workers;
 - deterministic, script-free animated SVG generation from validated ID-targeted motion plans;
 - opacity, translation, scale and rotation keyframes with easing and mandatory reduced-motion fallback;
@@ -38,6 +38,7 @@ The objective is not to call one automatic trace “finished”. The system insp
 - deterministic dotLottie v2 packaging with fixed ZIP metadata, DEFLATE compression, strict manifest layout and SHA-256 evidence;
 - hostile-archive inspection for traversal, duplicates, ZIP64, encryption, entry overlap, unsupported semantics and oversized declared content;
 - atomic new-file-only `evavo-dotlottie` CLI packaging and inspection with optional evidence output;
+- authenticated dotLottie API with direct archive delivery or bounded base64 wrapper evidence;
 - local stdio MCP contract 1.2 with eleven governed raster, SVG, motion and Lottie tools;
 - receipt-only Lottie MCP export and inspection with canonical allowed-root access, no-overwrite transactions and no generated JSON body in model context;
 - tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, Lottie geometry, Lottie structural output, dotLottie determinism, hostile ZIPs, MCP SDK, path-policy and transaction boundaries;
@@ -47,7 +48,7 @@ Animated SVG production is available through the browser Motion Director, core m
 
 Governed Lottie JSON export and inspection are available through the core Lottie package, CLI and HTTP API. MCP and browser review use the same governed Lottie contract.
 
-Deterministic dotLottie packaging and inspection are available through the core package and CLI. dotLottie HTTP, MCP and browser archive surfaces remain unavailable. Independent player-render and browser archive-load validation also remain unavailable.
+Deterministic dotLottie packaging and inspection are available through the core package, CLI and `POST /api/v1/motion/dotlottie`. MCP archive tools and browser archive-load validation remain unavailable. Independent player-render and browser archive-load validation also remain unavailable.
 
 All execution surfaces remain `human-review-required`. Successful processing and verification do not grant artistic, brand, accessibility or player-equivalence approval.
 
@@ -201,13 +202,16 @@ The authenticated API exposes:
 
 - `POST /api/v1/trace` for static raster reconstruction, candidate evidence and optional base64 difference PNG;
 - `POST /api/v1/motion/svg` for validated animated SVG creation from an inline or uploaded motion-v1 plan;
-- `POST /api/v1/motion/lottie` for governed path-based Lottie JSON from the same validated motion plan.
+- `POST /api/v1/motion/lottie` for governed path-based Lottie JSON from the same validated motion plan;
+- `POST /api/v1/motion/dotlottie` for deterministic dotLottie v2 packaging from the same SVG and motion inputs.
 
 All endpoints use strict bounded synchronous execution and no-store responses. Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token.
 
-The Lottie endpoint accepts one SVG up to 5 MiB and one plan up to 256 KiB, limits the generated body to 20 MiB, and supports wrapper JSON evidence or direct `video/lottie+json` delivery. Its operation-level evidence preserves `playerRenderValidation: not-yet-performed` and `dotLottiePackaging: not-yet-available` because that endpoint returns JSON rather than an archive.
+The Lottie endpoint accepts one SVG up to 5 MiB and one plan up to 256 KiB, limits the generated body to 20 MiB, and supports wrapper JSON evidence or direct `video/lottie+json` delivery. Its operation-level evidence preserves `playerRenderValidation: not-yet-performed` because source-to-player equivalence is not measured.
 
-A dotLottie HTTP endpoint is not yet exposed. See [`docs/API.md`](docs/API.md) for complete fields, limits, response shapes and error contracts.
+The dotLottie API uses the same source and plan limits, creates deterministic manifest-v2 archives up to 25 MiB, supports direct `application/zip+dotlottie` delivery, and permits wrapper base64 only through 8 MiB. Its evidence retains archive, embedded-Lottie, player-render and browser archive-load states separately.
+
+See [`docs/API.md`](docs/API.md) for complete fields, limits, response shapes and error contracts.
 
 ## Quality model
 
@@ -234,7 +238,7 @@ Detailed contracts:
 ## Repository layout
 
 ```text
-apps/web                  Next.js trace workspace, Motion Director, Lottie player review and authenticated APIs
+apps/web                  Next.js trace workspace, Motion Director, Lottie review and authenticated SVG/Lottie/dotLottie APIs
 packages/vector-core      shared job, SVG safety, geometry and topology contracts
 packages/raster-engine    guarded decoding, analysis, tracing, comparison and difference evidence
 packages/motion-engine    validated deterministic animated SVG production
