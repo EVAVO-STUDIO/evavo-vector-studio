@@ -150,7 +150,7 @@ export default function TraceWorkspace() {
   const [svgUrl, setSvgUrl] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile>("auto");
   const [candidateMode, setCandidateMode] = useState<CandidateMode>("adaptive");
-  const [maxColours, setMaxColours] = useState(PROFILE_COLOURS.auto);
+  const [maxColours, setMaxColours] = useState<number>(PROFILE_COLOURS.auto);
   const [preservePalette, setPreservePalette] = useState(true);
   const [optimise, setOptimise] = useState(true);
   const [includeDifference, setIncludeDifference] = useState(true);
