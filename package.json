@@ -31,6 +31,8 @@
     "vector:motion:validate": "pnpm vector:build && node packages/cli/dist/index.js motion:validate",
     "vector:motion:inspect": "pnpm vector:build && node packages/cli/dist/index.js motion:inspect",
     "vector:animate-svg": "pnpm vector:build && node packages/cli/dist/index.js animate-svg",
+    "vector:lottie:inspect": "pnpm vector:build && node packages/cli/dist/index.js lottie:inspect",
+    "vector:lottie:export": "pnpm vector:build && node packages/cli/dist/index.js lottie:export",
     "vector:manifest": "pnpm vector:build && node packages/cli/dist/index.js manifest",
     "vector:mcp:build": "turbo run build --filter=@evavo/vector-mcp",
     "vector:mcp": "pnpm vector:mcp:build && node packages/mcp/dist/index.js"
