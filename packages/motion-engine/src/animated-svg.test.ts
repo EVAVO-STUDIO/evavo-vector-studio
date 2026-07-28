@@ -48,6 +48,7 @@ test("creates deterministic script-free CSS motion with reduced-motion fallback"
 
 test("normalises omitted playback and frame properties", () => {
   const spec = validateAnimatedSvgMotionSpec({
+    $schema: "../../schemas/motion-v1.schema.json",
     version: "1.0",
     name: "Fade",
     durationMs: 500,
@@ -61,7 +62,7 @@ test("normalises omitted playback and frame properties", () => {
   assert.equal(spec.tracks[0]?.keyframes[0]?.scale, 1);
 });
 
-test("rejects duplicate target tracks and no-op motion", () => {
+test("rejects duplicate target tracks, no-op motion and unknown properties", () => {
   assert.throws(
     () => validateAnimatedSvgMotionSpec({
       version: "1.0",
@@ -82,6 +83,20 @@ test("rejects duplicate target tracks and no-op motion", () => {
       tracks: [{ targetId: "mark", keyframes: [{ offset: 0 }, { offset: 1 }] }],
     }),
     (error: unknown) => error instanceof MotionEngineError && error.code === "MOTION_SPEC_INVALID",
+  );
+  assert.throws(
+    () => validateAnimatedSvgMotionSpec({
+      version: "1.0",
+      name: "Typo",
+      durationMS: 500,
+      durationMs: 500,
+      tracks: [{ targetId: "mark", keyframes: [{ offset: 0, opacity: 0 }, { offset: 1, opacity: 1 }] }],
+    }),
+    (error: unknown) =>
+      error instanceof MotionEngineError &&
+      error.code === "MOTION_SPEC_INVALID" &&
+      Array.isArray(error.details?.unknownKeys) &&
+      error.details.unknownKeys.includes("durationMS"),
   );
 });
 
