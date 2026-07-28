@@ -187,6 +187,57 @@ Inspection checks EVAVO motion metadata, deterministic identity, target and keyf
 
 See [`MOTION.md`](MOTION.md) and [`../schemas/motion-v1.schema.json`](../schemas/motion-v1.schema.json) for the full v1 contract.
 
+## Governed Lottie JSON
+
+Lottie v1 translates path-based SVG geometry and one supported motion-v1 cycle into deterministic shape-layer JSON. It rejects unsupported source and motion semantics rather than approximating them.
+
+### Export Lottie JSON
+
+```powershell
+pnpm vector:lottie:export -- `
+  .\fixtures\motion\gentle-entrance.source.svg `
+  --motion .\fixtures\motion\gentle-entrance.motion.json `
+  --out .\outputs\gentle-entrance.lottie.json `
+  --evidence-out .\outputs\gentle-entrance.lottie.evidence.json `
+  --frame-rate 60 `
+  --precision 4 `
+  --name "Gentle entrance"
+```
+
+`--motion` is required. `--out` defaults to `<source>.lottie.json`. The frame rate must be an integer from 1 to 120 and precision must be an integer from 0 to 6.
+
+The initial subset supports:
+
+- path geometry, including arcs converted to cubic bezier segments;
+- compound subpaths and nonzero or even-odd filling;
+- solid fills and strokes;
+- opacity, translation, uniform scale and rotation;
+- one normal playback cycle with `forwards` or `both` fill mode;
+- static source layers outside animated targets.
+
+It rejects gradients, images, text, masks, filters, expressions, precompositions, unflattened SVG transforms, group opacity, dashed strokes, overlapping targets, repeated iterations, reverse direction and alternating playback.
+
+Lottie JSON and optional evidence commit atomically. Existing destinations and every source, plan, output or evidence path collision are rejected. The evidence file does not duplicate the Lottie JSON body.
+
+### Inspect Lottie JSON
+
+```powershell
+pnpm vector:lottie:inspect -- `
+  .\outputs\gentle-entrance.lottie.json
+```
+
+Inspection verifies canvas and timing bounds, shape-layer-only output, terminal group transforms, path cardinality, fill and stroke properties, ascending keyframes, easing arrays, and absence of assets, image layers, text, precompositions and expressions.
+
+Structural inspection is not renderer approval. Every export reports:
+
+```text
+playerRenderValidation: not-yet-performed
+dotLottiePackaging: not-yet-available
+approval: review-required
+```
+
+See [`LOTTIE.md`](LOTTIE.md) for the complete source subset, motion subset, paint-order translation and compatibility boundary.
+
 ## Machine-readable manifest
 
 ```powershell
@@ -197,13 +248,16 @@ The manifest declares:
 
 - raster contract version `1.4`;
 - motion contract version `1.0`;
+- Lottie contract version `1.0`;
 - discovery and operational commands;
 - input limits and candidate budgets;
 - render and difference-image bounds;
 - atomic new-file-only output policy;
 - animated SVG availability and supported properties;
-- mandatory reduced-motion fallback;
-- `lottieAvailable: false`;
+- governed Lottie JSON export and structural inspection availability;
+- `lottiePlayerRenderValidationAvailable: false`;
+- `dotLottieAvailable: false`;
+- mandatory reduced-motion fallback for animated SVG;
 - approval policy.
 
 Agents should inspect the manifest rather than assuming a feature is available.
@@ -212,9 +266,9 @@ Agents should inspect the manifest rather than assuming a feature is available.
 
 - `0`: command completed and every declared output was produced.
 - `1`: invocation, file-system or unexpected runtime failure.
-- `2`: governed rejection, unsafe SVG, invalid option, invalid motion plan, path collision, existing output, tracing rejection, render-comparison failure or missing requested artefact.
+- `2`: governed rejection, unsafe SVG, invalid option, invalid motion plan, path collision, existing output, tracing rejection, render-comparison failure, Lottie subset rejection or missing requested artefact.
 
-A trace can exit successfully while still reporting `renderComparison: review-required`. An animated SVG build can also succeed while reporting `approval: review-required`. Execution completion is not professional approval.
+A trace can exit successfully while still reporting `renderComparison: review-required`. Animated SVG and Lottie builds can also succeed while reporting `approval: review-required`. Execution completion is not professional approval.
 
 Expected governed errors include:
 
@@ -223,6 +277,9 @@ Expected governed errors include:
 - `MOTION_SOURCE_ALREADY_ANIMATED`;
 - `MOTION_TARGET_MISSING`;
 - `MOTION_TARGET_BASE_TRANSFORM_UNSUPPORTED`;
+- `LOTTIE_SOURCE_UNSUPPORTED`;
+- `LOTTIE_MOTION_UNSUPPORTED`;
+- `LOTTIE_OUTPUT_INVALID`;
 - `VECTOR_OUTPUT_TRANSACTION_FAILED`.
 
 ## Guardrails
@@ -233,10 +290,12 @@ Generated SVG is passed through the native safe optimiser and then through Vecto
 
 Animated SVG generation adds internal CSS only. It adds no script or external reference and refuses to stack over an existing animation system.
 
+Governed Lottie export accepts path-only geometry and records structural evidence. It does not claim independent player-render equivalence or dotLottie packaging.
+
 System fonts are disabled during SVG render comparison because traced assets should not depend on machine-specific font discovery.
 
 ## Approval boundary
 
-Multi-scale visual evidence, adaptive candidate selection, topology diagnostics, difference PNG generation and deterministic animated SVG production are operational.
+Multi-scale visual evidence, adaptive candidate selection, topology diagnostics, difference PNG generation, deterministic animated SVG production and governed Lottie JSON export are operational.
 
-Production auto-approval remains unavailable. A strong pixel match cannot prove anchor placement, compound paths, negative space, layering, brand geometry or future editability. Deterministic motion cannot prove pacing, transform origins, visual rhythm or brand character. Every trace and motion build remains review-required.
+Production auto-approval remains unavailable. A strong pixel match cannot prove anchor placement, compound paths, negative space, layering, brand geometry or future editability. Deterministic motion and structurally valid Lottie cannot prove pacing, transform origins, paint-order fidelity, player equivalence or brand character. Every trace, motion build and Lottie export remains review-required.
