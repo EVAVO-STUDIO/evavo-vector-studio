@@ -155,12 +155,14 @@ requireTokens(files.home, sources.home, [
 ]);
 requireTokens(files.readme, sources.readme, [
   "browser Lottie player preview",
-  "Independent player-render and browser archive-load validation also remain unavailable",
+  "Browser archive-load validation is available after exact archive verification",
+  "Independent player-render validation remains unavailable",
   "/api/v1/motion/lottie",
 ]);
 requireTokens(files.motionDocs, sources.motionDocs, [
   "browser Lottie player preview",
-  "independent player-render validation",
+  "Browser archive-load validation is available",
+  "independent source-to-player",
 ]);
 requireTokens(files.lottieDocs, sources.lottieDocs, [
   "browser Lottie player preview",
@@ -177,7 +179,7 @@ if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-studio-lottie-workspace-contract",
     ok: false,
-    contractVersion: "1.1",
+    contractVersion: "1.2",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -186,7 +188,7 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-lottie-workspace-contract",
   ok: true,
-  contractVersion: "1.1",
+  contractVersion: "1.2",
   player: "@lottiefiles/dotlottie-react@0.19.12",
   verifiedBoundaries: [
     "exact JSON transport verification",
@@ -197,6 +199,7 @@ process.stdout.write(`${JSON.stringify({
     "reduced-motion autoplay suppression",
     "stale-result signalling",
     "downloadable JSON and evidence",
+    "separate archive-load evidence",
     "player-equivalence non-claim",
   ],
   checkedFiles: [...checkedFiles].sort(),
