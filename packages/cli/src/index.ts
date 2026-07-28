@@ -2,6 +2,17 @@
 import { readFile } from "node:fs/promises";
 import { basename, extname, resolve } from "node:path";
 import {
+  DEFAULT_LOTTIE_FRAME_RATE,
+  DEFAULT_LOTTIE_PRECISION,
+  LottieEngineError,
+  MAX_LOTTIE_FRAME_RATE,
+  MAX_LOTTIE_PRECISION,
+  MIN_LOTTIE_FRAME_RATE,
+  createLottieFromSvgMotion,
+  inspectLottie,
+  type LottieExportOptions,
+} from "@evavo/lottie-engine";
+import {
   MotionEngineError,
   createAnimatedSvg,
   inspectAnimatedSvg,
@@ -60,6 +71,10 @@ function usage(): string {
     "  evavo-vector motion:inspect <animated.svg>",
     "  evavo-vector animate-svg <input.svg> --motion motion.json [--out output.animated.svg]",
     "                     [--evidence-out output.motion.evidence.json]",
+    "  evavo-vector lottie:inspect <input.lottie.json>",
+    "  evavo-vector lottie:export <input.svg> --motion motion.json [--out output.lottie.json]",
+    "                     [--evidence-out output.lottie.evidence.json] [--frame-rate 1..120]",
+    "                     [--precision 0..6] [--name \"Animation name\"]",
     "  evavo-vector input-policy",
     "  evavo-vector manifest",
     "  evavo-vector --version",
@@ -212,6 +227,38 @@ function traceOptions(sourcePath: string, args: readonly string[]): RasterTraceO
   };
 }
 
+function lottieOptions(args: readonly string[]): LottieExportOptions {
+  const frameRate = parseIntegerOption(args, "--frame-rate");
+  const precision = parseIntegerOption(args, "--precision");
+  if (
+    frameRate !== undefined &&
+    (frameRate < MIN_LOTTIE_FRAME_RATE || frameRate > MAX_LOTTIE_FRAME_RATE)
+  ) {
+    fail({
+      error: "VECTOR_CLI_OPTION_INVALID",
+      option: "--frame-rate",
+      value: frameRate,
+      range: [MIN_LOTTIE_FRAME_RATE, MAX_LOTTIE_FRAME_RATE],
+    }, 2);
+  }
+  if (
+    precision !== undefined &&
+    (precision < 0 || precision > MAX_LOTTIE_PRECISION)
+  ) {
+    fail({
+      error: "VECTOR_CLI_OPTION_INVALID",
+      option: "--precision",
+      value: precision,
+      range: [0, MAX_LOTTIE_PRECISION],
+    }, 2);
+  }
+  return {
+    frameRate,
+    precision,
+    name: option(args, "--name") ?? undefined,
+  };
+}
+
 function stem(sourcePath: string): string {
   const extension = extname(sourcePath);
   return extension ? sourcePath.slice(0, -extension.length) : sourcePath;
@@ -227,6 +274,10 @@ function defaultOptimisedOutput(sourcePath: string): string {
 
 function defaultAnimatedOutput(sourcePath: string): string {
   return `${stem(sourcePath)}.animated.svg`;
+}
+
+function defaultLottieOutput(sourcePath: string): string {
+  return `${stem(sourcePath)}.lottie.json`;
 }
 
 async function inspectSvgFile(input: string): Promise<void> {
@@ -400,6 +451,78 @@ async function animateSvgFile(input: string, args: readonly string[]): Promise<v
   });
 }
 
+async function inspectLottieFile(input: string): Promise<void> {
+  const inputPath = resolve(input);
+  assertExtension(inputPath, ".json", "Lottie input");
+  const source = await readFile(inputPath, "utf8");
+  const inspection = inspectLottie(source);
+  print({ command: "lottie:inspect", inputPath, ...inspection });
+  if (!inspection.valid) process.exitCode = 2;
+}
+
+async function exportLottieFile(input: string, args: readonly string[]): Promise<void> {
+  const sourcePath = resolve(input);
+  const motionPath = resolve(requiredOption(args, "--motion"));
+  const outputPath = resolve(option(args, "--out") ?? defaultLottieOutput(sourcePath));
+  const rawEvidencePath = option(args, "--evidence-out");
+  const evidenceOutputPath = rawEvidencePath ? resolve(rawEvidencePath) : null;
+
+  assertExtension(sourcePath, ".svg", "source");
+  assertExtension(motionPath, ".json", "--motion");
+  assertExtension(outputPath, ".json", "--out");
+  if (evidenceOutputPath) assertExtension(evidenceOutputPath, ".json", "--evidence-out");
+  assertDistinctPaths([
+    { label: "source", path: sourcePath },
+    { label: "motion-plan", path: motionPath },
+    { label: "lottie-output", path: outputPath },
+    ...(evidenceOutputPath ? [{ label: "lottie-evidence-output", path: evidenceOutputPath }] : []),
+  ]);
+
+  const [source, motionPlan] = await Promise.all([
+    readFile(sourcePath, "utf8"),
+    readJsonFile(motionPath),
+  ]);
+  const options = lottieOptions(args);
+  const result = createLottieFromSvgMotion(source, motionPlan, options);
+  const evidenceDocument = {
+    command: "lottie:export",
+    contractVersion: result.evidence.contractVersion,
+    sourcePath,
+    motionPath,
+    outputPath,
+    options: {
+      frameRate: options.frameRate ?? DEFAULT_LOTTIE_FRAME_RATE,
+      precision: options.precision ?? DEFAULT_LOTTIE_PRECISION,
+      name: options.name ?? null,
+    },
+    inspection: result.inspection,
+    evidence: result.evidence,
+  };
+  const receipts = await commitNewOutputFiles([
+    { path: outputPath, data: result.json, mimeType: "video/lottie+json" },
+    ...(evidenceOutputPath
+      ? [{
+          path: evidenceOutputPath,
+          data: `${JSON.stringify(evidenceDocument, null, 2)}\n`,
+          mimeType: "application/json",
+        }]
+      : []),
+  ]);
+
+  print({
+    command: "lottie:export",
+    written: true,
+    sourcePath,
+    motionPath,
+    outputs: {
+      lottieJson: receiptFor(receipts, outputPath),
+      evidence: evidenceOutputPath ? receiptFor(receipts, evidenceOutputPath) : null,
+    },
+    inspection: result.inspection,
+    evidence: result.evidence,
+  });
+}
+
 function inputPolicy(): JsonRecord {
   return {
     command: "input-policy",
@@ -419,10 +542,11 @@ function manifest(): JsonRecord {
     version: VERSION,
     contractVersion: "1.4",
     motionContractVersion: "1.0",
+    lottieContractVersion: "1.0",
     discoveryCommands: ["manifest", "input-policy"],
-    deterministicCommands: ["inspect", "motion:inspect", "motion:validate", "raster:inspect"],
+    deterministicCommands: ["inspect", "motion:inspect", "motion:validate", "lottie:inspect", "raster:inspect"],
     boundedCommands: ["trace"],
-    productionCommands: ["optimise", "trace", "animate-svg"],
+    productionCommands: ["optimise", "trace", "animate-svg", "lottie:export"],
     commands: {
       inspect: { input: "path to SVG", output: "JSON safety, geometry, topology and structure inspection" },
       optimise: { input: "path to SVG", options: { "--out": "new SVG output path" }, output: "new optimised SVG plus JSON evidence" },
@@ -449,6 +573,24 @@ function manifest(): JsonRecord {
         output: "new deterministic script-free CSS animated SVG plus optional evidence file",
         approvalState: "human-review-required",
       },
+      "lottie:inspect": {
+        input: "Lottie JSON",
+        output: "governed shape-layer, property, keyframe, asset and expression inspection",
+      },
+      "lottie:export": {
+        input: "governed path-only static SVG",
+        options: {
+          "--motion": "required v1 motion plan JSON",
+          "--out": "optional new .lottie.json path",
+          "--evidence-out": "optional new JSON evidence path",
+          "--frame-rate": { default: DEFAULT_LOTTIE_FRAME_RATE, range: [MIN_LOTTIE_FRAME_RATE, MAX_LOTTIE_FRAME_RATE] },
+          "--precision": { default: DEFAULT_LOTTIE_PRECISION, range: [0, MAX_LOTTIE_PRECISION] },
+          "--name": "optional composition name",
+        },
+        output: "new governed shape-layer Lottie JSON plus optional evidence file",
+        compatibility: "structurally inspected; independent player-render validation not yet performed",
+        approvalState: "human-review-required",
+      },
       "input-policy": { input: "none", output: "JSON accepted and pre-decode rejected raster container classes" },
     },
     inputPolicy: RASTER_INPUT_POLICY,
@@ -473,7 +615,9 @@ function manifest(): JsonRecord {
       animatedSvgAvailable: true,
       animatedSvgProperties: ["opacity", "translateX", "translateY", "scale", "rotateDeg"],
       reducedMotionFallbackRequired: true,
-      lottieAvailable: false,
+      lottieJsonExportAvailable: true,
+      lottiePlayerRenderValidationAvailable: false,
+      dotLottieAvailable: false,
       productionAutoApprovalAvailable: false,
     },
   };
@@ -508,10 +652,15 @@ async function main(): Promise<void> {
   if (command === "motion:validate") return validateMotionFile(input);
   if (command === "motion:inspect") return inspectAnimatedSvgFile(input);
   if (command === "animate-svg") return animateSvgFile(input, commandArgs);
+  if (command === "lottie:inspect") return inspectLottieFile(input);
+  if (command === "lottie:export") return exportLottieFile(input, commandArgs);
   fail(`Unknown command: ${command}\n\n${usage()}`);
 }
 
 main().catch((error: unknown) => {
+  if (error instanceof LottieEngineError) {
+    fail({ error: error.code, message: error.message, details: error.details }, 2);
+  }
   if (error instanceof MotionEngineError) {
     fail({ error: error.code, message: error.message, details: error.details }, 2);
   }
