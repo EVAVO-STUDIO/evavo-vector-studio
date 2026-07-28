@@ -9,6 +9,7 @@ import {
 import { inspectSvg, optimiseSvg, type SvgInspection } from "@evavo/vector-core";
 import { analyseDecodedRaster } from "./analysis.js";
 import { compareRasterToSvg } from "./comparison.js";
+import { createDifferenceArtifact } from "./difference.js";
 import { RasterEngineError, rasterFailure, throwIfAborted } from "./errors.js";
 import { inspectRasterHeader } from "./preflight.js";
 import { buildTraceCandidates, type TraceCandidateDefinition } from "./presets.js";
@@ -254,6 +255,15 @@ export async function traceRaster(
   source: Uint8Array,
   options: RasterTraceOptions = {},
 ): Promise<RasterTraceResult> {
+  if (options.differenceMaxDimension !== undefined && !options.includeDifferenceArtifact) {
+    throw new RasterEngineError(
+      "RASTER_OPTIONS_INVALID",
+      "differenceMaxDimension requires includeDifferenceArtifact=true.",
+      400,
+      { differenceMaxDimension: options.differenceMaxDimension },
+    );
+  }
+
   const totalStarted = performance.now();
   const decodeStarted = totalStarted;
   const prepared = await decodeAndAnalyse(source, options);
@@ -354,10 +364,21 @@ export async function traceRaster(
     });
   }
 
-  const totalFinished = performance.now();
+  const differenceStarted = performance.now();
+  const differenceArtifact = options.includeDifferenceArtifact
+    ? await createDifferenceArtifact(
+        prepared.decoded,
+        selected.svg,
+        selected.definition.id,
+        { maxDimension: options.differenceMaxDimension, signal: options.signal },
+      )
+    : null;
+  const differenceFinished = performance.now();
+  const totalFinished = differenceFinished;
+
   const evidence: RasterTraceEvidence = Object.freeze({
-    contractVersion: "1.3",
-    engine: Object.freeze({ name: "@neplex/vectorizer", adapterVersion: "0.3.1" }),
+    contractVersion: "1.4",
+    engine: Object.freeze({ name: "@neplex/vectorizer", adapterVersion: "0.4.0" }),
     analysis: prepared.analysis,
     trace: selected.definition.evidence,
     output: selected.output,
@@ -396,11 +417,13 @@ export async function traceRaster(
         twoCandidateMaximumPixels: TWO_CANDIDATE_MAXIMUM_PIXELS,
       }),
     }),
+    differenceArtifact: differenceArtifact?.evidence ?? null,
     qualityGates: Object.freeze({
       svgSafety: "passed",
       structuralValidation: "passed",
       renderComparison: selected.comparison.quality === "review" ? "review-required" : "passed",
       visualEvidenceAvailable: true,
+      differenceArtifact: differenceArtifact ? "available" : "not-requested",
       productionApproval: "review-required",
       byteStableOutputGuaranteed: false,
     }),
@@ -410,9 +433,11 @@ export async function traceRaster(
       optimise: sumTimings(completed, "optimise"),
       compare: sumTimings(completed, "compare"),
       candidateSelection: roundedDuration(selectionStarted, selectionFinished),
+      differenceArtifact: roundedDuration(differenceStarted, differenceFinished),
       total: roundedDuration(totalStarted, totalFinished),
     }),
     warnings: Object.freeze(warnings),
   });
-  return Object.freeze({ svg: selected.svg, inspection: selected.inspection, evidence });
+  const artifacts = Object.freeze(differenceArtifact ? { differencePng: differenceArtifact.png } : {});
+  return Object.freeze({ svg: selected.svg, inspection: selected.inspection, evidence, artifacts });
 }
