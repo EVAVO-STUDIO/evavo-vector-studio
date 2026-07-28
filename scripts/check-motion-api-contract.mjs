@@ -79,12 +79,16 @@ requireTokens(files.route, sources.route, [
   '"x-vector-motion-contract": MOTION_CONTRACT_VERSION',
   '"x-vector-reduced-motion": "true"',
   'normalized: normalizedMotion',
-  'lottieAvailable: false',
+  'lottieJsonExportAvailable: true',
+  'lottieEndpoint: "/api/v1/motion/lottie"',
+  'lottiePlayerRenderValidationAvailable: false',
+  'dotLottieAvailable: false',
   'approval: result.evidence.approval',
   'headers.set("cache-control", "no-store, max-age=0")',
 ]);
 forbidTokens(files.route, sources.route, [
-  "lottieAvailable: true",
+  'lottiePlayerRenderValidationAvailable: true',
+  'dotLottieAvailable: true',
   "eval(",
   "new Function(",
 ]);
@@ -101,7 +105,7 @@ requireTokens(files.apiDocs, sources.apiDocs, [
   "5 MiB",
   "256 KiB",
   "X-Vector-Motion-Id",
-  "Lottie remains unavailable",
+  "separately governed Lottie endpoint",
 ]);
 requireTokens(files.motionDocs, sources.motionDocs, [
   "motion authoring through the HTTP API",
@@ -109,11 +113,13 @@ requireTokens(files.motionDocs, sources.motionDocs, [
   "inline plan",
   "direct animated SVG",
   "browser Motion Director",
+  "Lottie HTTP API is available",
 ]);
 requireTokens(files.readme, sources.readme, [
   "/api/v1/motion/svg",
   "browser Motion Director",
   "human-review-required",
+  "/api/v1/motion/lottie",
 ]);
 requireTokens(files.page, sources.page, [
   "UI + API + CLI + MCP",
@@ -135,6 +141,7 @@ process.stdout.write(`${JSON.stringify({
   ok: true,
   motionContractVersion: "1.0",
   endpoint: "/api/v1/motion/svg",
+  lottieEndpoint: "/api/v1/motion/lottie",
   browserConsumer: "/motion",
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
