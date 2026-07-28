@@ -138,7 +138,7 @@ requireTokens(files.home, sources.home, [
 ]);
 requireTokens(files.readme, sources.readme, [
   "generate deterministic dotLottie v2",
-  "Browser archive-load validation is available after exact archive verification",
+  "browser archive-load validation is available after exact archive verification",
   "Independent player-render validation remains unavailable",
   "POST /api/v1/motion/dotlottie",
 ]);

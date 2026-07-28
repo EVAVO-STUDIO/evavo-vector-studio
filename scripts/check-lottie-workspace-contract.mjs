@@ -155,7 +155,7 @@ requireTokens(files.home, sources.home, [
 ]);
 requireTokens(files.readme, sources.readme, [
   "browser Lottie player preview",
-  "Browser archive-load validation is available after exact archive verification",
+  "browser archive-load validation is available after exact archive verification",
   "Independent player-render validation remains unavailable",
   "/api/v1/motion/lottie",
 ]);
