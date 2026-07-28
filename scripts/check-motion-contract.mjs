@@ -148,7 +148,9 @@ requireTokens(files.cli, sources.cli, [
   'option(args, "--evidence-out")',
   "createAnimatedSvg(source, motionPlan)",
   'animatedSvgAvailable: true',
-  'lottieAvailable: false',
+  'lottieJsonExportAvailable: true',
+  'lottiePlayerRenderValidationAvailable: false',
+  'dotLottieAvailable: false',
   "commitNewOutputFiles",
 ]);
 requireTokens(files.transaction, sources.transaction, [
@@ -168,10 +170,15 @@ requireTokens(files.docs, sources.docs, [
   "animate-svg",
   "new-file-only",
   "The JSON result includes the normalized plan",
-  "Lottie remains unavailable",
+  "Lottie JSON export is available",
+  "Independent player-render validation",
+  "dotLottie remain unavailable",
 ]);
 forbidTokens(files.animatedSvg, sources.animatedSvg, ["<script>", "eval(", "new Function("]);
-forbidTokens(files.cli, sources.cli, ["lottieAvailable: true"]);
+forbidTokens(files.cli, sources.cli, [
+  'lottiePlayerRenderValidationAvailable: true',
+  'dotLottieAvailable: true',
+]);
 
 if (schema?.$schema !== "https://json-schema.org/draft/2020-12/schema") {
   fail(`Motion schema must use JSON Schema 2020-12; received ${String(schema?.$schema)}`);
@@ -221,5 +228,10 @@ process.stdout.write(`${JSON.stringify({
   motionContractVersion: "1.0",
   supportedProperties: ["opacity", "translateX", "translateY", "scale", "rotateDeg"],
   normalizedPlansReusable: true,
+  lottieDerivation: {
+    coreAndCliJsonExport: true,
+    playerRenderValidation: false,
+    dotLottie: false,
+  },
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
