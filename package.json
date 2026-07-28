@@ -20,6 +20,7 @@
     "vector:inspect": "pnpm vector:build && node packages/cli/dist/index.js inspect",
     "vector:optimise": "pnpm vector:build && node packages/cli/dist/index.js optimise",
     "vector:raster:inspect": "pnpm vector:build && node packages/cli/dist/index.js raster:inspect",
+    "vector:input-policy": "pnpm vector:build && node packages/cli/dist/index.js input-policy",
     "vector:trace": "pnpm vector:build && node packages/cli/dist/index.js trace",
     "vector:manifest": "pnpm vector:build && node packages/cli/dist/index.js manifest"
   },
