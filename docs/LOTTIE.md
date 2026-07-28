@@ -6,7 +6,7 @@ The objective is not broad best-effort conversion. The exporter accepts a delibe
 
 ## Current availability
 
-Implemented in `@evavo/lottie-engine`, the `evavo-vector` CLI and the authenticated HTTP API:
+Implemented in `@evavo/lottie-engine`, the `evavo-vector` CLI, the authenticated HTTP API and MCP contract 1.2:
 
 - static SVG path geometry converted to Lottie bezier paths;
 - absolute and relative `M`, `L`, `H`, `V`, `C`, `S`, `Q`, `T`, `A`, and `Z` commands;
@@ -17,13 +17,13 @@ Implemented in `@evavo/lottie-engine`, the `evavo-vector` CLI and the authentica
 - validated easing and frame-based keyframes;
 - deterministic JSON, SHA-256 evidence, and independent structural inspection;
 - static layers for source paths outside motion targets;
-- atomic new-file-only CLI output and optional evidence JSON;
-- strict bounded API input with wrapper evidence or direct Lottie JSON delivery;
+- atomic new-file-only CLI and MCP output with optional evidence JSON;
+- HTTP wrapper evidence or direct `video/lottie+json` delivery;
+- receipt-only MCP responses that keep generated Lottie bodies out of model context;
 - explicit source-subset, motion-subset, compatibility, and approval boundaries.
 
 Not yet available:
 
-- Lottie MCP tools;
 - browser Lottie authoring or player preview;
 - independent player-render comparison;
 - dotLottie packaging;
@@ -58,7 +58,7 @@ pnpm vector:lottie:inspect -- `
 
 The CLI rejects source, plan, output, and evidence path collisions. It never replaces an existing output. Lottie JSON and optional evidence commit as one transaction or roll back together. The evidence file does not contain a duplicate copy of the Lottie JSON body.
 
-## Lottie HTTP API workflow
+## HTTP API workflow
 
 The authenticated endpoint is:
 
@@ -81,27 +81,7 @@ POST /api/v1/motion/lottie
 
 Exactly one plan source is required. Unknown or duplicate fields, malformed multipart data, invalid UTF-8, unsupported source semantics and unsupported motion are rejected.
 
-Wrapper JSON example:
-
-```powershell
-$Headers = @{ Authorization = "Bearer $env:VECTOR_API_TOKEN" }
-$Motion = Get-Content ".\fixtures\motion\gentle-entrance.motion.json" -Raw
-$Form = @{
-    file = Get-Item ".\fixtures\motion\gentle-entrance.source.svg"
-    motion = $Motion
-    frameRate = "60"
-    precision = "4"
-    name = "Gentle entrance"
-    format = "json"
-}
-$result = Invoke-RestMethod `
-    -Method Post `
-    -Uri "http://localhost:3000/api/v1/motion/lottie" `
-    -Headers $Headers `
-    -Form $Form
-```
-
-The response returns exact serialized JSON in `lottie.data`, normalized plan, structural inspection and complete evidence. The SHA-256 and byte count apply to that exact string.
+Wrapper JSON returns exact serialized JSON in `lottie.data`, normalized plan, structural inspection and complete evidence. The SHA-256 and byte count apply to that exact string.
 
 Direct output uses `format=lottie`:
 
@@ -119,6 +99,49 @@ curl.exe -X POST "http://localhost:3000/api/v1/motion/lottie" `
 The direct response uses `video/lottie+json` and retains job ID, contract, source/output SHA-256, structural-inspection state, layer and path counts, `player validation: not-performed`, `dotLottie: unavailable`, and review-required state in headers.
 
 The generated body is capped at 20 MiB. The endpoint is synchronous and does not persist files.
+
+## MCP workflow
+
+MCP contract 1.2 exposes:
+
+- `vector_export_lottie`;
+- `vector_inspect_lottie`.
+
+The exporter accepts an inline `motionPlan` or an allowed-root `motionPath`, exactly one of which is required.
+
+```json
+{
+  "inputPath": "C:\\EVAVO\\VectorAssets\\source\\mark.svg",
+  "motionPath": "C:\\EVAVO\\VectorAssets\\plans\\mark.motion.json",
+  "outputLottiePath": "C:\\EVAVO\\VectorAssets\\output\\mark.lottie.json",
+  "evidenceOutputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.lottie.evidence.json",
+  "frameRate": 60,
+  "precision": 4,
+  "name": "Gentle entrance"
+}
+```
+
+`vector_export_lottie` commits the Lottie JSON and optional evidence file atomically under new-files-only semantics. Its structured result contains file receipts, inspection, evidence and compatibility state, but not the generated animation body.
+
+Inspect a committed file with:
+
+```json
+{
+  "inputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.lottie.json"
+}
+```
+
+`vector_inspect_lottie` returns structural findings, counts, SHA-256 and either `human-review-required` or `structural-repair-required`.
+
+The MCP Lottie limits are:
+
+```text
+SVG source          5 MiB
+Motion plan         256 KiB
+Lottie input/output 20 MiB
+Frame rate          1 to 120
+Precision           0 to 6
+```
 
 ## Programmatic workflow
 
