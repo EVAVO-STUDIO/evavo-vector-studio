@@ -11,6 +11,7 @@ export const MAX_LOTTIE_PRECISION = 6;
 export const MAX_LOTTIE_CANVAS_DIMENSION = 8192;
 
 export type LottiePoint = readonly [number, number];
+export type LottieNumericValue = number | readonly number[];
 
 export type LottieBezierPath = Readonly<{
   c: boolean;
@@ -19,25 +20,25 @@ export type LottieBezierPath = Readonly<{
   o: readonly LottiePoint[];
 }>;
 
-export type LottieStaticProperty<T> = Readonly<{
+export type LottieStaticProperty<T extends LottieNumericValue> = Readonly<{
   a: 0;
   k: T;
 }>;
 
-export type LottieKeyframe<T> = Readonly<{
+export type LottieKeyframe = Readonly<{
   t: number;
-  s: readonly T[];
+  s: readonly number[];
   h?: 1;
   o?: Readonly<{ x: readonly number[]; y: readonly number[] }>;
   i?: Readonly<{ x: readonly number[]; y: readonly number[] }>;
 }>;
 
-export type LottieAnimatedProperty<T> = Readonly<{
+export type LottieAnimatedProperty = Readonly<{
   a: 1;
-  k: readonly LottieKeyframe<T>[];
+  k: readonly LottieKeyframe[];
 }>;
 
-export type LottieProperty<T> = LottieStaticProperty<T> | LottieAnimatedProperty<T>;
+export type LottieProperty<T extends LottieNumericValue> = LottieStaticProperty<T> | LottieAnimatedProperty;
 
 export type LottieLayerTransform = Readonly<{
   o: LottieProperty<number>;
