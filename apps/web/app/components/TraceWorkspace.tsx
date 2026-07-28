@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "rea
 import styles from "./TraceWorkspace.module.css";
 
 const MAX_INPUT_BYTES = 25 * 1024 * 1024;
+const DEFAULT_DIFFERENCE_MAX_DIMENSION = 512;
+const MAX_DIFFERENCE_DIMENSION = 1024;
 const PROFILE_COLOURS = {
   auto: 16,
   logo: 12,
@@ -28,6 +30,25 @@ type ComparisonSummary = {
     largestComparedDimension: number;
   };
   scales: Array<{ width: number; height: number; visualMae: number; mismatchFraction: number }>;
+};
+
+type DifferenceEvidence = {
+  kind: "visual-difference-heatmap";
+  mimeType: "image/png";
+  width: number;
+  height: number;
+  bytes: number;
+  sha256: string;
+  requestedMaxDimension: number;
+  displayAmplification: number;
+  colourMap: "white-to-red";
+  sourceSampling: "bilinear";
+  selectedCandidateId: string;
+};
+
+type DifferencePayload = DifferenceEvidence & {
+  encoding: "base64";
+  data: string;
 };
 
 type CompleteCandidate = {
@@ -77,7 +98,12 @@ type TraceEvidence = {
     eligibleCandidateIds: string[];
     reason: string;
   };
-  qualityGates: { renderComparison: "passed" | "review-required"; productionApproval: "review-required" };
+  differenceArtifact: DifferenceEvidence | null;
+  qualityGates: {
+    renderComparison: "passed" | "review-required";
+    differenceArtifact: "available" | "not-requested";
+    productionApproval: "review-required";
+  };
   warnings: Array<{ code: string; severity: string; message: string }>;
 };
 
@@ -87,6 +113,7 @@ type TraceResponse = {
   approval: "review-required";
   svg: string;
   evidence: TraceEvidence;
+  artifacts: { difference?: DifferencePayload };
 };
 
 function readableBytes(bytes: number): string {
@@ -111,6 +138,10 @@ function selectionReason(reason: string): string {
   return reason;
 }
 
+function baseName(file: File | null): string {
+  return file?.name.replace(/\.[^.]+$/, "") || "vector";
+}
+
 export default function TraceWorkspace() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -121,6 +152,8 @@ export default function TraceWorkspace() {
   const [maxColours, setMaxColours] = useState(PROFILE_COLOURS.auto);
   const [preservePalette, setPreservePalette] = useState(true);
   const [optimise, setOptimise] = useState(true);
+  const [includeDifference, setIncludeDifference] = useState(true);
+  const [differenceMaxDimension, setDifferenceMaxDimension] = useState(DEFAULT_DIFFERENCE_MAX_DIMENSION);
   const [title, setTitle] = useState("");
   const [token, setToken] = useState("");
   const [dragActive, setDragActive] = useState(false);
@@ -147,6 +180,9 @@ export default function TraceWorkspace() {
     setSvgUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [result]);
+
+  const difference = result?.artifacts.difference ?? null;
+  const differenceUrl = difference ? `data:${difference.mimeType};base64,${difference.data}` : null;
 
   function selectFile(candidate: File | undefined): void {
     if (!candidate) return;
@@ -175,6 +211,14 @@ export default function TraceWorkspace() {
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (!file || running) return;
+    if (
+      includeDifference &&
+      (!Number.isInteger(differenceMaxDimension) || differenceMaxDimension < 32 || differenceMaxDimension > MAX_DIFFERENCE_DIMENSION)
+    ) {
+      setError(`Difference maximum dimension must be an integer from 32 to ${MAX_DIFFERENCE_DIMENSION}.`);
+      return;
+    }
+
     setRunning(true);
     setError(null);
     setResult(null);
@@ -186,8 +230,11 @@ export default function TraceWorkspace() {
       form.set("maxColours", String(maxColours));
       form.set("preservePalette", String(preservePalette));
       form.set("optimise", String(optimise));
+      form.set("includeDifference", String(includeDifference));
+      if (includeDifference) form.set("differenceMaxDimension", String(differenceMaxDimension));
       form.set("format", "json");
       if (title.trim()) form.set("title", title.trim());
+
       const response = await fetch("/api/v1/trace", {
         method: "POST",
         headers: token.trim() ? { authorization: `Bearer ${token.trim()}` } : undefined,
@@ -195,6 +242,16 @@ export default function TraceWorkspace() {
       });
       const payload = (await response.json()) as TraceResponse & { error?: string; message?: string };
       if (!response.ok) throw new Error(payload.message || payload.error || `Trace failed with HTTP ${response.status}.`);
+      if (includeDifference && !payload.artifacts?.difference) {
+        throw new Error("The trace completed without the requested visual difference artefact.");
+      }
+      const payloadDifference = payload.artifacts?.difference;
+      if (
+        payloadDifference &&
+        payloadDifference.selectedCandidateId !== payload.evidence.selection.selectedCandidateId
+      ) {
+        throw new Error("The visual difference artefact does not match the selected trace candidate.");
+      }
       setResult(payload);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -204,7 +261,7 @@ export default function TraceWorkspace() {
   }
 
   return (
-    <section id="workspace" className="workspace" aria-label="Vector reconstruction workspace">
+    <section id="workspace" className="workspace" aria-label="Vector reconstruction workspace" aria-busy={running}>
       <div className="panel uploadPanel">
         <div className="panelHeading"><span>01</span><div><p>Source</p><h2>Reconstruct artwork</h2></div></div>
         <label
@@ -247,7 +304,17 @@ export default function TraceWorkspace() {
             <label className={styles.field}>Target colours
               <input type="number" min="1" max="256" value={maxColours} onChange={(event) => setMaxColours(Number(event.target.value))} />
             </label>
-            <label className={styles.field}>Accessible title
+            <label className={styles.field}>Difference max edge
+              <input
+                type="number"
+                min="32"
+                max={MAX_DIFFERENCE_DIMENSION}
+                value={differenceMaxDimension}
+                disabled={!includeDifference}
+                onChange={(event) => setDifferenceMaxDimension(Number(event.target.value))}
+              />
+            </label>
+            <label className={`${styles.field} ${styles.fieldWide}`}>Accessible title
               <input type="text" maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Optional SVG title" />
             </label>
           </div>
@@ -255,6 +322,7 @@ export default function TraceWorkspace() {
           <div className={styles.switchRow}>
             <label><input type="checkbox" checked={preservePalette} onChange={(event) => setPreservePalette(event.target.checked)} /><span>Preserve source palette</span></label>
             <label><input type="checkbox" checked={optimise} onChange={(event) => setOptimise(event.target.checked)} /><span>Safe multipass optimisation</span></label>
+            <label><input type="checkbox" checked={includeDifference} onChange={(event) => setIncludeDifference(event.target.checked)} /><span>Generate visual difference PNG</span></label>
           </div>
 
           <label className={styles.tokenField}>API token <span>required only when the deployed API is protected</span>
@@ -262,15 +330,15 @@ export default function TraceWorkspace() {
           </label>
 
           <div className={styles.submitRow}>
-            <button className={styles.submitButton} type="submit" disabled={!file || running}>{running ? "Building and comparing candidates…" : "Create governed SVG"}</button>
-            <span>{file ? `${candidateMode === "adaptive" ? "Adaptive" : "Single"} bounded reconstruction is ready.` : "Select a source to begin."}</span>
+            <button className={styles.submitButton} type="submit" disabled={!file || running}>{running ? "Building, comparing and auditing…" : "Create governed SVG"}</button>
+            <span>{file ? `${candidateMode === "adaptive" ? "Adaptive" : "Single"} reconstruction${includeDifference ? " with difference evidence" : ""} is ready.` : "Select a source to begin."}</span>
           </div>
           {error ? <p className={styles.error} role="alert">{error}</p> : null}
         </form>
       </div>
 
       <div className="panel previewPanel">
-        <div className="panelHeading"><span>02</span><div><p>Review</p><h2>Source against output</h2></div></div>
+        <div className="panelHeading"><span>02</span><div><p>Review</p><h2>Source, output and difference</h2></div></div>
         <div className={styles.comparison}>
           <figure>
             <figcaption><span>Raster source</span>{file ? readableBytes(file.size) : "Awaiting source"}</figcaption>
@@ -280,12 +348,27 @@ export default function TraceWorkspace() {
             <figcaption><span>Selected SVG</span>{result ? readableBytes(result.evidence.output.bytes) : "Not generated"}</figcaption>
             <div className={styles.checker}>{svgUrl ? <img src={svgUrl} alt="Selected SVG reconstruction" /> : <p>The selected SVG will appear here without injecting its markup into the page.</p>}</div>
           </figure>
+          <figure className={styles.differenceFigure}>
+            <figcaption>
+              <span>Visual difference</span>
+              {difference ? `${difference.width} × ${difference.height} · ${readableBytes(difference.bytes)}` : includeDifference ? "Not generated" : "Disabled"}
+            </figcaption>
+            <div className={`${styles.checker} ${styles.differenceChecker}`}>
+              {differenceUrl ? <img src={differenceUrl} alt="White-to-red visual difference heatmap" /> : <p>{includeDifference ? "The audited heatmap will appear after tracing." : "Enable visual difference generation to inspect mismatch regions."}</p>}
+            </div>
+            <div className={styles.differenceLegend}>
+              <span><i className={styles.legendWhite} /> white is a measured match</span>
+              <span><i className={styles.legendRed} /> red marks visual difference</span>
+              <small>{difference ? `${difference.displayAmplification}× display amplification · ${difference.sourceSampling} source sampling` : "Difference colours are evidence aids, not approval scores."}</small>
+            </div>
+          </figure>
         </div>
 
         <div className={styles.metrics} aria-live="polite">
           <span><b>Profile</b>{result ? `${result.evidence.trace.resolvedProfile}${result.evidence.trace.requestedProfile === "auto" ? " · auto" : " · directed"}` : "pending"}</span>
           <span><b>Geometry</b>{result ? `${result.evidence.output.estimatedAnchorCount.toLocaleString()} anchors · ${result.evidence.output.pathCount.toLocaleString()} paths` : "pending"}</span>
           <span><b>Render evidence</b>{result ? `${result.evidence.comparison.quality} · MAE ${percentage(result.evidence.comparison.aggregate.visualMae)}` : "pending"}</span>
+          <span><b>Difference</b>{difference ? `${difference.width} × ${difference.height} · audited` : includeDifference ? "pending" : "not requested"}</span>
         </div>
 
         {result ? (
@@ -296,7 +379,10 @@ export default function TraceWorkspace() {
                 <strong>Selected {result.evidence.selection.selectedCandidateId} candidate · {result.evidence.comparison.quality} render evidence</strong>
                 <span>{selectionReason(result.evidence.selection.reason)}. Compared {result.evidence.comparison.aggregate.comparedPixelCount.toLocaleString()} rendered pixels across {result.evidence.comparison.scales.length} scale{result.evidence.comparison.scales.length === 1 ? "" : "s"}. Human production approval remains required.</span>
               </div>
-              {svgUrl ? <a className={styles.download} href={svgUrl} download={`${file?.name.replace(/\.[^.]+$/, "") || "vector"}.svg`}>Download SVG</a> : null}
+              <div className={styles.downloadGroup}>
+                {svgUrl ? <a className={styles.download} href={svgUrl} download={`${baseName(file)}.svg`}>Download SVG</a> : null}
+                {differenceUrl ? <a className={styles.download} href={differenceUrl} download={`${baseName(file)}.difference.png`}>Download difference PNG</a> : null}
+              </div>
             </div>
             <dl className={styles.evidenceGrid}>
               <div><dt>Source</dt><dd>{result.evidence.analysis.source.width} × {result.evidence.analysis.source.height}</dd></div>
@@ -304,6 +390,15 @@ export default function TraceWorkspace() {
               <div><dt>Estimated anchors</dt><dd>{result.evidence.output.estimatedAnchorCount.toLocaleString()}</dd></div>
               <div><dt>Mismatch pixels</dt><dd>{percentage(result.evidence.comparison.aggregate.mismatchFraction)}</dd></div>
             </dl>
+
+            {difference ? (
+              <div className={styles.differenceEvidence}>
+                <div><small>Difference artefact</small><strong>{difference.width} × {difference.height} PNG</strong></div>
+                <span>{readableBytes(difference.bytes)}</span>
+                <code title={difference.sha256}>{difference.sha256.slice(0, 16)}…</code>
+                <span>candidate {difference.selectedCandidateId}</span>
+              </div>
+            ) : null}
 
             <div className={styles.candidateReview}>
               <div className={styles.candidateHeading}>
