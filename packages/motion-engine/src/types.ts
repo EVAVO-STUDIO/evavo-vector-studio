@@ -59,8 +59,6 @@ export type NormalizedMotionTrack = Readonly<{
   originYPercent: number;
   easing: MotionEasing;
   keyframes: readonly NormalizedMotionKeyframe[];
-  animatesOpacity: boolean;
-  animatesTransform: boolean;
 }>;
 
 export type NormalizedAnimatedSvgMotionSpec = Readonly<{
