@@ -30,8 +30,10 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify release contract before dependency installation
-        run: node scripts/check-release-contract.mjs
+      - name: Verify dependency-free contracts
+        run: |
+          node scripts/check-release-contract.mjs
+          node scripts/check-topology-contract.mjs
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
