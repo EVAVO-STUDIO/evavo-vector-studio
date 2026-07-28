@@ -178,6 +178,9 @@ function baseConfig(
 }
 
 function fidelityConfig(base: Config): Config {
+  const unusedColorIterations = base.unusedColorIterations ?? 16;
+  const keyingThreshold = base.keyingThreshold ?? 0.08;
+  const smallCircle = base.smallCircle ?? 3;
   return {
     ...base,
     filterSpeckle: clamp(base.filterSpeckle - 1, 0, 16),
@@ -188,13 +191,16 @@ function fidelityConfig(base: Config): Config {
     spliceThreshold: clamp(base.spliceThreshold - 8, 12, 90),
     pathPrecision: clamp((base.pathPrecision ?? 4) + 1, 2, 6),
     colorPrecision: clamp(base.colorPrecision + 1, 2, 8),
-    unusedColorIterations: clamp(base.unusedColorIterations + 8, 4, 48),
-    keyingThreshold: rounded(clamp(base.keyingThreshold - 0.02, 0.03, 0.2)),
-    smallCircle: clamp(base.smallCircle - 1, 1, 8),
+    unusedColorIterations: clamp(unusedColorIterations + 8, 4, 48),
+    keyingThreshold: rounded(clamp(keyingThreshold - 0.02, 0.03, 0.2)),
+    smallCircle: clamp(smallCircle - 1, 1, 8),
   };
 }
 
 function economyConfig(base: Config, preservePalette: boolean): Config {
+  const unusedColorIterations = base.unusedColorIterations ?? 16;
+  const keyingThreshold = base.keyingThreshold ?? 0.08;
+  const smallCircle = base.smallCircle ?? 3;
   return {
     ...base,
     filterSpeckle: clamp(base.filterSpeckle + 2, 0, 16),
@@ -205,9 +211,9 @@ function economyConfig(base: Config, preservePalette: boolean): Config {
     spliceThreshold: clamp(base.spliceThreshold + 12, 12, 90),
     pathPrecision: clamp((base.pathPrecision ?? 4) - 1, 2, 6),
     colorPrecision: preservePalette ? base.colorPrecision : clamp(base.colorPrecision - 1, 2, 8),
-    unusedColorIterations: clamp(base.unusedColorIterations - 8, 4, 48),
-    keyingThreshold: rounded(clamp(base.keyingThreshold + 0.03, 0.03, 0.2)),
-    smallCircle: clamp(base.smallCircle + 1, 1, 8),
+    unusedColorIterations: clamp(unusedColorIterations - 8, 4, 48),
+    keyingThreshold: rounded(clamp(keyingThreshold + 0.03, 0.03, 0.2)),
+    smallCircle: clamp(smallCircle + 1, 1, 8),
   };
 }
 
