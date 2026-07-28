@@ -235,6 +235,26 @@ The wrapper contains:
 
 The SHA-256 and byte count in evidence apply to the exact `lottie.data` string.
 
+## Browser Motion Director consumer
+
+The browser Motion Director uses wrapper JSON mode so it can verify evidence before creating a player preview or download.
+
+Before loading the returned animation, it verifies:
+
+- source byte count and SHA-256 against the selected SVG;
+- exact `lottie.data` byte count and SHA-256;
+- contract metadata and review-required state;
+- dimensions, frame rate, out point, layer count and path count;
+- empty assets and absence of expressions, image layers, text layers and precompositions;
+- normalized target order and motion-plan consistency;
+- `structuralInspection: passed`;
+- `playerRenderValidation: not-yet-performed`;
+- `dotLottiePackaging: not-yet-available`.
+
+Only verified JSON is passed to the client-only official LottieFiles player. Reduced-motion preference disables autoplay and looping. The player preview is a delivery-context check, not independent source-to-player validation.
+
+The browser exposes separate Lottie JSON and evidence downloads and marks a result stale when the source, plan, frame rate or precision changes.
+
 ## Direct Lottie response
 
 Request `format=lottie` for the exact file body:
