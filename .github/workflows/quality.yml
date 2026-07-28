@@ -115,6 +115,14 @@ jobs:
           set -o pipefail
           node scripts/check-dotlottie-workspace-contract.mjs 2>&1 | tee .ci/dotlottie-workspace-contract.log
 
+      - name: Verify durable batch contract
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          node scripts/check-batch-contract.mjs 2>&1 | tee .ci/batch-contract.log
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
