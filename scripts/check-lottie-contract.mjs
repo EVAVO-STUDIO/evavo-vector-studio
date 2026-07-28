@@ -40,6 +40,7 @@ function forbidTokens(relativePath, source, tokens) {
 
 const rootPackage = await readJson("package.json");
 const lottiePackage = await readJson("packages/lottie-engine/package.json");
+const cliPackage = await readJson("packages/cli/package.json");
 const files = {
   index: "packages/lottie-engine/src/index.ts",
   errors: "packages/lottie-engine/src/errors.ts",
@@ -51,7 +52,9 @@ const files = {
   pathTests: "packages/lottie-engine/src/path-data.test.ts",
   sourceTests: "packages/lottie-engine/src/svg-source.test.ts",
   generatorTests: "packages/lottie-engine/src/generator.test.ts",
+  cli: "packages/cli/src/index.ts",
   docs: "docs/LOTTIE.md",
+  cliDocs: "docs/CLI.md",
   workflow: ".github/workflows/quality.yml",
 };
 const sources = Object.fromEntries(
@@ -70,8 +73,17 @@ if (lottiePackage?.dependencies?.["@evavo/vector-core"] !== "workspace:*") {
 if (lottiePackage?.scripts?.test !== "tsc -p tsconfig.json && node --test dist/*.test.js") {
   errors.push("packages/lottie-engine test must compile and execute its generated tests.");
 }
+if (cliPackage?.dependencies?.["@evavo/lottie-engine"] !== "workspace:*") {
+  errors.push("packages/cli must depend on @evavo/lottie-engine through the workspace.");
+}
 if (rootPackage?.scripts?.["lottie:check"] !== "node scripts/check-lottie-contract.mjs") {
   errors.push("package.json must expose lottie:check through the dependency-free Lottie gate.");
+}
+if (rootPackage?.scripts?.["vector:lottie:inspect"] !== "pnpm vector:build && node packages/cli/dist/index.js lottie:inspect") {
+  errors.push("package.json must expose vector:lottie:inspect through the governed CLI.");
+}
+if (rootPackage?.scripts?.["vector:lottie:export"] !== "pnpm vector:build && node packages/cli/dist/index.js lottie:export") {
+  errors.push("package.json must expose vector:lottie:export through the governed CLI.");
 }
 if (!String(rootPackage?.scripts?.["build:packages"] ?? "").includes("--filter=@evavo/lottie-engine")) {
   errors.push("package.json build:packages must build @evavo/lottie-engine.");
@@ -84,7 +96,7 @@ requireTokens(files.index, sources.index, [
   'export * from "./generator.js"',
   'export * from "./inspection.js"',
   'export * from "./path-data.js"',
-  'export * from "./svg-source.js"',
+  'export { prepareSvgSourceForLottie } from "./svg-source.js"',
 ]);
 requireTokens(files.errors, sources.errors, [
   '"LOTTIE_SOURCE_UNSUPPORTED"',
@@ -103,9 +115,12 @@ requireTokens(files.pathData, sources.pathData, [
   "quadraticAsCubic",
   'const COMMAND = /^[AaCcHhLlMmQqSsTtVvZz]$/',
   '"LOTTIE_PATH_INVALID"',
+  "const upper: string = command!.toUpperCase()",
+  "const control: Point =",
 ]);
 requireTokens(files.source, sources.source, [
   "prepareSvgSourceForLottie",
+  'export type { LottiePathBounds } from "./path-data.js"',
   "SVG transforms must be flattened into path geometry",
   "Group opacity cannot be flattened without changing overlap compositing",
   "Dashed strokes are not supported by Lottie export v1",
@@ -147,12 +162,35 @@ requireTokens(files.generatorTests, sources.generatorTests, [
   "rejects playback and SVG features outside the governed v1 subset",
   'first.animation.ver, 10001',
 ]);
+requireTokens(files.cli, sources.cli, [
+  '"lottie:inspect"',
+  '"lottie:export"',
+  'requiredOption(args, "--motion")',
+  'parseIntegerOption(args, "--frame-rate")',
+  'parseIntegerOption(args, "--precision")',
+  "createLottieFromSvgMotion(source, motionPlan, options)",
+  "inspectLottie(source)",
+  'mimeType: "video/lottie+json"',
+  "commitNewOutputFiles",
+  'lottieJsonExportAvailable: true',
+  'lottiePlayerRenderValidationAvailable: false',
+  'dotLottieAvailable: false',
+]);
 requireTokens(files.docs, sources.docs, [
   "@evavo/lottie-engine",
+  "pnpm vector:lottie:export",
+  "pnpm vector:lottie:inspect",
   "playerRenderValidation: not-yet-performed",
   "dotLottiePackaging: not-yet-available",
   "Production availability will not be claimed",
   "reverse stack order",
+]);
+requireTokens(files.cliDocs, sources.cliDocs, [
+  "Governed Lottie JSON",
+  "vector:lottie:export",
+  "vector:lottie:inspect",
+  "lottiePlayerRenderValidationAvailable: false",
+  "dotLottieAvailable: false",
 ]);
 requireTokens(files.workflow, sources.workflow, [
   "Verify Lottie core contract",
@@ -160,13 +198,17 @@ requireTokens(files.workflow, sources.workflow, [
 ]);
 
 forbidTokens(files.generator, sources.generator, [
-  "playerRenderValidation: \"passed\"",
-  "dotLottiePackaging: \"available\"",
+  'playerRenderValidation: "passed"',
+  'dotLottiePackaging: "available"',
   'approval: "approved"',
   "eval(",
   "new Function(",
 ]);
 forbidTokens(files.inspection, sources.inspection, ["eval(", "new Function("]);
+forbidTokens(files.cli, sources.cli, [
+  'lottiePlayerRenderValidationAvailable: true',
+  'dotLottieAvailable: true',
+]);
 
 if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
@@ -182,6 +224,7 @@ process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-lottie-core-contract",
   ok: true,
   lottieContractVersion: "1.0",
+  surfaces: ["core", "cli"],
   supportedSubset: [
     "path geometry",
     "solid fill",
