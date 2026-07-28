@@ -23,7 +23,7 @@ The objective is not to call one automatic trace “finished”. The system insp
 - optional audited white-to-red PNG difference heatmaps with bounded dimensions and SHA-256 evidence;
 - browser-side verification of returned PNG bytes, signature, dimensions, selected candidate and SHA-256;
 - responsive browser review for source, selected SVG, difference image, topology, candidates, metrics and downloads;
-- authenticated multipart API for bounded synchronous tracing;
+- authenticated multipart APIs for bounded synchronous tracing and animated SVG creation;
 - JSON-first CLI suitable for people, ChatGPT, Claude and workers;
 - deterministic, script-free animated SVG generation from validated ID-targeted motion plans;
 - opacity, translation, scale and rotation keyframes with easing and mandatory reduced-motion fallback;
@@ -35,7 +35,7 @@ The objective is not to call one automatic trace “finished”. The system insp
 - tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, MCP SDK, path-policy and transaction boundaries;
 - dependency-free contract gates plus the GitHub Actions quality workflow source.
 
-Animated SVG production is available through the core motion package, CLI and MCP. The browser timeline/editor and motion API remain to be implemented. Lottie and dotLottie export remain unavailable until a separate validated renderer-compatibility contract exists.
+Animated SVG production is available through the core motion package, HTTP API, CLI and MCP. The browser timeline/editor remains to be implemented. Lottie and dotLottie export remain unavailable until a separate validated renderer-compatibility contract exists.
 
 ## Quick start on Windows PowerShell
 
@@ -68,7 +68,7 @@ The current browser workspace can:
 
 White regions in the heatmap are measured matches. Red regions mark visual difference using a declared display amplification. The heatmap is review evidence, not a substitute for inspecting curves, compound paths, negative space and brand geometry.
 
-Motion authoring is currently available through CLI and MCP. The browser does not yet claim a working timeline editor.
+Motion authoring is available through the API, CLI and MCP. The browser does not yet claim a working timeline editor.
 
 ## CLI
 
@@ -136,12 +136,16 @@ All tools remain `human-review-required`; successful execution records completio
 
 ## API
 
-`POST /api/v1/trace` accepts `multipart/form-data` and returns either:
+The authenticated API exposes:
 
-- JSON containing the SVG, inspection, topology, candidate evidence and optional base64 difference PNG; or
-- a direct SVG response when no separate difference artefact is requested.
+- `POST /api/v1/trace` for static raster reconstruction, candidate evidence and optional difference PNG;
+- `POST /api/v1/motion/svg` for validated animated SVG creation from an inline or uploaded motion v1 plan.
 
-Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token. Motion authoring is not yet exposed through the API. See [`docs/API.md`](docs/API.md) for the current tracing contract.
+Both support JSON evidence or direct SVG delivery where the output contract permits it. Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token.
+
+The motion endpoint limits one SVG to 5 MiB and one plan to 256 KiB, returns normalized plan and full evidence in JSON mode, and emits compact identity, hash, reduced-motion and review headers in direct SVG mode.
+
+See [`docs/API.md`](docs/API.md) for complete fields, limits, response shapes and error contracts.
 
 ## Quality model
 
@@ -182,7 +186,7 @@ Detailed contracts:
 ## Repository layout
 
 ```text
-apps/web                  Next.js tracing, evidence UI and authenticated tracing API
+apps/web                  Next.js tracing and motion APIs plus tracing evidence UI
 packages/vector-core      shared job, SVG safety, geometry and topology contracts
 packages/raster-engine    guarded decoding, analysis, tracing, comparison and difference evidence
 packages/motion-engine    validated deterministic animated SVG production
@@ -190,7 +194,7 @@ packages/cli              JSON-first tracing, optimisation and motion automation
 packages/mcp              local stdio tracing, SVG and motion tools with allowed-root policies
 schemas                   machine-readable governed production contracts
 fixtures                  deterministic raster, SVG and motion validation inputs
-scripts                   dependency-free release, topology, browser, MCP and motion gates
+scripts                   dependency-free release, topology, browser, MCP, motion and API gates
 docs                      architecture, CLI, API, MCP, motion, quality, input safety and hub records
 ```
 
@@ -198,7 +202,7 @@ docs                      architecture, CLI, API, MCP, motion, quality, input sa
 
 The EVAVO website hub integration remains a signed federated candidate. This repository does not mark itself client-released until its deployment, authentication, runtime limits and live smoke evidence are verified.
 
-The current API is a bounded synchronous tracing surface, not a durable queue. Persistent jobs, resumability, object storage, worker retries and signed hub handoff belong in the next deployment phase. The local stdio MCP server is also synchronous and bounded; it does not claim durable background execution.
+The current APIs are bounded synchronous surfaces, not durable queues. Persistent jobs, resumability, object storage, worker retries and signed hub handoff belong in the next deployment phase. The local stdio MCP server is also synchronous and bounded; it does not claim durable background execution.
 
 ## Philosophy
 
