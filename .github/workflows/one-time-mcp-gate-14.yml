@@ -1,0 +1,211 @@
+name: One-time MCP 1.4 gate integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/mcp-gate-14.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-mcp-gate-14
+  cancel-in-progress: true
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Extend permanent MCP contract gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          target = Path("scripts/check-mcp-contract.mjs")
+          source = target.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, code: str) -> None:
+              global source
+              if source.count(old) != 1:
+                  raise SystemExit(code)
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              '  dotLottieTools: "packages/mcp/src/dotlottie-tools.ts",\n',
+              '  dotLottieTools: "packages/mcp/src/dotlottie-tools.ts",\n  batchTools: "packages/mcp/src/batch-tools.ts",\n',
+              "FILES_BATCH_TOOLS_INVALID",
+          )
+          replace_once(
+              '  serverTests: "packages/mcp/src/server.test.ts",\n',
+              '  serverTests: "packages/mcp/src/server.test.ts",\n  serverBatchTests: "packages/mcp/src/server-batch.test.ts",\n  batchToolTests: "packages/mcp/src/batch-tools.test.ts",\n',
+              "FILES_BATCH_TESTS_INVALID",
+          )
+          replace_once(
+              '  dotLottieDocs: "docs/DOTLOTTIE.md",\n',
+              '  dotLottieDocs: "docs/DOTLOTTIE.md",\n  batchDocs: "docs/BATCH.md",\n',
+              "FILES_BATCH_DOCS_INVALID",
+          )
+
+          dep_anchor = '''if (mcpPackage?.dependencies?.["@evavo/lottie-engine"] !== "workspace:*") {
+            fail("packages/mcp must consume the governed Lottie engine through the workspace.");
+          }
+'''
+          dep_new = dep_anchor + '''if (mcpPackage?.dependencies?.["@evavo/job-engine"] !== "workspace:*") {
+            fail("packages/mcp must consume the durable job engine through the workspace.");
+          }
+          if (mcpPackage?.dependencies?.["@evavo/vector-jobs"] !== "workspace:*") {
+            fail("packages/mcp must consume the shared vector batch registry through the workspace.");
+          }
+'''
+          replace_once(dep_anchor, dep_new, "DEPENDENCY_ANCHOR_INVALID")
+
+          replace_once(
+              '  "vector_inspect_dotlottie",\n];',
+              '  "vector_inspect_dotlottie",\n  "vector_run_batch",\n  "vector_inspect_batch",\n];',
+              "TOOL_NAMES_INVALID",
+          )
+          replace_once(
+              '  "VECTOR_MCP_DOTLOTTIE_CONTRACT_VERSION",\n  "dotLottieOperations",',
+              '  \'VECTOR_MCP_SERVER_CONTRACT_VERSION = "1.4"\',\n  "dotLottieOperations",\n  "extendVectorMcpBatchCapabilities",\n  "registerVectorMcpBatchTools",\n  "batchOperations",',
+              "SERVER_BATCH_TOKENS_INVALID",
+          )
+
+          dot_end = '''forbidTokens(files.dotLottieTools, sources.dotLottieTools, [
+            "archiveBytes: result.bytes",
+            "bytes: result.bytes",
+            "lottieJson: input.source",
+            'playerRenderValidation: "passed"',
+            'browserArchiveLoadValidation: "passed"',
+            'approval: "approved"',
+          ]);
+'''
+          batch_block = dot_end + '''
+          requireTokens(files.batchTools, sources.batchTools, [
+            'VECTOR_MCP_BATCH_CONTRACT_VERSION = "1.0"',
+            "VECTOR_MCP_BATCH_MAX_ITEMS = 100",
+            '"vector_run_batch"',
+            '"vector_inspect_batch"',
+            "createVectorMcpBatchOperations",
+            "registerVectorMcpBatchTools",
+            "extendVectorMcpBatchCapabilities",
+            "runDurableBatch",
+            "inspectDurableBatch",
+            "createVectorBatchOperationRegistry",
+            "extra.signal",
+            "itemOffset",
+            "itemLimit",
+            "eventLimit",
+            "generatedBodiesInModelContext: false",
+            "hostedBackgroundQueue: false",
+          ]);
+          forbidTokens(files.batchTools, sources.batchTools, [
+            "svg: result.svg",
+            "differencePng: result",
+            "archiveBytes: result",
+            'hostedBackgroundQueue: true',
+            'approval: "approved"',
+          ]);
+'''
+          replace_once(dot_end, batch_block, "BATCH_TOOL_BLOCK_INVALID")
+
+          replace_once(
+              '  "LottieEngineError",\n',
+              '  "BatchEngineError",\n  "LottieEngineError",\n',
+              "ERROR_MAPPING_INVALID",
+          )
+
+          server_tests_end = '''  '"VECTOR_MCP_OUTPUT_EXISTS"',
+          ]);
+'''
+          tests_block = server_tests_end + '''requireTokens(files.serverBatchTests, sources.serverBatchTests, [
+            "InMemoryTransport.createLinkedPair()",
+            "VECTOR_MCP_BATCH_CONTRACT_VERSION",
+            "VECTOR_MCP_BATCH_MAX_ITEMS",
+            "VECTOR_MCP_BATCH_TOOL_NAMES",
+            'name: "vector_run_batch"',
+            'name: "vector_inspect_batch"',
+            "itemOffset",
+            "itemLimit",
+            "eventLimit",
+            "item-reused",
+            '"VECTOR_MCP_BATCH_TOO_LARGE"',
+            "doesNotMatch(JSON.stringify(firstPayload), /<svg",
+          ]);
+          requireTokens(files.batchToolTests, sources.batchToolTests, [
+            "AbortController",
+            "VECTOR_MCP_CANCELLED",
+            "retryable",
+            ".evavo-vector-jobs",
+            'error.code === "ENOENT"',
+          ]);
+'''
+          replace_once(server_tests_end, tests_block, "BATCH_TEST_BLOCK_INVALID")
+
+          replace_once(
+              '  "MCP contract version `1.3`",',
+              '  "MCP contract version `1.4`",',
+              "DOC_VERSION_TOKEN_INVALID",
+          )
+          replace_once(
+              '  "vector_inspect_dotlottie",\n  "VECTOR_MCP_ALLOWED_ROOTS",',
+              '  "vector_inspect_dotlottie",\n  "vector_run_batch",\n  "vector_inspect_batch",\n  "100 items",\n  "paginated",\n  "hosted background queue",\n  "VECTOR_MCP_ALLOWED_ROOTS",',
+              "DOC_BATCH_TOKENS_INVALID",
+          )
+
+          dot_docs = '''requireTokens(files.dotLottieDocs, sources.dotLottieDocs, [
+            "vector_package_dotlottie",
+            "vector_inspect_dotlottie",
+            "browserArchiveLoadValidation: not-yet-performed",
+          ]);
+'''
+          batch_docs = dot_docs + '''requireTokens(files.batchDocs, sources.batchDocs, [
+            "MCP contract `1.4`",
+            "vector_run_batch",
+            "vector_inspect_batch",
+            "100 items",
+            "itemOffset",
+            "itemLimit",
+            "eventLimit",
+            "not a hosted background queue",
+          ]);
+'''
+          replace_once(dot_docs, batch_docs, "BATCH_DOC_BLOCK_INVALID")
+
+          replace_once(
+              '  "vector_inspect_dotlottie",\n  "MCP contract `1.3`",',
+              '  "vector_inspect_dotlottie",\n  "vector_run_batch",\n  "vector_inspect_batch",\n  "MCP contract `1.4`",',
+              "README_BATCH_TOKENS_INVALID",
+          )
+          source = source.replace('mcpContractVersion: "1.3"', 'mcpContractVersion: "1.4"')
+
+          target.write_text(source, encoding="utf-8")
+          PY
+          grep -Fq 'VECTOR_MCP_BATCH_MAX_ITEMS = 100' scripts/check-mcp-contract.mjs
+          grep -Fq 'server-batch.test.ts' scripts/check-mcp-contract.mjs
+          grep -Fq 'mcpContractVersion: "1.4"' scripts/check-mcp-contract.mjs
+          git diff --check
+
+      - name: Commit gate and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-mcp-gate-14.yml \
+            .github/mcp-gate-14.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "test(mcp): govern durable batch contract 1.4"
+          git pull --rebase origin main
+          git push origin HEAD:main
