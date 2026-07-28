@@ -6,7 +6,7 @@ The objective is not broad best-effort conversion. The exporter accepts a delibe
 
 ## Current availability
 
-Implemented in `@evavo/lottie-engine`:
+Implemented in `@evavo/lottie-engine` and the `evavo-vector` CLI:
 
 - static SVG path geometry converted to Lottie bezier paths;
 - absolute and relative `M`, `L`, `H`, `V`, `C`, `S`, `Q`, `T`, `A`, and `Z` commands;
@@ -17,11 +17,11 @@ Implemented in `@evavo/lottie-engine`:
 - validated easing and frame-based keyframes;
 - deterministic JSON, SHA-256 evidence, and independent structural inspection;
 - static layers for source paths outside motion targets;
-- explicit source-subset, motion-subset, and approval boundaries.
+- atomic new-file-only CLI output and optional evidence JSON;
+- explicit source-subset, motion-subset, compatibility, and approval boundaries.
 
 Not yet available:
 
-- Lottie CLI commands;
 - Lottie HTTP API or MCP tools;
 - browser Lottie authoring or player preview;
 - independent player-render comparison;
@@ -30,6 +30,32 @@ Not yet available:
 - repeated, reversed, or alternating playback encoded into the exported composition.
 
 These features are not silently approximated.
+
+## CLI workflow
+
+Create governed Lottie JSON and a separate evidence record:
+
+```powershell
+pnpm vector:lottie:export -- `
+  .\fixtures\motion\gentle-entrance.source.svg `
+  --motion .\fixtures\motion\gentle-entrance.motion.json `
+  --out .\outputs\gentle-entrance.lottie.json `
+  --evidence-out .\outputs\gentle-entrance.lottie.evidence.json `
+  --frame-rate 60 `
+  --precision 4 `
+  --name "Gentle entrance"
+```
+
+Inspect any Lottie JSON against the governed structural subset:
+
+```powershell
+pnpm vector:lottie:inspect -- `
+  .\outputs\gentle-entrance.lottie.json
+```
+
+`--motion` is required. `--out` defaults to `<source>.lottie.json`. The frame rate must be an integer from 1 to 120 and precision must be an integer from 0 to 6.
+
+The CLI rejects source, plan, output, and evidence path collisions. It never replaces an existing output. Lottie JSON and optional evidence commit as one transaction or roll back together. The evidence file does not contain a duplicate copy of the Lottie JSON body.
 
 ## Programmatic workflow
 
