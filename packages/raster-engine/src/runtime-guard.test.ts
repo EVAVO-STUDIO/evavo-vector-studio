@@ -15,18 +15,19 @@ function controlledTimer(): Readonly<{
   let callback: (() => void) | null = null;
   let wasCleared = false;
   const handle = { unref: () => undefined } as unknown as ReturnType<typeof setTimeout>;
+  const timer: RasterRuntimeTimer = Object.freeze({
+    now: () => 1_700_000_000_000,
+    setTimeout: (next: () => void, _milliseconds: number) => {
+      callback = next;
+      return handle;
+    },
+    clearTimeout: (_handle: ReturnType<typeof setTimeout>) => {
+      wasCleared = true;
+      callback = null;
+    },
+  });
   return Object.freeze({
-    timer: Object.freeze({
-      now: () => 1_700_000_000_000,
-      setTimeout: (next) => {
-        callback = next;
-        return handle;
-      },
-      clearTimeout: () => {
-        wasCleared = true;
-        callback = null;
-      },
-    }),
+    timer,
     fire: () => callback?.(),
     cleared: () => wasCleared,
   });
