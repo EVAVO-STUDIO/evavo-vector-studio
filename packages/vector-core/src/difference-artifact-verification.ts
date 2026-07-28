@@ -160,7 +160,10 @@ export async function verifyDifferenceArtifactPayload(
       "This runtime cannot verify the difference artefact SHA-256.",
     );
   }
-  const digest = new Uint8Array(await cryptoApi.subtle.digest("SHA-256", bytes));
+  const digestInput = Uint8Array.from(bytes);
+  const digest = new Uint8Array(
+    await cryptoApi.subtle.digest("SHA-256", digestInput.buffer),
+  );
   const receivedSha256 = bytesToHex(digest);
   if (receivedSha256 !== expectedSha256) {
     throw new DifferenceArtifactVerificationError(
