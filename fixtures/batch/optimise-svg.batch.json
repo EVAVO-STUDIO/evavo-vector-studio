@@ -1,0 +1,18 @@
+{
+  "$schema": "https://evavo.com.au/schemas/vector-studio/batch-v1.schema.json",
+  "version": "1.0",
+  "id": "optimise-svg-fixture",
+  "name": "Optimise governed SVG fixture",
+  "failureMode": "continue",
+  "items": [
+    {
+      "id": "gentle-entrance-source",
+      "operation": "optimise-svg",
+      "spec": {
+        "inputPath": "fixtures/motion/gentle-entrance.source.svg",
+        "outputPath": "outputs/batch/gentle-entrance.optimised.svg",
+        "evidenceOutputPath": "outputs/batch/gentle-entrance.optimised.evidence.json"
+      }
+    }
+  ]
+}
