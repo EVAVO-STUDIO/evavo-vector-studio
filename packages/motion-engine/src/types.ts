@@ -31,6 +31,7 @@ export type MotionTrack = Readonly<{
 }>;
 
 export type AnimatedSvgMotionSpec = Readonly<{
+  $schema?: string;
   version: "1.0";
   name: string;
   durationMs: number;
