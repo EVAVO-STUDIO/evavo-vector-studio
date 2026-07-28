@@ -35,14 +35,19 @@ The objective is not to call one automatic trace “finished”. The system insp
 - authenticated Lottie HTTP API with strict fields, bounded inputs and outputs, exact serialized JSON delivery and compact evidence headers;
 - browser Lottie player preview through the official LottieFiles React player after exact JSON, source hash, output hash and structural evidence verification;
 - reduced-motion-aware Lottie autoplay suppression, stale-result signalling, replay controls and separate JSON and evidence downloads;
+- deterministic dotLottie v2 packaging with fixed ZIP metadata, DEFLATE compression, strict manifest layout and SHA-256 evidence;
+- hostile-archive inspection for traversal, duplicates, ZIP64, encryption, entry overlap, unsupported semantics and oversized declared content;
+- atomic new-file-only `evavo-dotlottie` CLI packaging and inspection with optional evidence output;
 - local stdio MCP contract 1.2 with eleven governed raster, SVG, motion and Lottie tools;
 - receipt-only Lottie MCP export and inspection with canonical allowed-root access, no-overwrite transactions and no generated JSON body in model context;
-- tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, Lottie geometry, Lottie structural output, MCP SDK, path-policy and transaction boundaries;
+- tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, Lottie geometry, Lottie structural output, dotLottie determinism, hostile ZIPs, MCP SDK, path-policy and transaction boundaries;
 - dependency-free contract gates plus the GitHub Actions quality workflow.
 
 Animated SVG production is available through the browser Motion Director, core motion package, HTTP API, CLI and MCP.
 
-Governed Lottie JSON export and inspection are available through the core Lottie package, CLI and HTTP API. MCP and browser review use the same governed Lottie contract. Independent player-render validation remains unavailable, and dotLottie packaging remains unavailable.
+Governed Lottie JSON export and inspection are available through the core Lottie package, CLI and HTTP API. MCP and browser review use the same governed Lottie contract.
+
+Deterministic dotLottie packaging and inspection are available through the core package and CLI. dotLottie HTTP, MCP and browser archive surfaces remain unavailable. Independent player-render and browser archive-load validation also remain unavailable.
 
 All execution surfaces remain `human-review-required`. Successful processing and verification do not grant artistic, brand, accessibility or player-equivalence approval.
 
@@ -105,6 +110,8 @@ Open `/motion` to author motion against a governed, ID-structured SVG. The brows
 
 The animated-SVG editor uses Blob-backed `<img>` previews rather than injecting returned SVG markup into the application document. The Lottie preview uses `@lottiefiles/dotlottie-react` with the exact verified JSON string. Neither preview grants approval: the Lottie player surface is a delivery-context check, not independent source-to-player validation.
 
+Browser dotLottie archive generation and archive-load validation are not yet exposed.
+
 ## CLI
 
 ```powershell
@@ -143,12 +150,21 @@ pnpm vector:lottie:export -- `
   --evidence-out .\outputs\gentle-entrance.lottie.evidence.json
 pnpm vector:lottie:inspect -- .\outputs\gentle-entrance.lottie.json
 
+# Package and inspect deterministic dotLottie v2
+pnpm vector:dotlottie:package -- `
+  .\outputs\gentle-entrance.lottie.json `
+  --out .\outputs\gentle-entrance.lottie `
+  --animation-id gentle-entrance `
+  --evidence-out .\outputs\gentle-entrance.dotlottie.evidence.json
+pnpm vector:dotlottie:inspect -- .\outputs\gentle-entrance.lottie
+pnpm vector:dotlottie:capabilities
+
 # Print machine-readable contracts
 pnpm vector:input-policy
 pnpm vector:manifest
 ```
 
-CLI output commands use atomic new-file-only transactions. Existing destinations, source/output collisions and multi-output collisions are rejected. See [`docs/CLI.md`](docs/CLI.md), [`docs/MOTION.md`](docs/MOTION.md) and [`docs/LOTTIE.md`](docs/LOTTIE.md).
+CLI output commands use atomic new-file-only transactions. Existing destinations, source/output collisions and multi-output collisions are rejected. See [`docs/CLI.md`](docs/CLI.md), [`docs/MOTION.md`](docs/MOTION.md), [`docs/LOTTIE.md`](docs/LOTTIE.md) and [`docs/DOTLOTTIE.md`](docs/DOTLOTTIE.md).
 
 ## Local MCP automation
 
@@ -177,7 +193,7 @@ MCP inputs must be existing regular files beneath a configured canonical root. O
 
 `vector_trace_raster` supports compact `summary` and complete `full` evidence. Motion and Lottie plans may be supplied inline or through allowed-root JSON files. `vector_export_lottie` creates Lottie JSON and optional evidence atomically; `vector_inspect_lottie` checks the committed result. The Lottie MCP contract never places generated Lottie JSON into model context.
 
-Every MCP operation remains `human-review-required`; successful execution records completion and evidence, not artistic or player approval. See [`docs/MCP.md`](docs/MCP.md).
+MCP dotLottie archive packaging is not yet exposed. Every MCP operation remains `human-review-required`; successful execution records completion and evidence, not artistic or player approval. See [`docs/MCP.md`](docs/MCP.md).
 
 ## API
 
@@ -189,19 +205,21 @@ The authenticated API exposes:
 
 All endpoints use strict bounded synchronous execution and no-store responses. Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token.
 
-The Lottie endpoint accepts one SVG up to 5 MiB and one plan up to 256 KiB, limits the generated body to 20 MiB, and supports wrapper JSON evidence or direct `video/lottie+json` delivery. Its evidence preserves `playerRenderValidation: not-yet-performed` and `dotLottiePackaging: not-yet-available`.
+The Lottie endpoint accepts one SVG up to 5 MiB and one plan up to 256 KiB, limits the generated body to 20 MiB, and supports wrapper JSON evidence or direct `video/lottie+json` delivery. Its operation-level evidence preserves `playerRenderValidation: not-yet-performed` and `dotLottiePackaging: not-yet-available` because that endpoint returns JSON rather than an archive.
 
-See [`docs/API.md`](docs/API.md) for complete fields, limits, response shapes and error contracts.
+A dotLottie HTTP endpoint is not yet exposed. See [`docs/API.md`](docs/API.md) for complete fields, limits, response shapes and error contracts.
 
 ## Quality model
 
-A trace, animated SVG build or Lottie export can finish successfully while remaining `review-required`.
+A trace, animated SVG build, Lottie JSON export or dotLottie package can finish successfully while remaining `review-required`.
 
 The tracing engine may choose a lower-complexity candidate only when it remains inside explicit visual-cost, mismatch and aspect-ratio tolerances relative to the best visual candidate. If every candidate requires review, the best measured visual result wins rather than sacrificing fidelity for smaller geometry.
 
 Every trace retains exact settings, attempted candidates, selected and best-visual IDs, geometry and topology counts, multi-scale render metrics, difference artefact evidence, warnings and timings. Animated SVG retains normalized playback, target and keyframe counts, hashes, deterministic identity, reduced-motion and script-free safety evidence. Lottie retains source and output hashes, normalized motion, dimensions, frame rate, layer and path counts, structural inspection and exact compatibility non-claims.
 
-A base64 difference PNG, deterministic CSS animation, structurally valid Lottie file or successful browser player load cannot prove deliberate Bézier placement, compound-path quality, future editability, motion direction, player equivalence or brand fidelity. Production auto-approval therefore remains unavailable.
+Every dotLottie package retains source and embedded JSON hashes, exact manifest, archive hash, entry order, compressed and uncompressed byte totals, deterministic ZIP policy, archive inspection, embedded-Lottie inspection and player/browser validation non-claims.
+
+A base64 difference PNG, deterministic CSS animation, structurally valid Lottie file, deterministic dotLottie archive or successful browser player load cannot prove deliberate Bézier placement, compound-path quality, future editability, motion direction, player equivalence or brand fidelity. Production auto-approval therefore remains unavailable.
 
 Detailed contracts:
 
@@ -209,6 +227,7 @@ Detailed contracts:
 - [`docs/INPUT-SAFETY.md`](docs/INPUT-SAFETY.md)
 - [`docs/MOTION.md`](docs/MOTION.md)
 - [`docs/LOTTIE.md`](docs/LOTTIE.md)
+- [`docs/DOTLOTTIE.md`](docs/DOTLOTTIE.md)
 - [`docs/MCP.md`](docs/MCP.md)
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
@@ -219,12 +238,12 @@ apps/web                  Next.js trace workspace, Motion Director, Lottie playe
 packages/vector-core      shared job, SVG safety, geometry and topology contracts
 packages/raster-engine    guarded decoding, analysis, tracing, comparison and difference evidence
 packages/motion-engine    validated deterministic animated SVG production
-packages/lottie-engine    governed path-based Lottie JSON generation and structural inspection
-packages/cli              JSON-first tracing, optimisation, motion and Lottie automation
+packages/lottie-engine    governed Lottie JSON plus deterministic dotLottie packaging and inspection
+packages/cli              JSON-first tracing, optimisation, motion, Lottie and dotLottie automation
 packages/mcp              local stdio tracing, SVG, motion and Lottie tools with allowed-root policies
 schemas                   machine-readable governed production contracts
-fixtures                  deterministic raster, SVG, motion and Lottie validation inputs
-scripts                   dependency-free release, topology, browser, MCP, motion, Lottie, API and workspace gates
+fixtures                  deterministic raster, SVG, motion, Lottie and archive validation inputs
+scripts                   dependency-free release, topology, browser, MCP, motion, Lottie, dotLottie, API and workspace gates
 docs                      architecture and production contracts
 ```
 
