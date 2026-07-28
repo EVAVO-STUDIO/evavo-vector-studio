@@ -85,7 +85,11 @@ jobs:
 
       - name: Verify browser Lottie contract
         if: ${{ !cancelled() }}
-        run: node scripts/check-lottie-workspace-contract.mjs
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          node scripts/check-lottie-workspace-contract.mjs 2>&1 | tee .ci/lottie-workspace-contract.log
 
       - name: Verify dotLottie archive contract
         if: ${{ !cancelled() }}
@@ -102,6 +106,14 @@ jobs:
           mkdir -p .ci
           set -o pipefail
           node scripts/check-dotlottie-api-contract.mjs 2>&1 | tee .ci/dotlottie-api-contract.log
+
+      - name: Verify browser dotLottie contract
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          node scripts/check-dotlottie-workspace-contract.mjs 2>&1 | tee .ci/dotlottie-workspace-contract.log
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
