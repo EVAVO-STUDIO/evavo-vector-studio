@@ -11,7 +11,10 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "vector:inspect": "pnpm --filter @evavo/vector-cli exec evavo-vector inspect",
+    "vector:optimise": "pnpm --filter @evavo/vector-cli exec evavo-vector optimise",
+    "vector:manifest": "pnpm --filter @evavo/vector-cli exec evavo-vector manifest"
   },
   "devDependencies": {
     "turbo": "^2.5.6",
