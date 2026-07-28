@@ -1,3 +1,5 @@
+export * from "./svg.js";
+
 export type VectorJobKind = "logo" | "icon" | "line-art" | "illustration" | "photo";
 export type VectorOutput = "svg" | "animated-svg" | "lottie";
 export type VectorJobStatus = "queued" | "inspecting" | "tracing" | "refining" | "validating" | "complete" | "rejected";
