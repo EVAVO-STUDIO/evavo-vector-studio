@@ -35,6 +35,7 @@ jobs:
           node scripts/check-release-contract.mjs
           node scripts/check-topology-contract.mjs
           node scripts/check-browser-evidence-contract.mjs
+          node scripts/check-mcp-contract.mjs
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
