@@ -1,0 +1,179 @@
+name: One-time batch path integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/batch-path-integration.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-batch-path-integration
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply canonical path integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          runner = Path("packages/job-engine/src/runner.ts")
+          source = runner.read_text(encoding="utf-8")
+          old = 'import { readBatchManifest } from "./manifest.js";\n'
+          new = old + 'import { canonicalBatchRoot } from "./path-policy.js";\n'
+          if source.count(old) != 1 or 'canonicalBatchRoot } from "./path-policy.js"' in source:
+              raise SystemExit("RUNNER_PATH_IMPORT_INVALID")
+          source = source.replace(old, new, 1)
+          old = '''  const rootPath = path.resolve(
+            options.rootPath ?? path.dirname(manifestFile.path),
+          );'''
+          new = '''  const rootPath = await canonicalBatchRoot(
+            options.rootPath ?? path.dirname(manifestFile.path),
+          );'''
+          if source.count(old) != 1:
+              raise SystemExit("RUNNER_ROOT_REPLACEMENT_INVALID")
+          runner.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          inspection = Path("packages/job-engine/src/inspection.ts")
+          source = inspection.read_text(encoding="utf-8")
+          old = 'import { BatchEngineError } from "./errors.js";\n'
+          new = old + 'import { canonicalBatchRoot } from "./path-policy.js";\n'
+          if source.count(old) != 1 or 'canonicalBatchRoot } from "./path-policy.js"' in source:
+              raise SystemExit("INSPECTION_PATH_IMPORT_INVALID")
+          source = source.replace(old, new, 1)
+          old = '''  const paths = batchJobPaths(
+            path.resolve(options.rootPath),
+            options.jobId,
+            options.stateRootPath,
+          );'''
+          new = '''  const rootPath = await canonicalBatchRoot(options.rootPath);
+          const paths = batchJobPaths(
+            rootPath,
+            options.jobId,
+            options.stateRootPath,
+          );'''
+          if source.count(old) != 1:
+              raise SystemExit("INSPECTION_ROOT_REPLACEMENT_INVALID")
+          inspection.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          operations = Path("packages/cli/src/batch-operations.ts")
+          source = operations.read_text(encoding="utf-8")
+          old = '''  BatchEngineError,
+            type BatchOperationContext,'''
+          new = '''  BatchEngineError,
+            createBatchPathPolicy,
+            type BatchOperationContext,'''
+          if source.count(old) != 1 or "createBatchPathPolicy," in source:
+              raise SystemExit("OPERATIONS_PATH_IMPORT_INVALID")
+          source = source.replace(old, new, 1)
+          old = '''async function descriptor(
+            context: BatchOperationContext,
+            inputPaths: readonly string[],
+            outputPaths: readonly string[],
+          ): Promise<BatchOperationDescriptor> {
+            const hash = createHash("sha256");
+            hash.update(context.item.operation, "utf8");
+            hash.update("\\0", "utf8");
+            hash.update(JSON.stringify(stableValue(context.item.spec)), "utf8");
+            let totalInputBytes = 0;
+            for (const inputPath of inputPaths) {
+              const bytes = await readFile(inputPath);
+              totalInputBytes += bytes.byteLength;
+              hash.update("\\0", "utf8");
+              hash.update(path.relative(context.rootPath, inputPath), "utf8");
+              hash.update("\\0", "utf8");
+              hash.update(bytes);
+            }
+            return Object.freeze({
+              revision: hash.digest("hex"),
+              inputPaths: Object.freeze([...inputPaths]),
+              outputPaths: Object.freeze([...outputPaths]),
+              summary: Object.freeze({ totalInputBytes }),
+            });
+          }'''
+          new = '''async function descriptor(
+            context: BatchOperationContext,
+            inputPaths: readonly string[],
+            outputPaths: readonly string[],
+          ): Promise<BatchOperationDescriptor> {
+            const policy = await createBatchPathPolicy(context.rootPath);
+            const canonicalInputPaths = await Promise.all(
+              inputPaths.map((value) => policy.resolveInputFile(value)),
+            );
+            const canonicalOutputPaths = await Promise.all(
+              outputPaths.map((value) => policy.resolveOutputPath(value)),
+            );
+            policy.assertDistinct([
+              ...canonicalInputPaths,
+              ...canonicalOutputPaths,
+            ]);
+
+            const hash = createHash("sha256");
+            hash.update(context.item.operation, "utf8");
+            hash.update("\\0", "utf8");
+            hash.update(JSON.stringify(stableValue(context.item.spec)), "utf8");
+            let totalInputBytes = 0;
+            for (const inputPath of canonicalInputPaths) {
+              const bytes = await readFile(inputPath);
+              totalInputBytes += bytes.byteLength;
+              hash.update("\\0", "utf8");
+              hash.update(path.relative(policy.root, inputPath), "utf8");
+              hash.update("\\0", "utf8");
+              hash.update(bytes);
+            }
+            return Object.freeze({
+              revision: hash.digest("hex"),
+              inputPaths: Object.freeze(canonicalInputPaths),
+              outputPaths: Object.freeze(canonicalOutputPaths),
+              summary: Object.freeze({
+                totalInputBytes,
+                canonicalRoot: policy.root,
+              }),
+            });
+          }'''
+          if source.count(old) != 1:
+              raise SystemExit("OPERATIONS_DESCRIPTOR_REPLACEMENT_INVALID")
+          operations.write_text(source.replace(old, new, 1), encoding="utf-8")
+          PY
+          git diff --check
+
+      - name: Install workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Verify path-integrated packages
+        run: |
+          pnpm --filter @evavo/job-engine lint
+          pnpm --filter @evavo/job-engine test
+          pnpm --filter @evavo/vector-cli lint
+          pnpm --filter @evavo/vector-cli test
+
+      - name: Commit integration and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-batch-path-integration.yml \
+            .github/batch-path-integration.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "fix(jobs): enforce canonical batch paths"
+          git pull --rebase origin main
+          pnpm --filter @evavo/job-engine test
+          pnpm --filter @evavo/vector-cli test
+          git push origin HEAD:main
