@@ -1,11 +1,16 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { RasterRuntimeGuard } from "@evavo/raster-engine";
+import {
+  extendVectorMcpDotLottieCapabilities,
+  registerVectorMcpDotLottieTools,
+  VECTOR_MCP_DOTLOTTIE_CONTRACT_VERSION,
+  type VectorMcpDotLottieOperations,
+} from "./dotlottie-tools.js";
 import { vectorMcpFailure } from "./errors.js";
 import {
   extendVectorMcpCapabilities,
   registerVectorMcpLottieTools,
-  VECTOR_MCP_PUBLIC_CONTRACT_VERSION,
   type VectorMcpLottieOperations,
 } from "./lottie-tools.js";
 import {
@@ -23,6 +28,7 @@ export type VectorMcpServerBundle = Readonly<{
   server: McpServer;
   operations: VectorMcpOperations;
   lottieOperations: VectorMcpLottieOperations;
+  dotLottieOperations: VectorMcpDotLottieOperations;
   pathPolicy: VectorMcpPathPolicy;
 }>;
 
@@ -92,14 +98,15 @@ export async function createVectorMcpServer(
     },
     {
       instructions: [
-        `EVAVO Vector Studio MCP contract ${VECTOR_MCP_PUBLIC_CONTRACT_VERSION}.`,
+        `EVAVO Vector Studio MCP contract ${VECTOR_MCP_DOTLOTTIE_CONTRACT_VERSION}.`,
         "Call vector_capabilities and vector_input_policy before the first raster trace in a workspace.",
         "Raster tools accept one static image at a time and never flatten animation frames or TIFF pages.",
         "Motion tools accept a validated inline plan or one JSON plan file and produce script-free CSS animated SVG.",
         "Lottie tools accept the governed path-based SVG subset and create or inspect Lottie JSON without placing generated animation bodies in model context.",
+        "dotLottie tools package or inspect deterministic manifest-v2 archives without placing archive bytes or embedded animation JSON in model context.",
         "All filesystem paths must remain within the configured allowed roots.",
         "Output tools create new files only, never overwrite, and commit related outputs atomically.",
-        "Trace, motion and Lottie completion are not production approval. Inspect render, topology, editability, timing, player compatibility and brand fidelity evidence before publication.",
+        "Trace, motion, Lottie and dotLottie completion are not production approval. Inspect render, topology, editability, timing, archive safety, player compatibility and brand fidelity evidence before publication.",
       ].join(" "),
     },
   );
@@ -108,10 +115,13 @@ export async function createVectorMcpServer(
     "vector_capabilities",
     {
       title: "Vector Studio Capabilities",
-      description: "Return the current MCP, filesystem, tracing, motion, Lottie, output and approval contract without reading a file.",
+      description: "Return the current MCP, filesystem, tracing, motion, Lottie, dotLottie, output and approval contract without reading a file.",
       inputSchema: {},
     },
-    async () => executeTool(() => extendVectorMcpCapabilities(operations.capabilities())),
+    async () => executeTool(() =>
+      extendVectorMcpDotLottieCapabilities(
+        extendVectorMcpCapabilities(operations.capabilities()),
+      )),
   );
 
   server.registerTool(
@@ -242,6 +252,16 @@ export async function createVectorMcpServer(
   );
 
   const lottieOperations = registerVectorMcpLottieTools(server, pathPolicy);
+  const dotLottieOperations = registerVectorMcpDotLottieTools(
+    server,
+    pathPolicy,
+  );
 
-  return Object.freeze({ server, operations, lottieOperations, pathPolicy });
+  return Object.freeze({
+    server,
+    operations,
+    lottieOperations,
+    dotLottieOperations,
+    pathPolicy,
+  });
 }
