@@ -6,7 +6,7 @@ The objective is not broad best-effort conversion. The exporter accepts a delibe
 
 ## Current availability
 
-Implemented in `@evavo/lottie-engine`, the `evavo-vector` CLI, the authenticated HTTP API, MCP contract 1.2 and the browser Motion Director:
+Implemented in `@evavo/lottie-engine`, the `evavo-vector` CLI, the authenticated HTTP API, MCP contract 1.3 and the browser Motion Director:
 
 - static SVG path geometry converted to Lottie bezier paths;
 - absolute and relative `M`, `L`, `H`, `V`, `C`, `S`, `Q`, `T`, `A`, and `Z` commands;
@@ -22,13 +22,13 @@ Implemented in `@evavo/lottie-engine`, the `evavo-vector` CLI, the authenticated
 - receipt-only MCP responses that keep generated Lottie bodies out of model context;
 - browser verification of exact JSON bytes, source/output SHA-256, parsed metadata and structural evidence;
 - browser Lottie player preview through `@lottiefiles/dotlottie-react` with reduced-motion autoplay suppression;
-- separate deterministic dotLottie packaging and inspection through `createDotLottiePackage`, `inspectDotLottie`, the `evavo-dotlottie` CLI and `/api/v1/motion/dotlottie`;
+- separate deterministic dotLottie packaging and inspection through `createDotLottiePackage`, `inspectDotLottie`, the `evavo-dotlottie` CLI, `/api/v1/motion/dotlottie`, `vector_package_dotlottie` and `vector_inspect_dotlottie`;
 - explicit source-subset, motion-subset, compatibility and approval boundaries.
 
 Not yet available:
 
 - independent player-render comparison against the source or a reference renderer;
-- dotLottie MCP tools or browser archive-load validation;
+- browser dotLottie archive-load validation;
 - graphical Lottie timeline controls beyond the shared motion-plan editor;
 - gradients, images, text, masks, filters, expressions, precompositions, path morphing, or motion paths;
 - repeated, reversed, or alternating playback encoded into the exported composition.
@@ -105,7 +105,7 @@ The generated body is capped at 20 MiB. The endpoint is synchronous and does not
 
 ## MCP workflow
 
-MCP contract 1.2 exposes:
+MCP contract 1.3 exposes Lottie JSON tools:
 
 - `vector_export_lottie`;
 - `vector_inspect_lottie`.
@@ -127,6 +127,13 @@ The exporter accepts an inline `motionPlan` or an allowed-root `motionPath`, exa
 `vector_export_lottie` commits the Lottie JSON and optional evidence file atomically under new-files-only semantics. Its structured result contains file receipts, inspection, evidence and compatibility state, but not the generated animation body.
 
 `vector_inspect_lottie` returns structural findings, counts, SHA-256 and either `human-review-required` or `structural-repair-required`.
+
+MCP contract 1.3 also exposes separate archive tools:
+
+- `vector_package_dotlottie`;
+- `vector_inspect_dotlottie`.
+
+They package and inspect an allowed-root `.lottie` archive without returning ZIP bytes or embedded Lottie JSON in model context. See [`DOTLOTTIE.md`](DOTLOTTIE.md).
 
 ## Browser Motion Director workflow
 
@@ -151,7 +158,7 @@ This is a delivery-context preview and not independent source-to-player validati
 
 ## dotLottie packaging
 
-The same governed SVG and motion plan can now be packaged directly through:
+The same governed SVG and motion plan can be packaged directly through:
 
 ```http
 POST /api/v1/motion/dotlottie
@@ -168,7 +175,7 @@ pnpm vector:dotlottie:package -- `
   --animation-id gentle-entrance
 ```
 
-See [`DOTLOTTIE.md`](DOTLOTTIE.md) for the archive layout, deterministic ZIP policy, hostile archive checks and exact compatibility evidence.
+See [`DOTLOTTIE.md`](DOTLOTTIE.md) for archive layout, deterministic ZIP policy, hostile archive checks and exact compatibility evidence.
 
 ## Programmatic workflow
 
@@ -278,7 +285,7 @@ Structural validity is necessary but not sufficient for renderer compatibility.
 
 Each export records source bytes, SHA-256, viewBox, governed SVG inspection, normalized motion, static/animated layer counts, output dimensions and timing, supported subset, structural state, compatibility non-claims, warnings and approval.
 
-The current compatibility evidence deliberately reports:
+The current Lottie JSON compatibility evidence deliberately reports:
 
 ```text
 structuralInspection: passed
@@ -287,7 +294,7 @@ dotLottiePackaging: not-yet-available
 approval: review-required
 ```
 
-The `dotLottiePackaging` field above is retained in the Lottie JSON result contract for backward compatibility. The separate packaging engine and endpoint are now available and retain their own archive evidence.
+The `dotLottiePackaging` field above is retained in the Lottie JSON result contract for backward compatibility. The separate packaging engine, API, CLI and MCP tools are available and retain their own archive evidence.
 
 Lottie JSON cannot embed the animated-SVG `prefers-reduced-motion` media rule. Delivery surfaces must provide pause controls or an intentional static alternative.
 
