@@ -113,7 +113,9 @@ test("creates animated SVG from an inline plan without leaking SVG markup into m
         },
       },
     });
-    assert.notEqual(result.isError, true);
+    if (result.isError) {
+      throw new Error(`vector_animate_svg failed: ${JSON.stringify(result.structuredContent)}`);
+    }
     const payload = result.structuredContent as {
       ok?: boolean;
       approval?: string;
