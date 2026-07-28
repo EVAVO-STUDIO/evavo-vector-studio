@@ -207,8 +207,6 @@ function track(value: unknown, index: number): NormalizedMotionTrack {
     originYPercent: finite(input.originYPercent, 50, -1000, 1000, `${path}.originYPercent`),
     easing: easing(input.easing, `${path}.easing`),
     keyframes,
-    animatesOpacity,
-    animatesTransform,
   });
 }
 
