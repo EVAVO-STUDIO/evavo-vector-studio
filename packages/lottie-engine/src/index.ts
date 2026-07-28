@@ -1,3 +1,4 @@
+export * from "./dotlottie.js";
 export * from "./errors.js";
 export * from "./generator.js";
 export * from "./inspection.js";
