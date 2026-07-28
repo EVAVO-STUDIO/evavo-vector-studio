@@ -18,6 +18,8 @@ Implemented now:
 - source and output SHA-256 evidence;
 - animated SVG inspection;
 - CLI creation and optional JSON evidence output;
+- authenticated motion authoring through the HTTP API;
+- API inline and uploaded plan files with JSON or direct animated SVG responses;
 - MCP inline and file-based plan validation;
 - MCP animated SVG creation with atomic output receipts;
 - MCP animated SVG inspection without returning SVG markup into model context.
@@ -30,7 +32,6 @@ Not implemented in motion v1:
 - separate X and Y scale;
 - spring or physics simulation;
 - timeline editing in the web workspace;
-- motion authoring through the HTTP API;
 - Lottie export;
 - dotLottie packaging.
 
@@ -117,7 +118,7 @@ Every generated file includes a `prefers-reduced-motion: reduce` rule. The plan 
 - `first-frame`: disable animation and apply the first normalized keyframe;
 - `last-frame`: disable animation and apply the final normalized keyframe.
 
-The fallback is mandatory and is checked by CLI `motion:inspect` and MCP `vector_inspect_animated_svg`.
+The fallback is mandatory and is checked by CLI `motion:inspect`, the HTTP endpoint and MCP `vector_inspect_animated_svg`.
 
 ## CLI workflow
 
@@ -146,6 +147,57 @@ pnpm vector:motion:inspect -- `
 ```
 
 Output commands use atomic new-file-only transactions. Existing destinations and path collisions are rejected. When both SVG and evidence are requested, either both commit or the transaction rolls back.
+
+## HTTP API workflow
+
+The authenticated endpoint is:
+
+```http
+POST /api/v1/motion/svg
+```
+
+It accepts `multipart/form-data` with:
+
+- required `file`: one governed static SVG;
+- exactly one inline plan in `motion` or uploaded JSON plan in `motionFile`;
+- optional `format`: `json` or `svg`, default `json`.
+
+The application limits one SVG to 5 MiB and one motion plan to 256 KiB. The same runtime validation used by CLI and MCP remains authoritative.
+
+### JSON response from an inline plan
+
+```powershell
+$Headers = @{ Authorization = "Bearer $env:VECTOR_API_TOKEN" }
+$Motion = Get-Content ".\fixtures\motion\gentle-entrance.motion.json" -Raw
+$Form = @{
+    file = Get-Item ".\fixtures\motion\gentle-entrance.source.svg"
+    motion = $Motion
+    format = "json"
+}
+
+$result = Invoke-RestMethod `
+    -Method Post `
+    -Uri "http://localhost:3000/api/v1/motion/svg" `
+    -Headers $Headers `
+    -Form $Form
+```
+
+The JSON result includes the normalized plan, animated SVG, inspection, source/output hashes, deterministic motion identity and review evidence.
+
+### Direct animated SVG from an uploaded plan
+
+```powershell
+curl.exe -X POST "http://localhost:3000/api/v1/motion/svg" `
+  -H "Authorization: Bearer $env:VECTOR_API_TOKEN" `
+  -F "file=@fixtures\motion\gentle-entrance.source.svg;type=image/svg+xml" `
+  -F "motionFile=@fixtures\motion\gentle-entrance.motion.json;type=application/json" `
+  -F "format=svg" `
+  --output "outputs\gentle-entrance.animated.svg"
+```
+
+The direct animated SVG response includes compact headers for job ID, motion contract, motion identity, source/output hashes, reduced-motion presence and review state.
+
+The API is synchronous and does not persist outputs. Callers save the returned SVG and evidence deliberately. See [`API.md`](API.md) for the complete request, response and error contract.
 
 ## MCP workflow
 
@@ -231,7 +283,7 @@ The result records:
 - script-free and reduced-motion safety assertions;
 - warnings and approval state.
 
-Optional CLI and MCP evidence files do not embed a second copy of the SVG.
+Optional CLI and MCP evidence files do not embed a second copy of the SVG. The API JSON response intentionally includes the SVG because an HTTP client requested the generated body.
 
 ## Approval boundary
 
