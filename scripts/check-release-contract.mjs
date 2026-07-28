@@ -132,7 +132,7 @@ requireTokens(files.cli, sources.cli, [
 
 requireTokens(files.api, sources.api, [
   'contractVersion: "1.4"',
-  'stringField(form, "includeDifference")',
+  'booleanField(form, "includeDifference", false)',
   'integerField(form, "differenceMaxDimension")',
   'includeDifferenceArtifact: includeDifference',
   'encoding: "base64" as const',
