@@ -21,7 +21,8 @@
   },
   "dependencies": {
     "@evavo/motion-engine": "workspace:*",
-    "@evavo/vector-core": "workspace:*"
+    "@evavo/vector-core": "workspace:*",
+    "fflate": "0.8.3"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
