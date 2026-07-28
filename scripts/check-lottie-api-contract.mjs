@@ -117,7 +117,7 @@ requireTokens(files.page, sources.page, [
 requireTokens(files.readme, sources.readme, [
   "POST /api/v1/motion/lottie",
   "Governed Lottie JSON export and inspection are available through the core Lottie package, CLI and HTTP API",
-  "Browser archive-load validation is available after exact archive verification",
+  "browser archive-load validation is available after exact archive verification",
   "Independent player-render validation remains unavailable",
 ]);
 requireTokens(files.apiDocs, sources.apiDocs, [
