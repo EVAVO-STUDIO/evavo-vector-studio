@@ -9,15 +9,19 @@ EVAVO Vector Studio is a governed raster-to-vector production workspace. It is b
 - native RGBA decoding and spline-based raster tracing;
 - source SHA-256, alpha, palette, tonal, entropy and edge analysis;
 - automatic or explicit logo, icon, line-art, illustration and photo profiles;
+- bounded base, fidelity and economy candidate generation;
+- adaptive visual-first selection with explicit pixel budgets, tolerances and cost weights;
+- single-candidate mode for minimum-runtime deterministic execution;
 - safe multipass SVG optimisation;
-- independent SVG script, `foreignObject`, embedded-raster and structure inspection;
+- independent SVG active-content, external-reference, embedded-raster and structure inspection;
+- path-command, subpath, curve, straight-segment and estimated-anchor evidence;
 - alpha-aware source-versus-SVG rendering at up to 64, 256 and 1024 pixels;
 - visual MAE, RMS error, alpha error, black/white composite error, mismatch fraction and aspect-ratio evidence;
-- responsive browser workspace with local source preview, trace controls, evidence, safe output preview and SVG download;
+- responsive browser workspace with local source preview, tracing controls, candidate review, safe output preview and SVG download;
 - authenticated multipart API for synchronous bounded execution;
 - JSON-first CLI suitable for people, ChatGPT, Claude and workers;
-- path-count, output-size, visual-match and review warnings;
-- tests for format, decompression-bomb and alpha-aware comparison boundaries;
+- path-count, anchor-count, output-size, visual-match and review warnings;
+- tests for format, decompression-bomb, SVG security, geometry accounting, alpha-aware comparison and candidate-selection boundaries;
 - GitHub Actions quality workflow.
 
 Animated SVG and Lottie production remain planned capabilities. They are shown as planned in the interface and are not claimed as implemented.
@@ -41,11 +45,12 @@ Open `http://localhost:3000` for the studio workspace.
 # Inspect a raster without creating output
 pnpm vector:raster:inspect -- .\fixtures\mark.png
 
-# Create a governed SVG and JSON evidence
+# Create, compare and select a governed SVG with JSON evidence
 pnpm vector:trace -- `
   .\fixtures\mark.png `
   --out .\outputs\mark.vector.svg `
   --profile auto `
+  --candidate-mode adaptive `
   --max-colours 16 `
   --title "Brand mark"
 
@@ -57,20 +62,20 @@ pnpm vector:optimise -- .\fixtures\mark.svg --out .\outputs\mark.optimised.svg
 pnpm vector:manifest
 ```
 
-See [`docs/CLI.md`](docs/CLI.md) for options, visual evidence and exit codes.
+See [`docs/CLI.md`](docs/CLI.md) for candidate policy, visual evidence, geometry evidence and exit codes.
 
 ## API
 
-`POST /api/v1/trace` accepts `multipart/form-data` and returns either JSON evidence plus SVG or a direct SVG download. Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token.
+`POST /api/v1/trace` accepts `multipart/form-data` and returns either JSON evidence plus the selected SVG or a direct SVG download. Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token.
 
-See [`docs/API.md`](docs/API.md) for the complete contract and PowerShell examples.
+See [`docs/API.md`](docs/API.md) for the complete adaptive execution contract and PowerShell examples.
 
 ## Repository layout
 
 ```text
 apps/web                  Next.js studio UI and API
-packages/vector-core      shared job, pipeline and SVG safety contracts
-packages/raster-engine    guarded decoding, analysis, tracing and render comparison
+packages/vector-core      shared job, pipeline, SVG safety and geometry contracts
+packages/raster-engine    guarded decoding, analysis, candidate tracing, comparison and selection
 packages/cli              JSON-first local and agent automation surface
 docs                      architecture, CLI, API and hub-integration records
 ```
@@ -79,11 +84,13 @@ The EVAVO website hub integration remains a signed federated candidate. This rep
 
 ## Quality boundary
 
-A structurally valid SVG can still be a poor reconstruction. Vector Studio therefore rasterises every generated SVG at multiple bounded scales and compares it against the decoded source using alpha-aware black and white compositing. The full metrics and thresholds are included in the evidence instead of being collapsed into an unexplained score.
+A structurally valid SVG can still be a poor reconstruction. Vector Studio therefore rasterises every completed candidate at multiple bounded scales and compares it against the decoded source using alpha-aware black and white compositing. The engine is visual-first: when every candidate is weak, the best visual result wins. When candidates meet the same quality class, the engine may choose a more editable result only when it remains inside the declared visual tolerances.
+
+The selected evidence includes the full visual and geometry formulas, estimated anchors, paths, commands, bytes, every completed or failed candidate and the exact reason for selection. These measurements remain evidence, not an unexplained quality score.
 
 Visual similarity still cannot prove deliberate Bézier placement, compound-path quality, negative-space construction, editability or brand fidelity. Production approval remains human review-gated even when the measured comparison is `excellent`.
 
-The next quality milestone is governed multi-candidate tracing that chooses the best measured balance of visual fidelity and geometric economy, followed by topology and anchor-economy analysis, difference-image artefacts and visual regression fixtures.
+The next quality milestones are difference-image artefacts, topology and winding validation, stronger curve-economy diagnostics, synthetic visual regression fixtures, governed repair passes and then the animated SVG and Lottie authoring layers.
 
 ## Philosophy
 
