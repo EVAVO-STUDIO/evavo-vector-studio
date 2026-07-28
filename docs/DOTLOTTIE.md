@@ -10,33 +10,31 @@ Implemented now:
 
 - deterministic dotLottie v2 ZIP creation;
 - DEFLATE compression for every entry;
-- fixed entry order;
-- fixed `1980-01-01 00:00:00` ZIP timestamps;
-- one `manifest.json` entry;
-- one `a/<animation-id>.json` animation entry;
-- portable animation IDs;
-- canonical embedded Lottie JSON;
+- fixed entry order and fixed `1980-01-01 00:00:00` ZIP timestamps;
+- one `manifest.json` entry and one `a/<animation-id>.json` animation entry;
+- portable animation IDs and canonical embedded Lottie JSON;
 - governed embedded-Lottie structural inspection;
 - central-directory and local-header validation;
 - duplicate, traversal, absolute-path and backslash rejection;
 - ZIP64, encryption, multi-disk, entry-extra and entry-comment rejection;
-- compressed and uncompressed size limits;
+- compressed and uncompressed size limits checked before decompression;
 - deterministic archive SHA-256 evidence;
-- atomic new-file-only CLI package and optional evidence output;
-- CLI structural inspection for existing `.lottie` files;
-- authenticated HTTP packaging from the same governed SVG and motion plan used by Lottie JSON export;
-- direct `.lottie` delivery and bounded base64 wrapper evidence;
+- atomic new-file-only CLI packaging and inspection;
+- authenticated HTTP packaging with direct archive or bounded base64 delivery;
 - receipt-only MCP packaging and inspection under canonical allowed roots;
-- atomic MCP archive plus optional evidence output without ZIP bytes or embedded JSON in model context.
+- browser archive generation through the Motion Director;
+- browser verification of archive bytes, ZIP signature, SHA-256, manifest identity and retained server inspection;
+- verified `ArrayBuffer` loading through `@lottiefiles/dotlottie-react`;
+- browser `load` and `loadError` lifecycle evidence.
 
 Not yet available:
 
-- browser `.lottie` archive generation or browser archive-load validation;
 - themes;
 - state machines;
 - packaged images, fonts or audio;
 - multiple animations in one archive;
-- independent player-render comparison.
+- independent source-to-player render comparison;
+- cross-player pixel-equivalence evidence.
 
 Unsupported features are rejected rather than silently discarded.
 
@@ -72,11 +70,7 @@ The package MIME type is:
 application/zip+dotlottie
 ```
 
-The file extension is:
-
-```text
-.lottie
-```
+The file extension is `.lottie`.
 
 ## CLI workflow
 
@@ -103,13 +97,7 @@ Discover the machine-readable contract:
 pnpm vector:dotlottie:capabilities
 ```
 
-The installed binary is also available as:
-
-```text
-evavo-dotlottie
-```
-
-Commands:
+The installed binary is `evavo-dotlottie` and exposes:
 
 ```text
 evavo-dotlottie package <input.json>
@@ -154,16 +142,7 @@ Direct responses use `application/zip+dotlottie` and retain compact contract, ma
 
 `format=json` returns the archive as bounded base64 together with the generated Lottie inspection, manifest, archive inspection and evidence. Base64 wrapper transport is capped at 8 MiB; direct archives may use the full 25 MiB application limit.
 
-The endpoint performs:
-
-1. strict multipart field validation;
-2. production bearer-token enforcement;
-3. fatal UTF-8 decoding;
-4. governed Lottie JSON generation;
-5. deterministic dotLottie v2 packaging;
-6. archive and embedded-Lottie inspection;
-7. exact source, intermediate and archive SHA-256 evidence;
-8. explicit player-render and browser archive-load non-claims.
+The endpoint performs strict multipart validation, production bearer-token enforcement, fatal UTF-8 decoding, governed Lottie generation, deterministic archive packaging, archive inspection and exact source/intermediate/archive SHA-256 evidence.
 
 ## MCP workflow
 
@@ -191,32 +170,39 @@ Inspect the committed archive:
 }
 ```
 
-Both tools use the same canonical allowed-root and new-files-only boundaries as tracing, animated SVG and Lottie JSON export.
+Both tools use canonical allowed-root, new-files-only and atomic transaction policies. `vector_package_dotlottie` returns manifest, inspection, compatibility state and SHA-256 file receipts, but never returns archive bytes or embedded generated Lottie JSON in model context.
 
-`vector_package_dotlottie`:
+## Browser Motion Director workflow
 
-- accepts one allowed-root `.json` input up to 20 MiB;
-- creates one new `.lottie` archive up to 25 MiB;
-- optionally creates one new evidence JSON file;
-- commits archive and evidence atomically;
-- returns manifest, inspection, compatibility state and SHA-256 file receipts;
-- never returns archive bytes or embedded generated Lottie JSON in model context.
+The browser Motion Director uses the same selected SVG and normalized motion plan as animated SVG and Lottie JSON production.
 
-`vector_inspect_dotlottie` reads one allowed-root archive, verifies its byte limit and returns archive SHA-256, ZIP findings, manifest state and embedded-Lottie inspection without modifying the file.
+The archive workflow:
 
-The MCP tools retain:
+1. posts the exact SVG and normalized plan to `/api/v1/motion/dotlottie` in bounded JSON mode;
+2. decodes the returned base64 archive;
+3. verifies decoded byte count and the ZIP local-file signature;
+4. verifies archive SHA-256 against retained output evidence;
+5. verifies source and intermediate Lottie identities;
+6. verifies manifest version `2`, initial animation ID, sole animation descriptor and exact entry order;
+7. checks server archive inspection and embedded-Lottie inspection;
+8. creates a `.lottie` download only after verification;
+9. passes only verified archive `ArrayBuffer` data to `@lottiefiles/dotlottie-react`;
+10. records the official player `load` or `loadError` event;
+11. creates a separate browser evidence download without embedding archive bytes.
+
+When the player emits `load`, the local browser evidence records:
 
 ```text
-archiveInspection: passed
-embeddedLottieInspection: passed
-playerRenderValidation: not-yet-performed
-browserArchiveLoadValidation: not-yet-performed
-approval: review-required
+browserArchiveLoadValidation: passed
 ```
+
+A successful browser archive-load validation proves that the selected player accepted the exact verified archive in that browser session. It does not establish source-to-player render equivalence, pixel fidelity, paint-order fidelity, timing fidelity, cross-player compatibility or artistic approval.
+
+Reduced-motion preference disables autoplay and looping. Delivery surfaces still need an intentional static alternative or pause controls because a `.lottie` archive cannot embed the animated-SVG `prefers-reduced-motion` media rule.
 
 ## Deterministic archive policy
 
-For identical input JSON and options, the package bytes and SHA-256 are identical.
+For identical input JSON and options, package bytes and SHA-256 are identical.
 
 The writer fixes:
 
@@ -227,43 +213,31 @@ The writer fixes:
 - operating-system field;
 - file attributes;
 - ZIP timestamps;
-- archive comments and entry comments to absent;
+- archive and entry comments to absent;
 - entry extras to absent.
 
 The writer does not include current time, random identifiers, machine paths or host metadata.
 
 ## Inspector boundary
 
-`inspectDotLottie` validates the archive before accepting embedded JSON.
+`inspectDotLottie` validates the archive before accepting embedded JSON. It checks:
 
-It checks:
-
-- ZIP local-header signature;
-- end-of-central-directory location;
-- single-disk structure;
-- non-ZIP64 bounds;
-- central-directory byte range;
-- entry count;
-- UTF-8 file names;
-- safe relative paths;
-- duplicate names;
-- encryption state;
-- DEFLATE compression;
+- ZIP local-header signature and end-of-central-directory location;
+- single-disk and non-ZIP64 structure;
+- central-directory range and entry count;
+- UTF-8 safe relative paths and duplicate names;
+- encryption and DEFLATE compression;
 - central/local header agreement;
-- local entry overlap;
-- central-directory overlap;
+- local-entry and central-directory overlap;
 - declared compressed and uncompressed sizes;
 - deterministic timestamps;
 - exact governed entry set;
 - manifest JSON and known fields;
-- manifest version `2`;
-- initial animation resolution;
-- sole animation descriptor;
-- matching `a/<id>.json` entry;
-- embedded UTF-8 JSON;
-- governed Lottie structural inspection.
+- manifest version `2` and initial animation resolution;
+- sole animation descriptor and matching `a/<id>.json` entry;
+- embedded UTF-8 JSON and governed Lottie structural inspection.
 
-A structurally invalid archive returns findings and `structural-repair-required`. It is not presented as a usable package.
+A structurally invalid archive returns findings and `structural-repair-required`. It is not presented as usable output.
 
 ## Limits
 
@@ -283,23 +257,17 @@ The inspector rejects oversized declared content before decompression. These app
 
 Each package records:
 
-- source Lottie JSON bytes and SHA-256;
-- canonical embedded JSON bytes and SHA-256;
+- source and canonical embedded Lottie JSON bytes and SHA-256;
 - source Lottie structural inspection;
 - exact manifest;
-- archive MIME type and extension;
-- archive bytes and SHA-256;
-- entry count and entry order;
-- compressed and uncompressed byte totals;
-- ZIP format and compression;
-- deterministic timestamp policy;
-- unsupported packaged feature state;
+- archive MIME type, extension, bytes and SHA-256;
+- entry count, entry order and compressed/uncompressed totals;
+- deterministic ZIP policy;
 - archive and embedded-Lottie inspection state;
-- player-render validation state;
-- browser archive-load validation state;
+- player-render and browser archive-load validation state;
 - warnings and approval state.
 
-Current compatibility evidence remains:
+Core, CLI, API and MCP package evidence begins with:
 
 ```text
 archiveInspection: passed
@@ -309,25 +277,12 @@ browserArchiveLoadValidation: not-yet-performed
 approval: review-required
 ```
 
-## Accessibility and delivery
-
-A `.lottie` archive cannot embed the animated-SVG `prefers-reduced-motion` media-query fallback. Delivery surfaces need pause controls, autoplay restraint and an intentional static alternative.
-
-Packaging success does not establish playback support in every player. The package must still be tested in intended browsers, applications and platform SDKs.
+The browser may later record `browserArchiveLoadValidation: passed` after exact archive verification and an official-player `load` event. This browser-local event does not change `playerRenderValidation`.
 
 ## Approval boundary
 
-A deterministic archive can be structurally correct while the animation is visually wrong or incompatible with a target player.
+A deterministic archive can be structurally correct and successfully loaded while the animation is visually wrong or incompatible with another target player.
 
-Human review must assess:
-
-- source-to-player visual equivalence;
-- paint order and fill rules;
-- stroke rendering;
-- transform origins;
-- timing and easing;
-- reduced-motion delivery;
-- player and platform compatibility;
-- logo, illustration and brand fidelity.
+Human review must assess source-to-player visual equivalence, paint order, fill rules, stroke rendering, transform origins, timing, easing, reduced-motion delivery, platform compatibility and brand fidelity.
 
 Production approval remains unavailable until independent player-render evidence is implemented and retained.
