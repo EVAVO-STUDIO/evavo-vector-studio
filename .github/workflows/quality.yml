@@ -49,6 +49,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-motion-contract.mjs
 
+      - name: Verify motion API contract
+        if: ${{ !cancelled() }}
+        run: node scripts/check-motion-api-contract.mjs
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
