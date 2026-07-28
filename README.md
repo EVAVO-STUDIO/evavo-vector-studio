@@ -30,14 +30,16 @@ The objective is not to call one automatic trace “finished”. The system insp
 - motion-plan JSON Schema, normalized-plan validation, animated-SVG inspection and SHA-256 evidence;
 - responsive browser Motion Director with source screening, target discovery, presets, tracks, keyframes, playback controls, replay and verified downloads;
 - browser verification of source/output SHA-256, motion identity, style identity, target order, reduced-motion fallback and script-free evidence;
-- atomic new-file-only CLI transactions for optimised, traced and animated outputs;
+- governed path-based Lottie JSON engine with SVG command conversion, source-order preservation, solid fill and stroke support, layer-transform motion and structural inspection;
+- Lottie CLI export and inspection with atomic new-file-only output, SHA-256 evidence and explicit player-compatibility non-claims;
+- atomic new-file-only CLI transactions for optimised, traced, animated and Lottie outputs;
 - local stdio MCP server with nine governed tracing, SVG and motion tools for ChatGPT-compatible MCP hosts, Claude, editors and agent runtimes;
 - canonical allowed-root access, new-files-only output, atomic multi-file commit and SHA-256 file receipts for MCP operations;
 - inline or file-based MCP motion plans, normalized-plan output, animated SVG creation and motion inspection without placing SVG bodies in model context;
-- tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, MCP SDK, path-policy and transaction boundaries;
+- tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, Lottie geometry, Lottie structural output, MCP SDK, path-policy and transaction boundaries;
 - dependency-free contract gates plus the GitHub Actions quality workflow source.
 
-Animated SVG production is available through the browser Motion Director, core motion package, HTTP API, CLI and MCP. Lottie and dotLottie export remain unavailable until a separate validated renderer-compatibility contract exists.
+Animated SVG production is available through the browser Motion Director, core motion package, HTTP API, CLI and MCP. Governed Lottie JSON export and inspection are available through the core Lottie package and CLI. Lottie HTTP API, Lottie MCP tools, browser player validation and dotLottie packaging remain unavailable.
 
 ## Quick start on Windows PowerShell
 
@@ -124,12 +126,20 @@ pnpm vector:animate-svg -- `
   --evidence-out .\outputs\gentle-entrance.motion.evidence.json
 pnpm vector:motion:inspect -- .\outputs\gentle-entrance.animated.svg
 
+# Export and inspect governed Lottie JSON
+pnpm vector:lottie:export -- `
+  .\fixtures\motion\gentle-entrance.source.svg `
+  --motion .\fixtures\motion\gentle-entrance.motion.json `
+  --out .\outputs\gentle-entrance.lottie.json `
+  --evidence-out .\outputs\gentle-entrance.lottie.evidence.json
+pnpm vector:lottie:inspect -- .\outputs\gentle-entrance.lottie.json
+
 # Print machine-readable contracts
 pnpm vector:input-policy
 pnpm vector:manifest
 ```
 
-CLI output commands use atomic new-file-only transactions. Existing destinations, source/output collisions and multi-output collisions are rejected. See [`docs/CLI.md`](docs/CLI.md) and [`docs/MOTION.md`](docs/MOTION.md) for the complete contracts.
+CLI output commands use atomic new-file-only transactions. Existing destinations, source/output collisions and multi-output collisions are rejected. See [`docs/CLI.md`](docs/CLI.md), [`docs/MOTION.md`](docs/MOTION.md) and [`docs/LOTTIE.md`](docs/LOTTIE.md) for the complete contracts.
 
 ## Local MCP automation
 
@@ -156,7 +166,7 @@ MCP inputs must be existing regular files beneath a configured canonical root. O
 
 `vector_trace_raster` supports compact `summary` evidence and complete `full` evidence. Motion plans may be supplied inline or through an allowed-root JSON file. `vector_validate_motion_plan` can optionally save a normalized plan; `vector_animate_svg` can atomically write animated SVG plus evidence JSON.
 
-All tools remain `human-review-required`; successful execution records completion and evidence, not artistic approval. See [`docs/MCP.md`](docs/MCP.md) for the full tool, filesystem and motion contract.
+Lottie is not yet exposed through MCP. All current tools remain `human-review-required`; successful execution records completion and evidence, not artistic approval. See [`docs/MCP.md`](docs/MCP.md) for the full tool, filesystem and motion contract.
 
 ## API
 
@@ -169,13 +179,13 @@ Both support JSON evidence or direct SVG delivery where the output contract perm
 
 The motion endpoint limits one SVG to 5 MiB and one plan to 256 KiB, returns normalized plan and full evidence in JSON mode, and emits compact identity, hash, reduced-motion and review headers in direct SVG mode.
 
-See [`docs/API.md`](docs/API.md) for complete fields, limits, response shapes and error contracts.
+Lottie is not yet exposed through the HTTP API. See [`docs/API.md`](docs/API.md) for complete fields, limits, response shapes and error contracts.
 
 ## Quality model
 
-A trace or motion build can finish successfully while remaining `review-required`.
+A trace, animated SVG build or Lottie export can finish successfully while remaining `review-required`.
 
-The tracing engine may choose a lower-complexity candidate only when it remains inside explicit visual-cost, mismatch and aspect-ratio tolerances relative to the best visual candidate. If every candidate requires review, the best measured visual candidate wins rather than sacrificing fidelity for smaller geometry.
+The tracing engine may choose a lower-complexity candidate only when it remains inside explicit visual-cost, mismatch and aspect-ratio tolerances relative to the best visual candidate. If every candidate requires review, the best measured visual result wins rather than sacrificing fidelity for smaller geometry.
 
 Every trace retains:
 
@@ -197,13 +207,25 @@ Every animated SVG build retains:
 - reduced-motion and script-free safety assertions;
 - warnings and approval state.
 
-Pixel similarity and deterministic animation cannot prove deliberate Bézier placement, compound-path quality, future editability, motion direction or brand fidelity. Production auto-approval therefore remains unavailable.
+Every Lottie export retains:
+
+- source bytes, hash, viewBox and governed SVG inspection;
+- normalized motion plan and static/animated layer counts;
+- output bytes, hash, dimensions, frame rate, duration, layer and path counts;
+- exact supported and unsupported subset;
+- structural inspection evidence;
+- `playerRenderValidation: not-yet-performed`;
+- `dotLottiePackaging: not-yet-available`;
+- warnings and approval state.
+
+Pixel similarity, deterministic animation and structural Lottie validity cannot prove deliberate Bézier placement, compound-path quality, future editability, motion direction, player equivalence or brand fidelity. Production auto-approval therefore remains unavailable.
 
 Detailed contracts:
 
 - [`docs/QUALITY-EVIDENCE.md`](docs/QUALITY-EVIDENCE.md) explains source, reconstruction, topology, render, selection and approval evidence.
 - [`docs/INPUT-SAFETY.md`](docs/INPUT-SAFETY.md) explains the one-static-image policy and pre-decode rejection rules.
 - [`docs/MOTION.md`](docs/MOTION.md) defines the animated SVG v1 plan, Motion Director and review boundary.
+- [`docs/LOTTIE.md`](docs/LOTTIE.md) defines the Lottie source subset, motion subset, structural inspection and compatibility boundary.
 - [`docs/MCP.md`](docs/MCP.md) defines the local agent tool and filesystem contract.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) defines runtime boundaries and the path toward durable workers.
 
@@ -214,12 +236,13 @@ apps/web                  Next.js trace workspace, Motion Director and authentic
 packages/vector-core      shared job, SVG safety, geometry and topology contracts
 packages/raster-engine    guarded decoding, analysis, tracing, comparison and difference evidence
 packages/motion-engine    validated deterministic animated SVG production
-packages/cli              JSON-first tracing, optimisation and motion automation
+packages/lottie-engine    governed path-based Lottie JSON generation and structural inspection
+packages/cli              JSON-first tracing, optimisation, motion and Lottie automation
 packages/mcp              local stdio tracing, SVG and motion tools with allowed-root policies
 schemas                   machine-readable governed production contracts
-fixtures                  deterministic raster, SVG and motion validation inputs
-scripts                   dependency-free release, topology, browser, MCP, motion, API and workspace gates
-docs                      architecture, CLI, API, MCP, motion, quality, input safety and hub records
+fixtures                  deterministic raster, SVG, motion and Lottie validation inputs
+scripts                   dependency-free release, topology, browser, MCP, motion, Lottie, API and workspace gates
+docs                      architecture, CLI, API, MCP, motion, Lottie, quality, input safety and hub records
 ```
 
 ## Deployment boundary
@@ -230,4 +253,4 @@ The current APIs are bounded synchronous surfaces, not durable queues. Persisten
 
 ## Philosophy
 
-Preserve source intent. Reconstruct deliberate geometry. Minimise unnecessary anchors. Keep outputs editable. Direct motion intentionally. Record material decisions. Reject unsafe or misleading results instead of silently producing something different.
+Preserve source intent. Reconstruct deliberate geometry. Minimise unnecessary anchors. Keep outputs editable. Direct motion intentionally. Translate formats explicitly. Record material decisions. Reject unsafe or misleading results instead of silently producing something different.
