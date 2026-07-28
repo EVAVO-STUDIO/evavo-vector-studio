@@ -33,6 +33,11 @@ type StagedWrite = Readonly<{
   buffer: Buffer;
 }>;
 
+function pathKey(value: string): string {
+  const normalised = path.normalize(path.resolve(value));
+  return process.platform === "win32" ? normalised.toLowerCase() : normalised;
+}
+
 function asBuffer(data: string | Uint8Array): Buffer {
   return typeof data === "string"
     ? Buffer.from(data, "utf8")
@@ -48,16 +53,37 @@ function receipt(staged: StagedWrite): VectorMcpFileReceipt {
   });
 }
 
+function validateWrites(writes: readonly VectorMcpFileWrite[]): void {
+  const seen = new Map<string, string>();
+  for (const write of writes) {
+    if (!write.path.trim() || write.path.includes("\0")) {
+      throw new VectorMcpFileCommitError("Every file transaction output requires a non-empty path without null bytes.", {
+        path: write.path,
+      });
+    }
+    if (!write.mimeType.trim()) {
+      throw new VectorMcpFileCommitError("Every file transaction output requires a MIME type.", {
+        path: write.path,
+      });
+    }
+    const targetPath = path.resolve(write.path);
+    const key = pathKey(targetPath);
+    const previous = seen.get(key);
+    if (previous) {
+      throw new VectorMcpFileCommitError("A file transaction cannot contain duplicate output paths.", {
+        firstPath: previous,
+        secondPath: targetPath,
+      });
+    }
+    seen.set(key, targetPath);
+  }
+}
+
 export async function commitNewVectorFiles(
   writes: readonly VectorMcpFileWrite[],
 ): Promise<readonly VectorMcpFileReceipt[]> {
   if (writes.length === 0) return Object.freeze([]);
-  const uniqueTargets = new Set(writes.map((write) => path.normalize(write.path)));
-  if (uniqueTargets.size !== writes.length) {
-    throw new VectorMcpFileCommitError("A file transaction cannot contain duplicate output paths.", {
-      outputPaths: writes.map((write) => write.path),
-    });
-  }
+  validateWrites(writes);
 
   const staged: StagedWrite[] = [];
   const committed: StagedWrite[] = [];
@@ -71,14 +97,15 @@ export async function commitNewVectorFiles(
         `.${path.basename(targetPath)}.evavo-${process.pid}-${randomUUID()}.tmp`,
       );
       const buffer = asBuffer(write.data);
-      await writeFile(temporaryPath, buffer, { flag: "wx" });
+      await writeFile(temporaryPath, buffer, { flag: "wx", mode: 0o600 });
       staged.push(Object.freeze({ targetPath, temporaryPath, mimeType: write.mimeType, buffer }));
     }
 
     for (const item of staged) {
       try {
-        // A hard link is used instead of rename so an output created after policy
-        // validation still causes EEXIST rather than being overwritten atomically.
+        // Hard-linking from a temporary file in the target directory provides a
+        // no-overwrite commit: a target created after policy validation causes
+        // EEXIST instead of being replaced by rename semantics.
         await link(item.temporaryPath, item.targetPath);
       } catch (error) {
         throw new VectorMcpFileCommitError(
