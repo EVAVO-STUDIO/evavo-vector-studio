@@ -27,6 +27,12 @@ export type RasterRuntimeGuard = Readonly<{
   snapshot: () => RasterRuntimeGuardSnapshot;
 }>;
 
+export type RasterRuntimeTimer = Readonly<{
+  now: () => number;
+  setTimeout: (callback: () => void, milliseconds: number) => ReturnType<typeof setTimeout>;
+  clearTimeout: (handle: ReturnType<typeof setTimeout>) => void;
+}>;
+
 export type RasterRuntimeGuardErrorCode =
   | "RASTER_RUNTIME_BUSY"
   | "RASTER_RUNTIME_CONFIG_INVALID";
@@ -54,6 +60,12 @@ export class RasterRuntimeGuardError extends Error {
     this.details = options.details;
   }
 }
+
+const SYSTEM_RUNTIME_TIMER: RasterRuntimeTimer = Object.freeze({
+  now: () => Date.now(),
+  setTimeout: (callback, milliseconds) => setTimeout(callback, milliseconds),
+  clearTimeout: (handle) => clearTimeout(handle),
+});
 
 function integerSetting(
   value: string | number | undefined,
@@ -119,6 +131,7 @@ export function resolveRasterRuntimeGuardConfigFromEnvironment(
 
 export function createRasterRuntimeGuard(
   config: RasterRuntimeGuardConfig = resolveRasterRuntimeGuardConfigFromEnvironment(),
+  timer: RasterRuntimeTimer = SYSTEM_RUNTIME_TIMER,
 ): RasterRuntimeGuard {
   let activeExecutions = 0;
 
@@ -145,7 +158,7 @@ export function createRasterRuntimeGuard(
 
     activeExecutions += 1;
     const controller = new AbortController();
-    const startedAt = Date.now();
+    const startedAt = timer.now();
     let released = false;
     let timeoutReached = false;
 
@@ -155,18 +168,17 @@ export function createRasterRuntimeGuard(
     if (requestSignal?.aborted) forwardRequestAbort();
     else requestSignal?.addEventListener("abort", forwardRequestAbort, { once: true });
 
-    const timeout = setTimeout(() => {
+    const timeout = timer.setTimeout(() => {
+      if (controller.signal.aborted) return;
       timeoutReached = true;
-      if (!controller.signal.aborted) {
-        controller.abort(new DOMException("The bounded raster runtime timed out.", "TimeoutError"));
-      }
+      controller.abort(new DOMException("The bounded raster runtime timed out.", "TimeoutError"));
     }, config.timeoutMs);
-    timeout.unref?.();
+    (timeout as { unref?: () => void }).unref?.();
 
     function release(): void {
       if (released) return;
       released = true;
-      clearTimeout(timeout);
+      timer.clearTimeout(timeout);
       requestSignal?.removeEventListener("abort", forwardRequestAbort);
       activeExecutions = Math.max(0, activeExecutions - 1);
     }
