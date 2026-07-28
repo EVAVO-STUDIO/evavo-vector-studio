@@ -2,9 +2,13 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { RasterRuntimeGuard } from "@evavo/raster-engine";
 import {
+  extendVectorMcpBatchCapabilities,
+  registerVectorMcpBatchTools,
+  type VectorMcpBatchOperations,
+} from "./batch-tools.js";
+import {
   extendVectorMcpDotLottieCapabilities,
   registerVectorMcpDotLottieTools,
-  VECTOR_MCP_DOTLOTTIE_CONTRACT_VERSION,
   type VectorMcpDotLottieOperations,
 } from "./dotlottie-tools.js";
 import { vectorMcpFailure } from "./errors.js";
@@ -24,11 +28,14 @@ import {
   type VectorMcpPathPolicyOptions,
 } from "./path-policy.js";
 
+export const VECTOR_MCP_SERVER_CONTRACT_VERSION = "1.4" as const;
+
 export type VectorMcpServerBundle = Readonly<{
   server: McpServer;
   operations: VectorMcpOperations;
   lottieOperations: VectorMcpLottieOperations;
   dotLottieOperations: VectorMcpDotLottieOperations;
+  batchOperations: VectorMcpBatchOperations;
   pathPolicy: VectorMcpPathPolicy;
 }>;
 
@@ -98,15 +105,17 @@ export async function createVectorMcpServer(
     },
     {
       instructions: [
-        `EVAVO Vector Studio MCP contract ${VECTOR_MCP_DOTLOTTIE_CONTRACT_VERSION}.`,
+        `EVAVO Vector Studio MCP contract ${VECTOR_MCP_SERVER_CONTRACT_VERSION}.`,
         "Call vector_capabilities and vector_input_policy before the first raster trace in a workspace.",
         "Raster tools accept one static image at a time and never flatten animation frames or TIFF pages.",
         "Motion tools accept a validated inline plan or one JSON plan file and produce script-free CSS animated SVG.",
         "Lottie tools accept the governed path-based SVG subset and create or inspect Lottie JSON without placing generated animation bodies in model context.",
         "dotLottie tools package or inspect deterministic manifest-v2 archives without placing archive bytes or embedded animation JSON in model context.",
+        "Durable batch tools run or inspect bounded batch-v1 manifests through persistent local state, canonical allowed roots and paginated receipt-only results.",
+        "Batch execution is resumable when invoked again but is not a hosted background queue and does not continue after the MCP server process stops.",
         "All filesystem paths must remain within the configured allowed roots.",
         "Output tools create new files only, never overwrite, and commit related outputs atomically.",
-        "Trace, motion, Lottie and dotLottie completion are not production approval. Inspect render, topology, editability, timing, archive safety, player compatibility and brand fidelity evidence before publication.",
+        "Trace, motion, Lottie, dotLottie and batch completion are not production approval. Inspect render, topology, editability, timing, archive safety, player compatibility and brand fidelity evidence before publication.",
       ].join(" "),
     },
   );
@@ -115,12 +124,14 @@ export async function createVectorMcpServer(
     "vector_capabilities",
     {
       title: "Vector Studio Capabilities",
-      description: "Return the current MCP, filesystem, tracing, motion, Lottie, dotLottie, output and approval contract without reading a file.",
+      description: "Return the current MCP, filesystem, tracing, motion, Lottie, dotLottie, durable batch, output and approval contract without reading a file.",
       inputSchema: {},
     },
     async () => executeTool(() =>
-      extendVectorMcpDotLottieCapabilities(
-        extendVectorMcpCapabilities(operations.capabilities()),
+      extendVectorMcpBatchCapabilities(
+        extendVectorMcpDotLottieCapabilities(
+          extendVectorMcpCapabilities(operations.capabilities()),
+        ),
       )),
   );
 
@@ -256,12 +267,14 @@ export async function createVectorMcpServer(
     server,
     pathPolicy,
   );
+  const batchOperations = registerVectorMcpBatchTools(server, pathPolicy);
 
   return Object.freeze({
     server,
     operations,
     lottieOperations,
     dotLottieOperations,
+    batchOperations,
     pathPolicy,
   });
 }
