@@ -112,7 +112,7 @@ jobs:
           pnpm test > .ci/test.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            grep -E -m 8 "error TS[0-9]+|Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|AssertionError|Module not found|Type error|Cannot find|is not assignable|does not exist" .ci/test.log || tail -n 40 .ci/test.log
+            grep -E -A 18 -m 2 "AssertionError|error:|not ok|ERR_PNPM|ELIFECYCLE|Failed" .ci/test.log || tail -n 80 .ci/test.log
           fi
           exit "$status"
 
@@ -151,7 +151,11 @@ jobs:
             for (const [name, file, outcome] of gates) {
               const source = fs.existsSync(file) ? fs.readFileSync(file, "utf8").replace(/\u001b\[[0-9;]*m/g, "") : "";
               const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-              const diagnostic = lines.find((line) => /error TS\d+|Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|AssertionError|Module not found|Type error|Cannot find|is not assignable|does not exist/i.test(line)) || lines.at(-1) || `${name} did not produce a diagnostic`;
+              const diagnostic =
+                lines.find((line) => /error TS\d+|AssertionError|^error:|ERR_ASSERTION|Module not found|Type error|Cannot find|is not assignable|does not exist/i.test(line)) ||
+                lines.find((line) => /Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok/i.test(line)) ||
+                lines.at(-1) ||
+                `${name} did not produce a diagnostic`;
               const state = outcome === "success" ? "success" : "failure";
               const slug = diagnostic
                 .normalize("NFKD")
@@ -175,5 +179,6 @@ jobs:
         with:
           name: vector-governed-quality-${{ github.sha }}
           path: .ci/*.log
-          if-no-files-found: warn
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 3
