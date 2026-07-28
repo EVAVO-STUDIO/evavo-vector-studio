@@ -12,13 +12,33 @@ pnpm install
 pnpm check
 ```
 
+## Discover the input policy
+
+Before selecting files, people and agents can inspect the exact static-input contract:
+
+```powershell
+pnpm vector:input-policy
+```
+
+The JSON response declares:
+
+- policy mode `one-static-image-per-trace`;
+- accepted static PNG, ordinary JPEG, static WebP, single-frame GIF, BMP and single-page classic TIFF classes;
+- pre-decode rejection of multi-frame APNG, animated GIF, animated WebP, JPEG MPO, multi-page TIFF and BigTIFF;
+- the default 25 MiB encoded-input and 40 million decoded-pixel limits;
+- rejection code `RASTER_MULTI_IMAGE_UNSUPPORTED`.
+
+This command performs no file access and is safe for capability discovery by ChatGPT, Claude, workers and scripts.
+
 ## Inspect a raster before tracing
 
 ```powershell
 pnpm vector:raster:inspect -- .\fixtures\mark.png
 ```
 
-The report includes detected format and dimensions, SHA-256 source hash, sampled palette complexity, dominant colours, alpha coverage, tonal range, edge density, a suggested trace profile and review warnings.
+The report includes the active input policy, detected format and dimensions, SHA-256 source hash, sampled palette complexity, dominant colours, alpha coverage, tonal range, edge density, a suggested trace profile and review warnings.
+
+Animated and multi-page inputs are rejected before native decoding rather than silently flattening to a first frame or page.
 
 ## Trace a raster into SVG
 
@@ -98,10 +118,20 @@ The heatmap evidence includes dimensions, bytes, SHA-256, selected candidate ID,
 ```powershell
 pnpm vector:inspect -- .\fixtures\logo.svg
 pnpm vector:optimise -- .\fixtures\logo.svg --out .\outputs\logo.optimised.svg
-pnpm vector:manifest
 ```
 
-SVG inspection reports active-content findings, external references, paths, path-data bytes, path commands, estimated anchors, subpaths, straight segments and curve segments.
+SVG inspection reports:
+
+- scripts, active content and external references;
+- duplicate IDs and unresolved local references;
+- paths, path-data bytes and path commands;
+- estimated anchors, subpaths, straight segments and curve segments;
+- duplicate path data;
+- open and closed subpaths;
+- compound and even-odd paths;
+- remaining text, use instances, style blocks, clips, masks, transforms and primitive shapes.
+
+Duplicate IDs and unresolved local references make the document invalid. Other editability findings remain visible for review instead of being silently rewritten.
 
 ## Machine-readable manifest
 
@@ -109,7 +139,7 @@ SVG inspection reports active-content findings, external references, paths, path
 pnpm vector:manifest
 ```
 
-The manifest declares contract version `1.4`, supported commands, input limits, candidate budgets, render scales, difference-image bounds and approval policy. Agents should inspect this command rather than assuming a feature is available.
+The manifest declares contract version `1.4`, discovery commands, input policy, supported operational commands, input limits, candidate budgets, render scales, difference-image bounds, topology safety and approval policy. Agents should inspect this command rather than assuming a feature is available.
 
 ## Exit codes
 
@@ -119,14 +149,16 @@ The manifest declares contract version `1.4`, supported commands, input limits, 
 
 A trace can exit successfully while still reporting `renderComparison: review-required`. This is intentional: execution and evidence completed, but professional approval has not been granted.
 
+Expected governed errors include `RASTER_MULTI_IMAGE_UNSUPPORTED` for animated or multi-page containers and stable SVG safety codes in the inspection response.
+
 ## Guardrails
 
-Raster input is rejected before native decoding when it is empty, larger than 25 MiB, unsupported, structurally malformed or declares more than 40 million decoded pixels. PNG, JPEG, WebP, GIF, BMP and classic TIFF headers are inspected. Decoded output must match the guarded dimensions and contain one complete RGBA buffer.
+Raster input is rejected before native decoding when it is empty, larger than 25 MiB, unsupported, structurally malformed, animated, multi-page or declares more than 40 million decoded pixels. Decoded output must match the guarded dimensions and contain one complete RGBA buffer.
 
-Generated SVG is passed through the native safe optimiser and then through Vector Studio's independent SVG safety inspection. Scripts, `foreignObject`, inline event handlers, `javascript:` links, external raster references and external style URLs are prohibited.
+Generated SVG is passed through the native safe optimiser and then through Vector Studio's independent SVG safety and topology inspection. Scripts, `foreignObject`, inline event handlers, `javascript:` links, external raster references, external style URLs, duplicate IDs and unresolved local references are prohibited.
 
 System fonts are disabled during SVG rendering because traced assets should not depend on machine-specific font discovery.
 
 ## Approval boundary
 
-Multi-scale visual evidence, adaptive candidate selection and difference PNG generation are operational. Production auto-approval remains intentionally unavailable. A strong pixel match cannot prove anchor placement, compound paths, negative space, layering, brand geometry or future editability. Every trace therefore reports `productionApproval: review-required`.
+Multi-scale visual evidence, adaptive candidate selection, topology diagnostics and difference PNG generation are operational. Production auto-approval remains intentionally unavailable. A strong pixel match cannot prove anchor placement, compound paths, negative space, layering, brand geometry or future editability. Every trace therefore reports `productionApproval: review-required`.
