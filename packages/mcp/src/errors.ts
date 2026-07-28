@@ -1,3 +1,4 @@
+import { BatchEngineError } from "@evavo/job-engine";
 import { LottieEngineError } from "@evavo/lottie-engine";
 import { MotionEngineError } from "@evavo/motion-engine";
 import { RasterEngineError, RasterRuntimeGuardError } from "@evavo/raster-engine";
@@ -56,6 +57,9 @@ export function vectorMcpFailure(error: unknown): VectorMcpFailure {
   }
   if (error instanceof VectorMcpFileCommitError) {
     return failure(error.code, error.message, false, error.details);
+  }
+  if (error instanceof BatchEngineError) {
+    return failure(error.code, error.message, error.retryable, error.details);
   }
   if (error instanceof LottieEngineError) {
     return failure(error.code, error.message, false, error.details);
