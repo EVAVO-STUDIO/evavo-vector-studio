@@ -1,4 +1,5 @@
 export * from "./svg.js";
+export * from "./svg-topology.js";
 
 export type VectorJobKind = "logo" | "icon" | "line-art" | "illustration" | "photo";
 export type VectorOutput = "svg" | "animated-svg" | "lottie";
