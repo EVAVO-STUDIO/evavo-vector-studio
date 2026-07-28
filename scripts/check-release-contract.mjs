@@ -72,12 +72,16 @@ if (!String(rootPackage?.scripts?.check ?? "").startsWith("pnpm contract:check &
 }
 
 const files = {
+  coreIndex: "packages/vector-core/src/index.ts",
+  verifier: "packages/vector-core/src/difference-artifact-verification.ts",
   types: "packages/raster-engine/src/types.ts",
   engine: "packages/raster-engine/src/engine.ts",
   difference: "packages/raster-engine/src/difference.ts",
+  inputPolicy: "packages/raster-engine/src/input-policy.ts",
   rasterIndex: "packages/raster-engine/src/index.ts",
   cli: "packages/cli/src/index.ts",
   api: "apps/web/app/api/v1/trace/route.ts",
+  inputPolicyApi: "apps/web/app/api/v1/input-policy/route.ts",
   workspace: "apps/web/app/components/TraceWorkspace.tsx",
   workspaceStyles: "apps/web/app/components/TraceWorkspace.module.css",
   page: "apps/web/app/page.tsx",
@@ -85,8 +89,23 @@ const files = {
   cliDocs: "docs/CLI.md",
   apiDocs: "docs/API.md",
   architecture: "docs/ARCHITECTURE.md",
+  qualityDocs: "docs/QUALITY-EVIDENCE.md",
+  inputSafetyDocs: "docs/INPUT-SAFETY.md",
 };
 const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])));
+
+requireTokens(files.coreIndex, sources.coreIndex, [
+  'export * from "./difference-artifact-verification.js"',
+  'export * from "./svg-topology.js"',
+]);
+
+requireTokens(files.verifier, sources.verifier, [
+  "DifferenceArtifactVerificationError",
+  "verifyDifferenceArtifactPayload",
+  '"DIFFERENCE_CANDIDATE_MISMATCH"',
+  '"DIFFERENCE_PNG_INVALID"',
+  'cryptoApi.subtle.digest("SHA-256", bytes)',
+]);
 
 requireTokens(files.types, sources.types, [
   'contractVersion: "1.4"',
@@ -118,7 +137,19 @@ requireTokens(files.difference, sources.difference, [
   'createHash("sha256")',
 ]);
 
-requireTokens(files.rasterIndex, sources.rasterIndex, ['export * from "./difference.js"']);
+requireTokens(files.inputPolicy, sources.inputPolicy, [
+  'mode: "one-static-image-per-trace"',
+  '"multi-frame-apng"',
+  '"animated-gif"',
+  '"animated-webp"',
+  '"jpeg-mpo"',
+  '"multi-page-tiff"',
+]);
+
+requireTokens(files.rasterIndex, sources.rasterIndex, [
+  'export * from "./difference.js"',
+  'export * from "./input-policy.js"',
+]);
 
 requireTokens(files.cli, sources.cli, [
   `const VERSION = "${releaseVersion}"`,
@@ -140,12 +171,21 @@ requireTokens(files.api, sources.api, [
   'format === "svg" && includeDifference',
 ]);
 
+requireTokens(files.inputPolicyApi, sources.inputPolicyApi, [
+  "RASTER_INPUT_POLICY",
+  'errorCode: "RASTER_MULTI_IMAGE_UNSUPPORTED"',
+  "maxDecodedPixels: DEFAULT_MAX_PIXELS",
+]);
+
 requireTokens(files.workspace, sources.workspace, [
+  "verifyDifferenceArtifactPayload,",
+  "type DifferenceArtifactPayload",
   'form.set("includeDifference", String(includeDifference))',
   'form.set("differenceMaxDimension", String(differenceMaxDimension))',
+  "await verifyDifferenceArtifactPayload(",
   "White-to-red visual difference heatmap",
   "Download difference PNG",
-  "payloadDifference.selectedCandidateId !== payload.evidence.selection.selectedCandidateId",
+  "Animated containers and multi-page TIFF are rejected before decoding",
 ]);
 
 requireTokens(files.workspaceStyles, sources.workspaceStyles, [
@@ -163,10 +203,12 @@ requireTokens(files.page, sources.page, [
 ]);
 
 for (const [relativePath, source, tokens] of [
-  [files.readme, sources.readme, ["visual-difference heatmap", "--diff-out", "base64 difference PNG"]],
+  [files.readme, sources.readme, ["visual-difference heatmap", "--diff-out", "base64 difference PNG", "multi-page TIFF"]],
   [files.cliDocs, sources.cliDocs, ["Difference PNG artefacts", "--difference-max-dimension", "selected candidate ID"]],
   [files.apiDocs, sources.apiDocs, ["includeDifference", "differenceMaxDimension", '"encoding": "base64"']],
   [files.architecture, sources.architecture, ["Selected-candidate difference evidence", "SHA-256", "Production auto-approval"]],
+  [files.qualityDocs, sources.qualityDocs, ["Topology and editability evidence", "Difference-image evidence", "Production approved"]],
+  [files.inputSafetyDocs, sources.inputSafetyDocs, ["one static raster reconstruction per trace", "RASTER_MULTI_IMAGE_UNSUPPORTED", "multi-page TIFF"]],
 ]) {
   requireTokens(relativePath, source, tokens);
 }
