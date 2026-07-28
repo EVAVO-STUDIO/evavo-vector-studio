@@ -5,7 +5,7 @@ import { BatchEngineError } from "./errors.js";
 export type BatchPathPolicy = Readonly<{
   root: string;
   resolveInputFile: (requestedPath: string) => Promise<string>;
-  resolveOutputFile: (requestedPath: string) => Promise<string>;
+  resolveOutputPath: (requestedPath: string) => Promise<string>;
   assertDistinct: (paths: readonly string[]) => void;
 }>;
 
@@ -181,7 +181,7 @@ export async function createBatchPathPolicy(
     return canonical;
   }
 
-  async function resolveOutputFile(requestedPath: string): Promise<string> {
+  async function resolveOutputPath(requestedPath: string): Promise<string> {
     const absolute = requestedAbsolutePath(requestedPath, root);
     const outputName = path.basename(absolute);
     if (!outputName || outputName === "." || outputName === "..") {
@@ -201,19 +201,31 @@ export async function createBatchPathPolicy(
     assertAllowed(root, candidate, requestedPath);
 
     try {
-      await lstat(candidate);
-      let existingTarget = candidate;
-      try {
-        existingTarget = await realpath(candidate);
-      } catch {
-        // Broken symlinks and unresolved entries still occupy the path.
+      const information = await lstat(candidate);
+      if (information.isSymbolicLink()) {
+        let target = candidate;
+        try {
+          target = await realpath(candidate);
+        } catch {
+          // A broken output symlink is still unsafe and occupied.
+        }
+        assertAllowed(root, target, requestedPath);
+        throw new BatchEngineError(
+          "BATCH_OUTPUT_PARENT_INVALID",
+          "A durable batch output path may not be a symbolic link.",
+          { details: { requestedPath, resolvedPath: candidate, target } },
+        );
       }
-      assertAllowed(root, existingTarget, requestedPath);
-      throw new BatchEngineError(
-        "BATCH_OUTPUT_EXISTS",
-        "Durable batch operations never overwrite an existing output path.",
-        { details: { requestedPath, resolvedPath: candidate } },
-      );
+      if (!information.isFile()) {
+        throw new BatchEngineError(
+          "BATCH_OUTPUT_PARENT_INVALID",
+          "An existing durable batch output must be a regular file.",
+          { details: { requestedPath, resolvedPath: candidate } },
+        );
+      }
+      const canonical = await realpath(candidate);
+      assertAllowed(root, canonical, requestedPath);
+      return canonical;
     } catch (error) {
       if (error instanceof BatchEngineError) throw error;
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
@@ -253,7 +265,7 @@ export async function createBatchPathPolicy(
   return Object.freeze({
     root,
     resolveInputFile,
-    resolveOutputFile,
+    resolveOutputPath,
     assertDistinct,
   });
 }
