@@ -1,0 +1,42 @@
+{
+  "$schema": "../../schemas/motion-v1.schema.json",
+  "version": "1.0",
+  "name": "Gentle entrance",
+  "durationMs": 1200,
+  "delayMs": 100,
+  "iterations": 1,
+  "direction": "normal",
+  "fillMode": "both",
+  "reducedMotion": "last-frame",
+  "tracks": [
+    {
+      "targetId": "mark",
+      "transformBox": "fill-box",
+      "originXPercent": 50,
+      "originYPercent": 50,
+      "easing": {
+        "cubicBezier": [0.2, 0.8, 0.2, 1]
+      },
+      "keyframes": [
+        {
+          "offset": 0,
+          "opacity": 0,
+          "translateY": 12,
+          "scale": 0.96
+        },
+        {
+          "offset": 0.6,
+          "opacity": 1,
+          "translateY": -1,
+          "scale": 1.01
+        },
+        {
+          "offset": 1,
+          "opacity": 1,
+          "translateY": 0,
+          "scale": 1
+        }
+      ]
+    }
+  ]
+}
