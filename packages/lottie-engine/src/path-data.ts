@@ -27,17 +27,25 @@ const COMMAND = /^[AaCcHhLlMmQqSsTtVvZz]$/;
 const NUMBER_AT_START = /^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?/;
 const EPSILON = 1e-9;
 
-function invalid(message: string, details: Readonly<Record<string, unknown>> = {}): LottieEngineError {
+function invalid(
+  message: string,
+  details: Readonly<Record<string, unknown>> = {},
+): LottieEngineError {
   return new LottieEngineError("LOTTIE_PATH_INVALID", message, details);
 }
 
 function point(x: number, y: number): Point {
-  if (!Number.isFinite(x) || !Number.isFinite(y)) throw invalid("SVG path coordinates must be finite.", { x, y });
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw invalid("SVG path coordinates must be finite.", { x, y });
+  }
   return Object.freeze({ x, y });
 }
 
 function samePoint(left: Point, right: Point): boolean {
-  return Math.abs(left.x - right.x) <= EPSILON && Math.abs(left.y - right.y) <= EPSILON;
+  return (
+    Math.abs(left.x - right.x) <= EPSILON &&
+    Math.abs(left.y - right.y) <= EPSILON
+  );
 }
 
 function tokens(source: string): readonly string[] {
@@ -71,24 +79,46 @@ function line(start: Point, end: Point): CubicSegment {
   return Object.freeze({ start, c1: start, c2: end, end });
 }
 
-function cubic(start: Point, c1: Point, c2: Point, end: Point): CubicSegment {
+function cubic(
+  start: Point,
+  c1: Point,
+  c2: Point,
+  end: Point,
+): CubicSegment {
   return Object.freeze({ start, c1, c2, end });
 }
 
 function reflect(control: Point | null, around: Point): Point {
-  return control ? point(2 * around.x - control.x, 2 * around.y - control.y) : around;
+  return control
+    ? point(2 * around.x - control.x, 2 * around.y - control.y)
+    : around;
 }
 
-function quadraticAsCubic(start: Point, control: Point, end: Point): CubicSegment {
+function quadraticAsCubic(
+  start: Point,
+  control: Point,
+  end: Point,
+): CubicSegment {
   return cubic(
     start,
-    point(start.x + (2 / 3) * (control.x - start.x), start.y + (2 / 3) * (control.y - start.y)),
-    point(end.x + (2 / 3) * (control.x - end.x), end.y + (2 / 3) * (control.y - end.y)),
+    point(
+      start.x + (2 / 3) * (control.x - start.x),
+      start.y + (2 / 3) * (control.y - start.y),
+    ),
+    point(
+      end.x + (2 / 3) * (control.x - end.x),
+      end.y + (2 / 3) * (control.y - end.y),
+    ),
     end,
   );
 }
 
-function vectorAngle(ux: number, uy: number, vx: number, vy: number): number {
+function vectorAngle(
+  ux: number,
+  uy: number,
+  vx: number,
+  vy: number,
+): number {
   const dot = ux * vx + uy * vy;
   const length = Math.hypot(ux, uy) * Math.hypot(vx, vy);
   if (length <= EPSILON) return 0;
@@ -108,9 +138,17 @@ function arcAsCubics(
   let rx = Math.abs(rawRx);
   let ry = Math.abs(rawRy);
   if (samePoint(start, end)) return Object.freeze([]);
-  if (rx <= EPSILON || ry <= EPSILON) return Object.freeze([line(start, end)]);
-  if ((largeArcFlag !== 0 && largeArcFlag !== 1) || (sweepFlag !== 0 && sweepFlag !== 1)) {
-    throw invalid("SVG arc flags must be 0 or 1.", { largeArcFlag, sweepFlag });
+  if (rx <= EPSILON || ry <= EPSILON) {
+    return Object.freeze([line(start, end)]);
+  }
+  if (
+    (largeArcFlag !== 0 && largeArcFlag !== 1) ||
+    (sweepFlag !== 0 && sweepFlag !== 1)
+  ) {
+    throw invalid("SVG arc flags must be 0 or 1.", {
+      largeArcFlag,
+      sweepFlag,
+    });
   }
 
   const phi = ((rotationDegrees % 360) * Math.PI) / 180;
@@ -121,7 +159,8 @@ function arcAsCubics(
   const xPrime = cosPhi * halfDx + sinPhi * halfDy;
   const yPrime = -sinPhi * halfDx + cosPhi * halfDy;
 
-  const radiusScale = (xPrime * xPrime) / (rx * rx) + (yPrime * yPrime) / (ry * ry);
+  const radiusScale =
+    (xPrime * xPrime) / (rx * rx) + (yPrime * yPrime) / (ry * ry);
   if (radiusScale > 1) {
     const scale = Math.sqrt(radiusScale);
     rx *= scale;
@@ -135,11 +174,18 @@ function arcAsCubics(
   const denominator = rx2 * yPrime2 + ry2 * xPrime2;
   const numerator = Math.max(0, rx2 * ry2 - denominator);
   const sign = largeArcFlag === sweepFlag ? -1 : 1;
-  const coefficient = denominator <= EPSILON ? 0 : sign * Math.sqrt(numerator / denominator);
+  const coefficient =
+    denominator <= EPSILON ? 0 : sign * Math.sqrt(numerator / denominator);
   const centerXPrime = coefficient * ((rx * yPrime) / ry);
   const centerYPrime = coefficient * (-(ry * xPrime) / rx);
-  const centerX = cosPhi * centerXPrime - sinPhi * centerYPrime + (start.x + end.x) / 2;
-  const centerY = sinPhi * centerXPrime + cosPhi * centerYPrime + (start.y + end.y) / 2;
+  const centerX =
+    cosPhi * centerXPrime -
+    sinPhi * centerYPrime +
+    (start.x + end.x) / 2;
+  const centerY =
+    sinPhi * centerXPrime +
+    cosPhi * centerYPrime +
+    (start.y + end.y) / 2;
 
   const ux = (xPrime - centerXPrime) / rx;
   const uy = (yPrime - centerYPrime) / ry;
@@ -150,15 +196,22 @@ function arcAsCubics(
   if (!sweepFlag && sweepAngle > 0) sweepAngle -= 2 * Math.PI;
   if (sweepFlag && sweepAngle < 0) sweepAngle += 2 * Math.PI;
 
-  const segmentCount = Math.max(1, Math.ceil(Math.abs(sweepAngle) / (Math.PI / 2)));
+  const segmentCount = Math.max(
+    1,
+    Math.ceil(Math.abs(sweepAngle) / (Math.PI / 2)),
+  );
   const segmentAngle = sweepAngle / segmentCount;
   const segments: CubicSegment[] = [];
   let segmentStart = start;
 
   const ellipsePoint = (angle: number): Point =>
     point(
-      centerX + rx * cosPhi * Math.cos(angle) - ry * sinPhi * Math.sin(angle),
-      centerY + rx * sinPhi * Math.cos(angle) + ry * cosPhi * Math.sin(angle),
+      centerX +
+        rx * cosPhi * Math.cos(angle) -
+        ry * sinPhi * Math.sin(angle),
+      centerY +
+        rx * sinPhi * Math.cos(angle) +
+        ry * cosPhi * Math.sin(angle),
     );
   const ellipseDerivative = (angle: number): Point =>
     point(
@@ -168,28 +221,53 @@ function arcAsCubics(
 
   for (let index = 0; index < segmentCount; index += 1) {
     const nextAngle = startAngle + segmentAngle;
-    const segmentEnd = index === segmentCount - 1 ? end : ellipsePoint(nextAngle);
+    const segmentEnd =
+      index === segmentCount - 1 ? end : ellipsePoint(nextAngle);
     const derivativeStart = ellipseDerivative(startAngle);
     const derivativeEnd = ellipseDerivative(nextAngle);
     const alpha = (4 / 3) * Math.tan(segmentAngle / 4);
-    segments.push(cubic(
-      segmentStart,
-      point(segmentStart.x + alpha * derivativeStart.x, segmentStart.y + alpha * derivativeStart.y),
-      point(segmentEnd.x - alpha * derivativeEnd.x, segmentEnd.y - alpha * derivativeEnd.y),
-      segmentEnd,
-    ));
+    segments.push(
+      cubic(
+        segmentStart,
+        point(
+          segmentStart.x + alpha * derivativeStart.x,
+          segmentStart.y + alpha * derivativeStart.y,
+        ),
+        point(
+          segmentEnd.x - alpha * derivativeEnd.x,
+          segmentEnd.y - alpha * derivativeEnd.y,
+        ),
+        segmentEnd,
+      ),
+    );
     segmentStart = segmentEnd;
     startAngle = nextAngle;
   }
   return Object.freeze(segments);
 }
 
-function cubicValue(p0: number, p1: number, p2: number, p3: number, t: number): number {
+function cubicValue(
+  p0: number,
+  p1: number,
+  p2: number,
+  p3: number,
+  t: number,
+): number {
   const oneMinus = 1 - t;
-  return oneMinus ** 3 * p0 + 3 * oneMinus ** 2 * t * p1 + 3 * oneMinus * t ** 2 * p2 + t ** 3 * p3;
+  return (
+    oneMinus ** 3 * p0 +
+    3 * oneMinus ** 2 * t * p1 +
+    3 * oneMinus * t ** 2 * p2 +
+    t ** 3 * p3
+  );
 }
 
-function cubicExtrema(p0: number, p1: number, p2: number, p3: number): readonly number[] {
+function cubicExtrema(
+  p0: number,
+  p1: number,
+  p2: number,
+  p3: number,
+): readonly number[] {
   const a = -p0 + 3 * p1 - 3 * p2 + p3;
   const b = 3 * p0 - 6 * p1 + 3 * p2;
   const c = -3 * p0 + 3 * p1;
@@ -206,20 +284,57 @@ function cubicExtrema(p0: number, p1: number, p2: number, p3: number): readonly 
   const roots = [
     (-linear + rootDiscriminant) / (2 * quadratic),
     (-linear - rootDiscriminant) / (2 * quadratic),
-  ].filter((value, index, values) => value > 0 && value < 1 && values.findIndex((other) => Math.abs(other - value) <= EPSILON) === index);
+  ].filter(
+    (value, index, values) =>
+      value > 0 &&
+      value < 1 &&
+      values.findIndex((other) => Math.abs(other - value) <= EPSILON) ===
+        index,
+  );
   return Object.freeze(roots);
 }
 
 function segmentBounds(segment: CubicSegment): LottiePathBounds {
   const xs = [segment.start.x, segment.end.x];
   const ys = [segment.start.y, segment.end.y];
-  for (const t of cubicExtrema(segment.start.x, segment.c1.x, segment.c2.x, segment.end.x)) {
-    xs.push(cubicValue(segment.start.x, segment.c1.x, segment.c2.x, segment.end.x, t));
+  for (const t of cubicExtrema(
+    segment.start.x,
+    segment.c1.x,
+    segment.c2.x,
+    segment.end.x,
+  )) {
+    xs.push(
+      cubicValue(
+        segment.start.x,
+        segment.c1.x,
+        segment.c2.x,
+        segment.end.x,
+        t,
+      ),
+    );
   }
-  for (const t of cubicExtrema(segment.start.y, segment.c1.y, segment.c2.y, segment.end.y)) {
-    ys.push(cubicValue(segment.start.y, segment.c1.y, segment.c2.y, segment.end.y, t));
+  for (const t of cubicExtrema(
+    segment.start.y,
+    segment.c1.y,
+    segment.c2.y,
+    segment.end.y,
+  )) {
+    ys.push(
+      cubicValue(
+        segment.start.y,
+        segment.c1.y,
+        segment.c2.y,
+        segment.end.y,
+        t,
+      ),
+    );
   }
-  return Object.freeze({ minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) });
+  return Object.freeze({
+    minX: Math.min(...xs),
+    minY: Math.min(...ys),
+    maxX: Math.max(...xs),
+    maxY: Math.max(...ys),
+  });
 }
 
 function round(value: number, precision: number): number {
@@ -228,12 +343,27 @@ function round(value: number, precision: number): number {
   return Object.is(rounded, -0) ? 0 : rounded;
 }
 
-function relativeVector(from: Point, to: Point, precision: number): LottiePoint {
-  return Object.freeze([round(to.x - from.x, precision), round(to.y - from.y, precision)]);
+function relativeVector(
+  from: Point,
+  to: Point,
+  precision: number,
+): LottiePoint {
+  return Object.freeze([
+    round(to.x - from.x, precision),
+    round(to.y - from.y, precision),
+  ]);
 }
 
-function absolutePoint(value: Point, offsetX: number, offsetY: number, precision: number): LottiePoint {
-  return Object.freeze([round(value.x - offsetX, precision), round(value.y - offsetY, precision)]);
+function absolutePoint(
+  value: Point,
+  offsetX: number,
+  offsetY: number,
+  precision: number,
+): LottiePoint {
+  return Object.freeze([
+    round(value.x - offsetX, precision),
+    round(value.y - offsetY, precision),
+  ]);
 }
 
 function convertSubpath(
@@ -242,8 +372,12 @@ function convertSubpath(
   offsetY: number,
   precision: number,
 ): ParsedLottieSubpath {
-  if (subpath.segments.length === 0) throw invalid("A Lottie path requires at least one drawable segment.");
-  const vertices: LottiePoint[] = [absolutePoint(subpath.segments[0]!.start, offsetX, offsetY, precision)];
+  if (subpath.segments.length === 0) {
+    throw invalid("A Lottie path requires at least one drawable segment.");
+  }
+  const vertices: LottiePoint[] = [
+    absolutePoint(subpath.segments[0]!.start, offsetX, offsetY, precision),
+  ];
   const incoming: LottiePoint[] = [Object.freeze([0, 0])];
   const outgoing: LottiePoint[] = [Object.freeze([0, 0])];
   const firstPoint = subpath.segments[0]!.start;
@@ -251,12 +385,21 @@ function convertSubpath(
 
   subpath.segments.forEach((segment, segmentIndex) => {
     const startIndex = vertices.length - 1;
-    outgoing[startIndex] = relativeVector(segment.start, segment.c1, precision);
-    const closesAtStart = subpath.closed && segmentIndex === subpath.segments.length - 1 && samePoint(segment.end, firstPoint);
+    outgoing[startIndex] = relativeVector(
+      segment.start,
+      segment.c1,
+      precision,
+    );
+    const closesAtStart =
+      subpath.closed &&
+      segmentIndex === subpath.segments.length - 1 &&
+      samePoint(segment.end, firstPoint);
     if (closesAtStart) {
       incoming[0] = relativeVector(segment.end, segment.c2, precision);
     } else {
-      vertices.push(absolutePoint(segment.end, offsetX, offsetY, precision));
+      vertices.push(
+        absolutePoint(segment.end, offsetX, offsetY, precision),
+      );
       incoming.push(relativeVector(segment.end, segment.c2, precision));
       outgoing.push(Object.freeze([0, 0]));
     }
@@ -272,7 +415,12 @@ function convertSubpath(
   });
 
   return Object.freeze({
-    path: Object.freeze({ c: subpath.closed, v: Object.freeze(vertices), i: Object.freeze(incoming), o: Object.freeze(outgoing) }),
+    path: Object.freeze({
+      c: subpath.closed,
+      v: Object.freeze(vertices),
+      i: Object.freeze(incoming),
+      o: Object.freeze(outgoing),
+    }),
     bounds: Object.freeze({
       minX: round(bounds.minX - offsetX, precision),
       minY: round(bounds.minY - offsetY, precision),
@@ -285,7 +433,11 @@ function convertSubpath(
 
 export function parseSvgPathDataToLottie(
   source: string,
-  options: Readonly<{ offsetX?: number; offsetY?: number; precision?: number }> = {},
+  options: Readonly<{
+    offsetX?: number;
+    offsetY?: number;
+    precision?: number;
+  }> = {},
 ): ParsedLottiePathData {
   const pathTokens = tokens(source);
   if (pathTokens.length === 0) throw invalid("SVG path data is empty.");
@@ -298,20 +450,40 @@ export function parseSvgPathDataToLottie(
   let previousQuadraticControl: Point | null = null;
   let index = 0;
 
-  const isCommand = (value: string | undefined): boolean => Boolean(value && COMMAND.test(value));
-  const hasNumber = (): boolean => index < pathTokens.length && !isCommand(pathTokens[index]);
+  const isCommand = (value: string | undefined): boolean =>
+    Boolean(value && COMMAND.test(value));
+  const hasNumber = (): boolean =>
+    index < pathTokens.length && !isCommand(pathTokens[index]);
   const readNumber = (): number => {
     const value = pathTokens[index];
-    if (value === undefined || isCommand(value)) throw invalid("SVG path command is missing numeric parameters.", { index, command });
+    if (value === undefined || isCommand(value)) {
+      throw invalid("SVG path command is missing numeric parameters.", {
+        index,
+        command,
+      });
+    }
     index += 1;
     const parsed = Number(value);
-    if (!Number.isFinite(parsed)) throw invalid("SVG path contains a non-finite number.", { value, index: index - 1 });
+    if (!Number.isFinite(parsed)) {
+      throw invalid("SVG path contains a non-finite number.", {
+        value,
+        index: index - 1,
+      });
+    }
     return parsed;
   };
-  const coordinate = (x: number, y: number, relative: boolean): Point =>
+  const coordinate = (
+    x: number,
+    y: number,
+    relative: boolean,
+  ): Point =>
     relative ? point(current.x + x, current.y + y) : point(x, y);
   const requireActive = (): MutableSubpath => {
-    if (!active) throw invalid("SVG path drawing commands must follow a move command.", { command });
+    if (!active) {
+      throw invalid("SVG path drawing commands must follow a move command.", {
+        command,
+      });
+    }
     return active;
   };
   const addSegment = (segment: CubicSegment): void => {
@@ -332,10 +504,12 @@ export function parseSvgPathDataToLottie(
     }
 
     const upper = command!.toUpperCase();
-    const relative = command !== upper;
+    const relative: boolean = command !== upper;
     if (upper === "Z") {
       const target = requireActive();
-      if (!samePoint(current, target.start)) addSegment(line(current, target.start));
+      if (!samePoint(current, target.start)) {
+        addSegment(line(current, target.start));
+      }
       target.closed = true;
       current = target.start;
       previousCommand = "Z";
@@ -361,20 +535,31 @@ export function parseSvgPathDataToLottie(
     }
 
     requireActive();
-    if (!hasNumber()) throw invalid("SVG path command is missing parameters.", { command, index });
+    if (!hasNumber()) {
+      throw invalid("SVG path command is missing parameters.", {
+        command,
+        index,
+      });
+    }
 
     if (upper === "L") {
-      addSegment(line(current, coordinate(readNumber(), readNumber(), relative)));
+      addSegment(
+        line(current, coordinate(readNumber(), readNumber(), relative)),
+      );
       previousCommand = "L";
       resetControls();
     } else if (upper === "H") {
       const x = readNumber();
-      addSegment(line(current, point(relative ? current.x + x : x, current.y)));
+      addSegment(
+        line(current, point(relative ? current.x + x : x, current.y)),
+      );
       previousCommand = "H";
       resetControls();
     } else if (upper === "V") {
       const y = readNumber();
-      addSegment(line(current, point(current.x, relative ? current.y + y : y)));
+      addSegment(
+        line(current, point(current.x, relative ? current.y + y : y)),
+      );
       previousCommand = "V";
       resetControls();
     } else if (upper === "C") {
@@ -386,7 +571,10 @@ export function parseSvgPathDataToLottie(
       previousQuadraticControl = null;
       previousCommand = "C";
     } else if (upper === "S") {
-      const c1 = previousCommand === "C" || previousCommand === "S" ? reflect(previousCubicControl, current) : current;
+      const c1 =
+        previousCommand === "C" || previousCommand === "S"
+          ? reflect(previousCubicControl, current)
+          : current;
       const c2 = coordinate(readNumber(), readNumber(), relative);
       const end = coordinate(readNumber(), readNumber(), relative);
       addSegment(cubic(current, c1, c2, end));
@@ -401,7 +589,10 @@ export function parseSvgPathDataToLottie(
       previousCubicControl = null;
       previousCommand = "Q";
     } else if (upper === "T") {
-      const control = previousCommand === "Q" || previousCommand === "T" ? reflect(previousQuadraticControl, current) : current;
+      const control =
+        previousCommand === "Q" || previousCommand === "T"
+          ? reflect(previousQuadraticControl, current)
+          : current;
       const end = coordinate(readNumber(), readNumber(), relative);
       addSegment(quadraticAsCubic(current, control, end));
       previousQuadraticControl = control;
@@ -414,7 +605,15 @@ export function parseSvgPathDataToLottie(
       const largeArcFlag = readNumber();
       const sweepFlag = readNumber();
       const end = coordinate(readNumber(), readNumber(), relative);
-      const arcSegments = arcAsCubics(current, rx, ry, rotation, largeArcFlag, sweepFlag, end);
+      const arcSegments = arcAsCubics(
+        current,
+        rx,
+        ry,
+        rotation,
+        largeArcFlag,
+        sweepFlag,
+        end,
+      );
       for (const segment of arcSegments) addSegment(segment);
       current = end;
       previousCommand = "A";
@@ -424,17 +623,31 @@ export function parseSvgPathDataToLottie(
     }
   }
 
-  const drawable = subpaths.filter((subpath) => subpath.segments.length > 0);
-  if (drawable.length === 0) throw invalid("SVG path data contains no drawable segments.");
+  const drawable = subpaths.filter(
+    (subpath) => subpath.segments.length > 0,
+  );
+  if (drawable.length === 0) {
+    throw invalid("SVG path data contains no drawable segments.");
+  }
   const precision = options.precision ?? 4;
   if (!Number.isSafeInteger(precision) || precision < 0 || precision > 8) {
-    throw invalid("Path precision must be an integer from 0 to 8.", { precision });
+    throw invalid("Path precision must be an integer from 0 to 8.", {
+      precision,
+    });
   }
   const converted = drawable.map((subpath) =>
-    convertSubpath(subpath, options.offsetX ?? 0, options.offsetY ?? 0, precision),
+    convertSubpath(
+      subpath,
+      options.offsetX ?? 0,
+      options.offsetY ?? 0,
+      precision,
+    ),
   );
   return Object.freeze({
     subpaths: Object.freeze(converted),
-    segmentCount: converted.reduce((total, subpath) => total + subpath.segmentCount, 0),
+    segmentCount: converted.reduce(
+      (total, subpath) => total + subpath.segmentCount,
+      0,
+    ),
   });
 }
