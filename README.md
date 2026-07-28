@@ -23,18 +23,19 @@ The objective is not to call one automatic trace “finished”. The system insp
 - optional audited white-to-red PNG difference heatmaps with bounded dimensions and SHA-256 evidence;
 - browser-side verification of returned PNG bytes, signature, dimensions, selected candidate and SHA-256;
 - responsive browser review for source, selected SVG, difference image, topology, candidates, metrics and downloads;
-- authenticated multipart API for bounded synchronous execution;
+- authenticated multipart API for bounded synchronous tracing;
 - JSON-first CLI suitable for people, ChatGPT, Claude and workers;
 - deterministic, script-free animated SVG generation from validated ID-targeted motion plans;
 - opacity, translation, scale and rotation keyframes with easing and mandatory reduced-motion fallback;
 - motion-plan JSON Schema, normalized-plan validation, animated-SVG inspection and SHA-256 evidence;
 - atomic new-file-only CLI transactions for optimised, traced and animated outputs;
-- local stdio MCP server with six governed tracing and SVG tools for ChatGPT-compatible MCP hosts, Claude, editors and agent runtimes;
+- local stdio MCP server with nine governed tracing, SVG and motion tools for ChatGPT-compatible MCP hosts, Claude, editors and agent runtimes;
 - canonical allowed-root access, new-files-only output, atomic multi-file commit and SHA-256 file receipts for MCP operations;
-- tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, MCP path-policy and transaction boundaries;
+- inline or file-based MCP motion plans, normalized-plan output, animated SVG creation and motion inspection without placing SVG bodies in model context;
+- tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, MCP SDK, path-policy and transaction boundaries;
 - dependency-free contract gates plus the GitHub Actions quality workflow source.
 
-Animated SVG production is available through the core motion package and CLI. The browser timeline/editor, motion API and MCP motion tool remain to be implemented. Lottie and dotLottie export remain unavailable until a separate validated renderer-compatibility contract exists.
+Animated SVG production is available through the core motion package, CLI and MCP. The browser timeline/editor and motion API remain to be implemented. Lottie and dotLottie export remain unavailable until a separate validated renderer-compatibility contract exists.
 
 ## Quick start on Windows PowerShell
 
@@ -67,7 +68,7 @@ The current browser workspace can:
 
 White regions in the heatmap are measured matches. Red regions mark visual difference using a declared display amplification. The heatmap is review evidence, not a substitute for inspecting curves, compound paths, negative space and brand geometry.
 
-Motion authoring is currently CLI-first. The browser does not yet claim a working timeline editor.
+Motion authoring is currently available through CLI and MCP. The browser does not yet claim a working timeline editor.
 
 ## CLI
 
@@ -115,20 +116,23 @@ $env:VECTOR_MCP_ALLOWED_ROOTS = "C:\GitRepos\evavo-vector-studio;C:\EVAVO\Vector
 pnpm vector:mcp
 ```
 
-The server currently exposes:
+MCP contract `1.1` exposes:
 
 - `vector_capabilities`;
 - `vector_input_policy`;
 - `vector_inspect_raster`;
 - `vector_trace_raster`;
 - `vector_inspect_svg`;
-- `vector_optimise_svg`.
+- `vector_optimise_svg`;
+- `vector_validate_motion_plan`;
+- `vector_animate_svg`;
+- `vector_inspect_animated_svg`.
 
-MCP inputs must be existing regular files beneath a configured canonical root. Outputs use new-files-only semantics: existing destinations, path collisions and ordinary symlink escapes are rejected. A trace writes its SVG and optional difference PNG through one no-overwrite transaction, then returns path, MIME type, byte count and SHA-256 receipts instead of placing full SVG markup or binary PNG data into model context.
+MCP inputs must be existing regular files beneath a configured canonical root. Outputs use new-files-only semantics: existing destinations, path collisions and ordinary symlink escapes are rejected. Related outputs commit atomically and return path, MIME type, byte count and SHA-256 receipts instead of placing full SVG markup or binary PNG data into model context.
 
-`vector_trace_raster` supports compact `summary` evidence and complete `full` evidence. Both remain `human-review-required`; a successful tool call records completion and evidence, not artistic approval.
+`vector_trace_raster` supports compact `summary` evidence and complete `full` evidence. Motion plans may be supplied inline or through an allowed-root JSON file. `vector_validate_motion_plan` can optionally save a normalized plan; `vector_animate_svg` can atomically write animated SVG plus evidence JSON.
 
-Animated SVG creation is not yet exposed as an MCP tool. See [`docs/MCP.md`](docs/MCP.md) for the current tool boundary.
+All tools remain `human-review-required`; successful execution records completion and evidence, not artistic approval. See [`docs/MCP.md`](docs/MCP.md) for the full tool, filesystem and motion contract.
 
 ## API
 
@@ -183,7 +187,7 @@ packages/vector-core      shared job, SVG safety, geometry and topology contract
 packages/raster-engine    guarded decoding, analysis, tracing, comparison and difference evidence
 packages/motion-engine    validated deterministic animated SVG production
 packages/cli              JSON-first tracing, optimisation and motion automation
-packages/mcp              local stdio tracing and SVG tools with allowed-root policies
+packages/mcp              local stdio tracing, SVG and motion tools with allowed-root policies
 schemas                   machine-readable governed production contracts
 fixtures                  deterministic raster, SVG and motion validation inputs
 scripts                   dependency-free release, topology, browser, MCP and motion gates
