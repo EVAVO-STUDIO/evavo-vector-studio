@@ -1,0 +1,101 @@
+name: One-time MCP batch test integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/mcp-batch-test-integration.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-mcp-batch-test-integration
+  cancel-in-progress: true
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Align legacy SDK handshake with MCP 1.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          target = Path("packages/mcp/src/server.test.ts")
+          source = target.read_text(encoding="utf-8")
+
+          old = '''import {
+            VECTOR_MCP_DOTLOTTIE_CONTRACT_VERSION,
+            VECTOR_MCP_DOTLOTTIE_TOOL_NAMES,
+          } from "./dotlottie-tools.js";'''
+          new = '''import { VECTOR_MCP_BATCH_TOOL_NAMES } from "./batch-tools.js";
+          import { VECTOR_MCP_DOTLOTTIE_TOOL_NAMES } from "./dotlottie-tools.js";'''
+          if source.count(old) != 1:
+              raise SystemExit("DOTLOTTIE_IMPORT_REPLACEMENT_INVALID")
+          source = source.replace(old, new, 1)
+
+          old = 'import { createVectorMcpServer } from "./server.js";'
+          new = '''import {
+            createVectorMcpServer,
+            VECTOR_MCP_SERVER_CONTRACT_VERSION,
+          } from "./server.js";'''
+          if source.count(old) != 1:
+              raise SystemExit("SERVER_IMPORT_REPLACEMENT_INVALID")
+          source = source.replace(old, new, 1)
+
+          old = '''  ...VECTOR_MCP_DOTLOTTIE_TOOL_NAMES,
+          ]);'''
+          new = '''  ...VECTOR_MCP_DOTLOTTIE_TOOL_NAMES,
+            ...VECTOR_MCP_BATCH_TOOL_NAMES,
+          ]);'''
+          if source.count(old) != 1:
+              raise SystemExit("TOOL_SET_REPLACEMENT_INVALID")
+          source = source.replace(old, new, 1)
+
+          old = '''      payload?.mcpContractVersion,
+                VECTOR_MCP_DOTLOTTIE_CONTRACT_VERSION,
+              );'''
+          new = '''      payload?.mcpContractVersion,
+                VECTOR_MCP_SERVER_CONTRACT_VERSION,
+              );'''
+          if source.count(old) != 1:
+              raise SystemExit("CONTRACT_ASSERTION_REPLACEMENT_INVALID")
+          source = source.replace(old, new, 1)
+
+          old = '    assert.match(client.getInstructions() ?? "", /dotLottie/i);'
+          new = old + '\n    assert.match(client.getInstructions() ?? "", /durable batch|resumable/i);'
+          if source.count(old) != 1:
+              raise SystemExit("INSTRUCTION_ASSERTION_REPLACEMENT_INVALID")
+          source = source.replace(old, new, 1)
+
+          target.write_text(source, encoding="utf-8")
+          PY
+          grep -Fq 'VECTOR_MCP_BATCH_TOOL_NAMES' packages/mcp/src/server.test.ts
+          grep -Fq 'VECTOR_MCP_SERVER_CONTRACT_VERSION' packages/mcp/src/server.test.ts
+          grep -Fq '...VECTOR_MCP_BATCH_TOOL_NAMES' packages/mcp/src/server.test.ts
+          git diff --check
+
+      - name: Commit integration and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-mcp-batch-test-integration.yml \
+            .github/mcp-batch-test-integration.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "test(mcp): align SDK handshake with batch contract"
+          git pull --rebase origin main
+          git push origin HEAD:main
