@@ -6,7 +6,7 @@ The objective is not broad best-effort conversion. The exporter accepts a delibe
 
 ## Current availability
 
-Implemented in `@evavo/lottie-engine`, the `evavo-vector` CLI, the authenticated HTTP API and MCP contract 1.2:
+Implemented in `@evavo/lottie-engine`, the `evavo-vector` CLI, the authenticated HTTP API, MCP contract 1.2 and the browser Motion Director:
 
 - static SVG path geometry converted to Lottie bezier paths;
 - absolute and relative `M`, `L`, `H`, `V`, `C`, `S`, `Q`, `T`, `A`, and `Z` commands;
@@ -20,13 +20,15 @@ Implemented in `@evavo/lottie-engine`, the `evavo-vector` CLI, the authenticated
 - atomic new-file-only CLI and MCP output with optional evidence JSON;
 - HTTP wrapper evidence or direct `video/lottie+json` delivery;
 - receipt-only MCP responses that keep generated Lottie bodies out of model context;
+- browser verification of exact JSON bytes, source/output SHA-256, parsed metadata and structural evidence;
+- browser Lottie player preview through `@lottiefiles/dotlottie-react` with reduced-motion autoplay suppression;
 - explicit source-subset, motion-subset, compatibility, and approval boundaries.
 
 Not yet available:
 
-- browser Lottie authoring or player preview;
-- independent player-render comparison;
+- independent player-render comparison against the source or a reference renderer;
 - dotLottie packaging;
+- graphical Lottie timeline controls beyond the shared motion-plan editor;
 - gradients, images, text, masks, filters, expressions, precompositions, path morphing, or motion paths;
 - repeated, reversed, or alternating playback encoded into the exported composition.
 
@@ -142,6 +144,29 @@ Lottie input/output 20 MiB
 Frame rate          1 to 120
 Precision           0 to 6
 ```
+
+## Browser Motion Director workflow
+
+The browser Motion Director uses the same selected SVG and normalized motion plan as animated-SVG production.
+
+The Lottie review panel:
+
+1. checks that the plan uses one normal playback cycle and a supported fill mode;
+2. posts the selected SVG and exact normalized plan to `/api/v1/motion/lottie` in JSON mode;
+3. verifies the returned source bytes and SHA-256 against the selected SVG;
+4. verifies the exact Lottie JSON bytes and SHA-256 against retained output evidence;
+5. parses the JSON and checks governed metadata, dimensions, frame rate, out point, assets and layers;
+6. checks structural inspection, path counts, layer counts and the absence of expressions, images, text and precompositions;
+7. verifies that the normalized target order remains consistent across response fields;
+8. creates separate Lottie JSON and evidence downloads;
+9. marks a displayed result stale when the source, plan, frame rate or precision changes;
+10. passes only verified JSON into the client-only official LottieFiles player.
+
+The browser Lottie player preview uses `@lottiefiles/dotlottie-react`. It is loaded client-side and receives the exact verified JSON string through the `data` prop. When the browser prefers reduced motion, autoplay and looping are disabled.
+
+This is a delivery-context preview and not independent source-to-player validation. A player that loads successfully can still differ in paint order, fill rules, stroke treatment, transform origins or timing from the source or another player.
+
+The downloaded browser evidence records `playerRenderValidation: false` and `dotLottiePackaging: false`; it does not convert a preview into an approval claim.
 
 ## Programmatic workflow
 
@@ -264,7 +289,7 @@ Lottie JSON cannot embed the animated SVG `prefers-reduced-motion` media rule. D
 
 ## Approval boundary
 
-A generated file remains `review-required` even when structural inspection passes.
+A generated file remains `review-required` even when structural inspection passes and the browser player loads it.
 
 Human review must assess source-versus-player visual equivalence, fill and stroke rendering, paint order, transform origins, timing, easing, player compatibility, accessibility and brand fidelity.
 
