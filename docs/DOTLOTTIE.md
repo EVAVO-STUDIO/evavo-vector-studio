@@ -25,11 +25,12 @@ Implemented now:
 - atomic new-file-only CLI package and optional evidence output;
 - CLI structural inspection for existing `.lottie` files;
 - authenticated HTTP packaging from the same governed SVG and motion plan used by Lottie JSON export;
-- direct `.lottie` delivery and bounded base64 wrapper evidence.
+- direct `.lottie` delivery and bounded base64 wrapper evidence;
+- receipt-only MCP packaging and inspection under canonical allowed roots;
+- atomic MCP archive plus optional evidence output without ZIP bytes or embedded JSON in model context.
 
 Not yet available:
 
-- dotLottie MCP tools;
 - browser `.lottie` archive generation or browser archive-load validation;
 - themes;
 - state machines;
@@ -163,6 +164,55 @@ The endpoint performs:
 6. archive and embedded-Lottie inspection;
 7. exact source, intermediate and archive SHA-256 evidence;
 8. explicit player-render and browser archive-load non-claims.
+
+## MCP workflow
+
+MCP contract `1.3` exposes:
+
+- `vector_package_dotlottie`;
+- `vector_inspect_dotlottie`.
+
+Package an existing governed Lottie JSON file:
+
+```json
+{
+  "inputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.lottie.json",
+  "outputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.lottie",
+  "evidenceOutputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.dotlottie.evidence.json",
+  "animationId": "mark-intro"
+}
+```
+
+Inspect the committed archive:
+
+```json
+{
+  "inputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.lottie"
+}
+```
+
+Both tools use the same canonical allowed-root and new-files-only boundaries as tracing, animated SVG and Lottie JSON export.
+
+`vector_package_dotlottie`:
+
+- accepts one allowed-root `.json` input up to 20 MiB;
+- creates one new `.lottie` archive up to 25 MiB;
+- optionally creates one new evidence JSON file;
+- commits archive and evidence atomically;
+- returns manifest, inspection, compatibility state and SHA-256 file receipts;
+- never returns archive bytes or embedded generated Lottie JSON in model context.
+
+`vector_inspect_dotlottie` reads one allowed-root archive, verifies its byte limit and returns archive SHA-256, ZIP findings, manifest state and embedded-Lottie inspection without modifying the file.
+
+The MCP tools retain:
+
+```text
+archiveInspection: passed
+embeddedLottieInspection: passed
+playerRenderValidation: not-yet-performed
+browserArchiveLoadValidation: not-yet-performed
+approval: review-required
+```
 
 ## Deterministic archive policy
 
