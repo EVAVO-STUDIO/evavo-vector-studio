@@ -1,21 +1,24 @@
 # EVAVO Vector Studio MCP Server
 
-The MCP server exposes Vector Studio as a local stdio toolset for ChatGPT-compatible MCP hosts, Claude, editors and other agent runtimes. It uses the same raster engine, SVG inspection, candidate selection, topology evidence and difference-image system as the CLI and API.
+The MCP server exposes Vector Studio as a local stdio toolset for ChatGPT-compatible MCP hosts, Claude, editors and other agent runtimes. It uses the same raster, SVG, topology, difference-image and animated-SVG engines as the CLI.
 
-It is deliberately a local, bounded execution surface. It is not a remote public endpoint or a durable job queue.
+MCP contract version `1.1` is a local, bounded execution surface. It is not a remote public endpoint, browser extension or durable job queue.
 
 ## Current tool contract
 
 | Tool | Behaviour |
 | --- | --- |
-| `vector_capabilities` | Returns versions, allowed roots, input limits, supported profiles, runtime state, implemented outputs and approval policy. |
+| `vector_capabilities` | Returns versions, allowed roots, input limits, runtime state, tracing and motion support, implemented outputs and approval policy. |
 | `vector_input_policy` | Returns accepted static image classes and pre-decode rejection rules for animation and multi-page containers. |
 | `vector_inspect_raster` | Inspects one existing static raster without creating an output. |
 | `vector_trace_raster` | Creates one new SVG and, optionally, one new difference PNG through a single no-overwrite transaction. |
 | `vector_inspect_svg` | Inspects SVG safety, geometry, topology and editability without modifying the file. |
 | `vector_optimise_svg` | Writes a conservatively optimised SVG to a new path after governed safety validation. |
+| `vector_validate_motion_plan` | Validates and normalizes one inline or file-based motion v1 plan and can optionally save the normalized plan to a new JSON file. |
+| `vector_animate_svg` | Applies one validated inline or file-based motion plan to a governed static SVG and atomically creates a new animated SVG plus optional evidence JSON. |
+| `vector_inspect_animated_svg` | Inspects EVAVO motion identity, animation rules, reduced-motion fallback and underlying SVG safety. |
 
-Animated SVG and Lottie authoring are not exposed because those engines are not implemented yet.
+Animated SVG authoring is available. Lottie and dotLottie export remain unavailable because no governed feature-subset, schema-validation and renderer-compatibility contract has been implemented yet.
 
 ## Build and run
 
@@ -79,7 +82,7 @@ Build the package first, then configure the host to launch Node with the compile
 
 The server uses the reviewed v1 TypeScript SDK line and `StdioServerTransport`, which is intended for local process-spawned MCP integrations.
 
-## Recommended agent workflow
+## Recommended raster workflow
 
 1. Call `vector_capabilities` once after connecting.
 2. Call `vector_input_policy` before handling an unfamiliar raster container.
@@ -106,29 +109,91 @@ A typical trace call is:
 }
 ```
 
-## Evidence levels
+## Recommended animated-SVG workflow
+
+1. Inspect the static source with `vector_inspect_svg`.
+2. Create a motion v1 plan inline or as a JSON file.
+3. Call `vector_validate_motion_plan` before production when the plan was generated or edited externally.
+4. Call `vector_animate_svg` with a new animated SVG path and, preferably, a new evidence JSON path.
+5. Call `vector_inspect_animated_svg` on the committed output.
+6. Review timing, easing, transform origins, reduced-motion behaviour and brand character.
+
+### Inline motion plan
+
+```json
+{
+  "inputPath": "C:\\EVAVO\\VectorAssets\\source\\mark.svg",
+  "outputSvgPath": "C:\\EVAVO\\VectorAssets\\output\\mark.animated.svg",
+  "evidenceOutputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.motion.evidence.json",
+  "motionPlan": {
+    "version": "1.0",
+    "name": "Gentle entrance",
+    "durationMs": 900,
+    "reducedMotion": "last-frame",
+    "tracks": [
+      {
+        "targetId": "mark",
+        "easing": {
+          "cubicBezier": [0.2, 0.8, 0.2, 1]
+        },
+        "keyframes": [
+          {
+            "offset": 0,
+            "opacity": 0,
+            "translateY": 8
+          },
+          {
+            "offset": 1,
+            "opacity": 1,
+            "translateY": 0
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### File-based motion plan
+
+```json
+{
+  "inputPath": "C:\\EVAVO\\VectorAssets\\source\\mark.svg",
+  "motionPath": "C:\\EVAVO\\VectorAssets\\plans\\mark.motion.json",
+  "outputSvgPath": "C:\\EVAVO\\VectorAssets\\output\\mark.animated.svg",
+  "evidenceOutputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.motion.evidence.json"
+}
+```
+
+Exactly one of `motionPlan` and `motionPath` is required. A plan file must be an existing allowed-root regular file. An inline plan remains inside the MCP request and is still validated by the same motion engine.
+
+`vector_validate_motion_plan` accepts the same two input modes and an optional `normalizedOutputPath`. The normalized output is new-file-only and records all default playback and keyframe values explicitly.
+
+## Evidence and model-context policy
 
 `vector_trace_raster` supports two response sizes:
 
 - `summary` is the default. It returns source evidence, selected settings, output geometry, aggregate render comparison, compact candidate results, topology inspection, warnings, timings and file receipts.
 - `full` returns the complete retained engine evidence for every candidate.
 
-Neither mode places full SVG markup or PNG bytes into model context. Outputs are written to the requested paths and represented by receipts containing path, MIME type, byte count and SHA-256.
+Motion tools return normalized settings, inspections, hashes, warnings and output receipts. The animated SVG and optional evidence JSON are written to the requested paths.
+
+No operational tool places full SVG markup or PNG bytes into model context. Outputs are represented by receipts containing path, MIME type, byte count and SHA-256. Evidence JSON created by `vector_animate_svg` also avoids embedding a duplicate SVG body.
 
 ## Transaction and overwrite policy
 
-Trace output is committed as one transaction:
+Related outputs are committed as one transaction:
 
-1. SVG and optional PNG are staged in their destination directories.
+1. Files are staged in their destination directories.
 2. Each final path is created with no-overwrite semantics.
 3. A conflict aborts the transaction.
 4. Any final files already committed by that transaction are removed during rollback.
 
-The server never replaces an existing output. Choose a new revisioned file name when rerunning work.
+This applies to traced SVG plus difference PNG, animated SVG plus evidence JSON, and normalized motion plan output. The server never replaces an existing output. Choose a new revisioned file name when rerunning work.
 
-## Runtime limits
+## Runtime limits and cancellation
 
-Raster inspection and tracing share the existing bounded runtime guard:
+Raster inspection and tracing share the bounded native runtime guard:
 
 ```text
 VECTOR_TRACE_TIMEOUT_MS          5000 to 180000, default 45000
@@ -136,7 +201,24 @@ VECTOR_TRACE_MAX_CONCURRENT      1 to 4, default 1
 VECTOR_TRACE_RETRY_AFTER_SECONDS 1 to 60, default 5
 ```
 
-At capacity, a tool returns the stable `RASTER_RUNTIME_BUSY` failure with retry information. A deadline returns `VECTOR_MCP_RUNTIME_TIMEOUT`. MCP request cancellation is forwarded into native decoding, tracing and rendering.
+At capacity, a tool returns the stable `RASTER_RUNTIME_BUSY` failure with retry information. A deadline returns `VECTOR_MCP_RUNTIME_TIMEOUT`.
+
+MCP request cancellation is forwarded into native raster decoding, tracing and rendering. Pure motion operations also check cancellation before validation, source processing and output commit.
+
+## Motion v1 limits
+
+The MCP motion tools intentionally expose the same bounded motion v1 subset as the CLI:
+
+- opacity;
+- translate X and Y;
+- uniform scale;
+- rotation;
+- timing, delay, direction, fill, iterations and easing;
+- source, first-frame or last-frame reduced-motion fallback.
+
+They reject unknown plan properties, no-op tracks, duplicate or missing target IDs, existing animation systems and transform animation on targets with an existing base transform.
+
+Path morphing, colour and gradient animation, filters, physics, timeline editing and Lottie export are not silently approximated.
 
 ## Approval boundary
 
@@ -148,7 +230,8 @@ Human review remains mandatory for:
 - compound paths and negative space;
 - topology, winding and layer intent;
 - logo and brand fidelity;
-- animation readiness;
+- motion timing, easing and transform origins;
+- reduced-motion experience;
 - accessibility and final delivery context.
 
-The MCP server reports `human-review-required` instead of converting a pixel-similarity result into an unsupported approval claim.
+The MCP server reports `human-review-required` instead of converting pixel similarity or deterministic animation into an unsupported approval claim.
