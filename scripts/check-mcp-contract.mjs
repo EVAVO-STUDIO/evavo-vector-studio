@@ -70,6 +70,9 @@ if (mcpPackage?.dependencies?.["@modelcontextprotocol/sdk"] !== "1.30.0") {
 if (mcpPackage?.dependencies?.zod !== "3.25.76") {
   fail("packages/mcp must pin zod to 3.25.76 for the reviewed SDK compatibility boundary.");
 }
+if (mcpPackage?.dependencies?.["@evavo/motion-engine"] !== "workspace:*") {
+  fail("packages/mcp must consume the governed motion engine through the workspace.");
+}
 if (mcpPackage?.bin?.["evavo-vector-mcp"] !== "./dist/index.js") {
   fail("packages/mcp must expose the evavo-vector-mcp binary.");
 }
@@ -103,24 +106,32 @@ const toolNames = [
   "vector_trace_raster",
   "vector_inspect_svg",
   "vector_optimise_svg",
+  "vector_validate_motion_plan",
+  "vector_animate_svg",
+  "vector_inspect_animated_svg",
 ];
 requireTokens(files.server, sources.server, [
   "new McpServer(",
   "structuredContent: payload",
   "isError: true",
   "extra.signal",
+  "motionPlanSchema",
   ...toolNames.map((name) => `\"${name}\"`),
 ]);
 
 requireTokens(files.operations, sources.operations, [
-  'VECTOR_MCP_CONTRACT_VERSION = "1.0"',
+  'VECTOR_MCP_CONTRACT_VERSION = "1.1"',
   'transport: "stdio"',
   'outputMode: "new-files-only"',
   "atomicMultiFileCommit: true",
   "commitNewVectorFiles",
   "includeDifferenceArtifact: Boolean(resolvedDifferencePath)",
   'evidenceLevel === "full"',
-  'animatedSvg: false',
+  "validateAnimatedSvgMotionSpec",
+  "createAnimatedSvg(source, plan.normalized)",
+  "inspectAnimatedSvg(source)",
+  'inlinePlans: true',
+  'animatedSvg: true',
   'lottie: false',
   'approval: "human-review-required"',
 ]);
@@ -142,6 +153,7 @@ requireTokens(files.transaction, sources.transaction, [
   'createHash("sha256")',
 ]);
 requireTokens(files.errors, sources.errors, [
+  "MotionEngineError",
   "RasterRuntimeGuardError",
   "VectorMcpPathError",
   "VectorMcpFileCommitError",
@@ -161,14 +173,21 @@ requireTokens(files.serverTests, sources.serverTests, [
   "await client.listTools()",
   'name: "vector_capabilities"',
   'name: "vector_inspect_svg"',
+  'name: "vector_animate_svg"',
+  'name: "vector_inspect_animated_svg"',
+  "doesNotMatch(JSON.stringify(payload), /<svg",
   '"VECTOR_MCP_INPUT_NOT_FOUND"',
 ]);
 requireTokens(files.docs, sources.docs, [
   "vector_trace_raster",
+  "vector_validate_motion_plan",
+  "vector_animate_svg",
+  "vector_inspect_animated_svg",
   "VECTOR_MCP_ALLOWED_ROOTS",
   "new-files-only",
   "summary",
   "full",
+  "inline",
   "Human review",
 ]);
 requireTokens(files.environment, sources.environment, ["VECTOR_MCP_ALLOWED_ROOTS"]);
@@ -177,7 +196,7 @@ if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-studio-mcp-contract",
     ok: false,
-    mcpContractVersion: "1.0",
+    mcpContractVersion: "1.1",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -186,7 +205,7 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-mcp-contract",
   ok: true,
-  mcpContractVersion: "1.0",
+  mcpContractVersion: "1.1",
   tools: toolNames,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
