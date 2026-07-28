@@ -5,6 +5,9 @@ import {
   DEFAULT_MAX_INPUT_BYTES,
   MAX_DIFFERENCE_DIMENSION,
   RasterEngineError,
+  RasterRuntimeGuardError,
+  createRasterRuntimeGuard,
+  resolveRasterRuntimeGuardConfigFromEnvironment,
   traceRaster,
   type RasterCandidateMode,
   type RasterTraceProfileSelection,
@@ -16,6 +19,7 @@ export const dynamic = "force-dynamic";
 const PROFILES = new Set<RasterTraceProfileSelection>(["auto", "logo", "icon", "line-art", "illustration", "photo"]);
 const CANDIDATE_MODES = new Set<RasterCandidateMode>(["adaptive", "single"]);
 const MULTIPART_OVERHEAD_ALLOWANCE = 1024 * 1024;
+const TRACE_RUNTIME_GUARD = createRasterRuntimeGuard(resolveRasterRuntimeGuardConfigFromEnvironment());
 
 function noStoreHeaders(extra: HeadersInit = {}): Headers {
   const headers = new Headers(extra);
@@ -25,8 +29,8 @@ function noStoreHeaders(extra: HeadersInit = {}): Headers {
   return headers;
 }
 
-function json(value: unknown, status = 200): Response {
-  return Response.json(value, { status, headers: noStoreHeaders() });
+function json(value: unknown, status = 200, extraHeaders: HeadersInit = {}): Response {
+  return Response.json(value, { status, headers: noStoreHeaders(extraHeaders) });
 }
 
 function secureEqual(expected: string, supplied: string): boolean {
@@ -75,6 +79,19 @@ function safeDownloadName(sourceName: string): string {
   return `${stem || "vector"}.svg`;
 }
 
+function runtimeTimeoutResponse(): Response {
+  const runtimeState = TRACE_RUNTIME_GUARD.snapshot();
+  return json(
+    {
+      error: "RASTER_RUNTIME_TIMEOUT",
+      message: "The bounded raster operation exceeded its configured execution deadline.",
+      timeoutMs: runtimeState.timeoutMs,
+      retryable: true,
+    },
+    504,
+  );
+}
+
 export function GET(): Response {
   return json({
     service: "evavo-vector-studio",
@@ -87,6 +104,7 @@ export function GET(): Response {
     candidateModes: [...CANDIDATE_MODES],
     adaptiveCandidateBudget: { threeCandidatesThroughPixels: 4_000_000, twoCandidatesThroughPixels: 12_000_000, otherwise: 1 },
     limits: { maxInputBytes: DEFAULT_MAX_INPUT_BYTES, maxDecodedPixels: 40_000_000 },
+    runtimeGuard: TRACE_RUNTIME_GUARD.snapshot(),
     differenceArtifacts: {
       available: true,
       requestField: "includeDifference",
@@ -108,6 +126,28 @@ export async function POST(request: Request): Promise<Response> {
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (Number.isFinite(contentLength) && contentLength > DEFAULT_MAX_INPUT_BYTES + MULTIPART_OVERHEAD_ALLOWANCE) {
     return json({ error: "RASTER_INPUT_TOO_LARGE", maxInputBytes: DEFAULT_MAX_INPUT_BYTES }, 413);
+  }
+
+  let lease;
+  try {
+    lease = TRACE_RUNTIME_GUARD.acquire(request.signal);
+  } catch (error) {
+    if (error instanceof RasterRuntimeGuardError) {
+      const headers = error.retryAfterSeconds
+        ? { "retry-after": String(error.retryAfterSeconds) }
+        : {};
+      return json(
+        {
+          error: error.code,
+          message: error.message,
+          details: error.details,
+          retryable: error.code === "RASTER_RUNTIME_BUSY",
+        },
+        error.status,
+        headers,
+      );
+    }
+    throw error;
   }
 
   try {
@@ -165,9 +205,11 @@ export async function POST(request: Request): Promise<Response> {
       title: stringField(form, "title"),
       includeDifferenceArtifact: includeDifference,
       differenceMaxDimension,
-      signal: request.signal,
+      signal: lease.signal,
     });
+    if (lease.timedOut()) return runtimeTimeoutResponse();
 
+    const runtimeState = TRACE_RUNTIME_GUARD.snapshot();
     if (format === "svg") {
       return new Response(`${result.svg}\n`, {
         status: 200,
@@ -181,6 +223,8 @@ export async function POST(request: Request): Promise<Response> {
           "x-vector-mismatch-fraction": String(result.evidence.comparison.aggregate.mismatchFraction),
           "x-vector-selected-candidate": result.evidence.selection.selectedCandidateId,
           "x-vector-candidate-count": String(result.evidence.selection.attemptedCandidateCount),
+          "x-vector-runtime-timeout-ms": String(runtimeState.timeoutMs),
+          "x-vector-runtime-max-concurrent": String(runtimeState.maxConcurrent),
         }),
       });
     }
@@ -208,6 +252,10 @@ export async function POST(request: Request): Promise<Response> {
       id: jobId,
       status: "complete",
       approval: "review-required",
+      runtime: {
+        timeoutMs: runtimeState.timeoutMs,
+        maxConcurrent: runtimeState.maxConcurrent,
+      },
       source: {
         name: file.name,
         declaredType: file.type || null,
@@ -220,6 +268,7 @@ export async function POST(request: Request): Promise<Response> {
       artifacts,
     });
   } catch (error) {
+    if (lease.timedOut()) return runtimeTimeoutResponse();
     if (error instanceof RasterEngineError) {
       return json({ error: error.code, message: error.message, details: error.details }, error.status);
     }
@@ -230,5 +279,7 @@ export async function POST(request: Request): Promise<Response> {
       },
       500,
     );
+  } finally {
+    lease.release();
   }
 }
