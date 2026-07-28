@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -46,6 +46,8 @@ test("performs an MCP handshake and exposes the governed tool set", async () => 
     assert.equal(payload?.ok, true);
     assert.equal(payload?.transport, "stdio");
     assert.equal(payload?.approval, "human-review-required");
+    assert.equal((payload?.outputs as Record<string, unknown> | undefined)?.animatedSvg, true);
+    assert.equal((payload?.outputs as Record<string, unknown> | undefined)?.lottie, false);
   } finally {
     await client.close();
     await server.close();
@@ -69,6 +71,79 @@ test("returns a structured stable failure instead of leaking an exception", asyn
     assert.equal(payload?.ok, false);
     assert.equal(payload?.error?.code, "VECTOR_MCP_INPUT_NOT_FOUND");
     assert.equal(payload?.error?.retryable, false);
+  } finally {
+    await client.close();
+    await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("creates animated SVG from an inline plan without leaking SVG markup into model context", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "evavo-vector-mcp-motion-"));
+  const sourcePath = path.join(root, "source.svg");
+  const outputPath = path.join(root, "output.animated.svg");
+  const evidencePath = path.join(root, "output.motion.evidence.json");
+  await writeFile(
+    sourcePath,
+    '<svg viewBox="0 0 100 100"><title>Mark</title><g id="mark"><path d="M0 0L100 100"/></g></svg>',
+    "utf8",
+  );
+  const { server, client } = await connectedServer(root);
+  try {
+    const result = await client.callTool({
+      name: "vector_animate_svg",
+      arguments: {
+        inputPath: sourcePath,
+        outputSvgPath: outputPath,
+        evidenceOutputPath: evidencePath,
+        motionPlan: {
+          version: "1.0",
+          name: "Gentle entrance",
+          durationMs: 800,
+          reducedMotion: "last-frame",
+          tracks: [
+            {
+              targetId: "mark",
+              keyframes: [
+                { offset: 0, opacity: 0, translateY: 8 },
+                { offset: 1, opacity: 1, translateY: 0 },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    assert.notEqual(result.isError, true);
+    const payload = result.structuredContent as {
+      ok?: boolean;
+      approval?: string;
+      outputs?: {
+        animatedSvg?: { path?: string; sha256?: string };
+        evidence?: { path?: string; sha256?: string };
+      };
+    } | undefined;
+    assert.equal(payload?.ok, true);
+    assert.equal(payload?.approval, "review-required");
+    assert.equal(payload?.outputs?.animatedSvg?.path, outputPath);
+    assert.equal(payload?.outputs?.evidence?.path, evidencePath);
+    assert.match(payload?.outputs?.animatedSvg?.sha256 ?? "", /^[a-f0-9]{64}$/);
+    assert.doesNotMatch(JSON.stringify(payload), /<svg\b/i);
+
+    const animated = await readFile(outputPath, "utf8");
+    const evidence = await readFile(evidencePath, "utf8");
+    assert.match(animated, /data-evavo-motion-contract="1\.0"/);
+    assert.match(animated, /@media\(prefers-reduced-motion:reduce\)/);
+    assert.doesNotMatch(evidence, /<svg\b/i);
+
+    const inspection = await client.callTool({
+      name: "vector_inspect_animated_svg",
+      arguments: { inputPath: outputPath },
+    });
+    assert.notEqual(inspection.isError, true);
+    assert.equal(
+      (inspection.structuredContent as { inspection?: { valid?: boolean } } | undefined)?.inspection?.valid,
+      true,
+    );
   } finally {
     await client.close();
     await server.close();
