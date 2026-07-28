@@ -10,6 +10,7 @@ export type RasterEngineErrorCode =
   | "RASTER_TRACE_FAILED"
   | "RASTER_OUTPUT_INVALID"
   | "RASTER_RENDER_COMPARISON_FAILED"
+  | "RASTER_DIFFERENCE_ARTIFACT_FAILED"
   | "RASTER_ABORTED";
 
 export class RasterEngineError extends Error {
