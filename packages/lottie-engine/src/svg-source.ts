@@ -6,6 +6,8 @@ import {
   type ParsedLottieSubpath,
 } from "./path-data.js";
 
+export type { LottiePathBounds } from "./path-data.js";
+
 export type LottieSolidPaint = Readonly<{
   colour: readonly [number, number, number];
   opacity: number;

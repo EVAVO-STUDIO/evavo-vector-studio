@@ -503,7 +503,7 @@ export function parseSvgPathDataToLottie(
       throw invalid("SVG path data must begin with a command.", { index });
     }
 
-    const upper = command!.toUpperCase();
+    const upper: string = command!.toUpperCase();
     const relative: boolean = command !== upper;
     if (upper === "Z") {
       const target = requireActive();
@@ -589,7 +589,7 @@ export function parseSvgPathDataToLottie(
       previousCubicControl = null;
       previousCommand = "Q";
     } else if (upper === "T") {
-      const control =
+      const control: Point =
         previousCommand === "Q" || previousCommand === "T"
           ? reflect(previousQuadraticControl, current)
           : current;
