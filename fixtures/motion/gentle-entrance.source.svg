@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" role="img" aria-labelledby="motion-fixture-title">
+  <title id="motion-fixture-title">Motion fixture mark</title>
+  <g id="mark">
+    <path id="mark-body" fill="#111111" d="M64 36h192v108H64z"/>
+    <path id="accent" fill="#ff244e" d="M96 70h128v40H96z"/>
+  </g>
+</svg>
