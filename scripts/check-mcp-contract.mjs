@@ -49,6 +49,7 @@ const files = {
   server: "packages/mcp/src/server.ts",
   operations: "packages/mcp/src/operations.ts",
   lottieTools: "packages/mcp/src/lottie-tools.ts",
+  dotLottieTools: "packages/mcp/src/dotlottie-tools.ts",
   errors: "packages/mcp/src/errors.ts",
   pathPolicy: "packages/mcp/src/path-policy.ts",
   transaction: "packages/mcp/src/file-transaction.ts",
@@ -57,6 +58,7 @@ const files = {
   serverTests: "packages/mcp/src/server.test.ts",
   docs: "docs/MCP.md",
   lottieDocs: "docs/LOTTIE.md",
+  dotLottieDocs: "docs/DOTLOTTIE.md",
   readme: "README.md",
   environment: ".env.example",
 };
@@ -117,6 +119,8 @@ const toolNames = [
   "vector_inspect_animated_svg",
   "vector_export_lottie",
   "vector_inspect_lottie",
+  "vector_package_dotlottie",
+  "vector_inspect_dotlottie",
 ];
 requireTokens(files.server, sources.server, [
   "new McpServer(",
@@ -124,10 +128,13 @@ requireTokens(files.server, sources.server, [
   "isError: true",
   "extra.signal",
   "motionPlanSchema",
-  "VECTOR_MCP_PUBLIC_CONTRACT_VERSION",
   "extendVectorMcpCapabilities",
   "registerVectorMcpLottieTools",
   "lottieOperations",
+  "extendVectorMcpDotLottieCapabilities",
+  "registerVectorMcpDotLottieTools",
+  "VECTOR_MCP_DOTLOTTIE_CONTRACT_VERSION",
+  "dotLottieOperations",
   ...toolNames.slice(0, 9).map((name) => `\"${name}\"`),
 ]);
 
@@ -142,8 +149,8 @@ requireTokens(files.operations, sources.operations, [
   "validateAnimatedSvgMotionSpec",
   "createAnimatedSvg(source, plan.normalized)",
   "inspectAnimatedSvg(source)",
-  'inlinePlans: true',
-  'animatedSvg: true',
+  "inlinePlans: true",
+  "animatedSvg: true",
   'approval: "human-review-required"',
 ]);
 forbidTokens(files.operations, sources.operations, [
@@ -162,17 +169,46 @@ requireTokens(files.lottieTools, sources.lottieTools, [
   "inspectLottie",
   "commitNewVectorFiles",
   'mimeType: "video/lottie+json"',
-  'modelContextIncludesGeneratedJson: false',
-  'playerRenderValidation: false',
-  'dotLottiePackaging: false',
-  'approval: result.evidence.approval',
+  "modelContextIncludesGeneratedJson: false",
+  "playerRenderValidation: false",
+  "dotLottiePackaging: false",
+  "approval: result.evidence.approval",
   "VECTOR_MCP_LOTTIE_OUTPUT_TOO_LARGE",
 ]);
 forbidTokens(files.lottieTools, sources.lottieTools, [
   "json: result.json",
   "animation: result.animation",
   'playerRenderValidation: "passed"',
-  'dotLottiePackaging: true',
+  "dotLottiePackaging: true",
+  'approval: "approved"',
+]);
+
+requireTokens(files.dotLottieTools, sources.dotLottieTools, [
+  'VECTOR_MCP_DOTLOTTIE_CONTRACT_VERSION = "1.3"',
+  '"vector_package_dotlottie"',
+  '"vector_inspect_dotlottie"',
+  "createVectorMcpDotLottieOperations",
+  "registerVectorMcpDotLottieTools",
+  "extendVectorMcpDotLottieCapabilities",
+  "createDotLottiePackage",
+  "inspectDotLottie",
+  "commitNewVectorFiles",
+  "DOTLOTTIE_MIME_TYPE",
+  "modelContextIncludesArchiveBytes: false",
+  "modelContextIncludesEmbeddedJson: false",
+  "archiveInspection: true",
+  "embeddedLottieInspection: true",
+  "playerRenderValidation: false",
+  "browserArchiveLoadValidation: false",
+  "approval: result.evidence.approval",
+  "VECTOR_MCP_DOTLOTTIE_ARCHIVE_TOO_LARGE",
+]);
+forbidTokens(files.dotLottieTools, sources.dotLottieTools, [
+  "archiveBytes: result.bytes",
+  "bytes: result.bytes",
+  "lottieJson: input.source",
+  'playerRenderValidation: "passed"',
+  'browserArchiveLoadValidation: "passed"',
   'approval: "approved"',
 ]);
 
@@ -214,25 +250,31 @@ requireTokens(files.serverTests, sources.serverTests, [
   'name: "vector_inspect_animated_svg"',
   'name: "vector_export_lottie"',
   'name: "vector_inspect_lottie"',
+  'name: "vector_package_dotlottie"',
+  'name: "vector_inspect_dotlottie"',
   "doesNotMatch(JSON.stringify(payload), /<svg",
-  'doesNotMatch(JSON.stringify(payload), /\"layers\"',
+  'doesNotMatch(JSON.stringify(payload), /"layers"',
+  "assert.doesNotMatch(JSON.stringify(payload), /UEsDB/)",
   '"VECTOR_MCP_INPUT_NOT_FOUND"',
   '"VECTOR_MCP_OUTPUT_EXISTS"',
 ]);
 requireTokens(files.docs, sources.docs, [
-  "MCP contract version `1.2`",
+  "MCP contract version `1.3`",
   "vector_trace_raster",
   "vector_validate_motion_plan",
   "vector_animate_svg",
   "vector_inspect_animated_svg",
   "vector_export_lottie",
   "vector_inspect_lottie",
+  "vector_package_dotlottie",
+  "vector_inspect_dotlottie",
   "VECTOR_MCP_ALLOWED_ROOTS",
   "new-files-only",
   "summary",
   "full",
   "inline",
   "generated Lottie JSON",
+  "generated dotLottie archive bytes",
   "Human review",
 ]);
 requireTokens(files.lottieDocs, sources.lottieDocs, [
@@ -241,10 +283,17 @@ requireTokens(files.lottieDocs, sources.lottieDocs, [
   "playerRenderValidation: not-yet-performed",
   "dotLottiePackaging: not-yet-available",
 ]);
+requireTokens(files.dotLottieDocs, sources.dotLottieDocs, [
+  "vector_package_dotlottie",
+  "vector_inspect_dotlottie",
+  "browserArchiveLoadValidation: not-yet-performed",
+]);
 requireTokens(files.readme, sources.readme, [
   "vector_export_lottie",
   "vector_inspect_lottie",
-  "Lottie MCP",
+  "vector_package_dotlottie",
+  "vector_inspect_dotlottie",
+  "MCP contract `1.3`",
 ]);
 requireTokens(files.environment, sources.environment, ["VECTOR_MCP_ALLOWED_ROOTS"]);
 
@@ -252,7 +301,7 @@ if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-studio-mcp-contract",
     ok: false,
-    mcpContractVersion: "1.2",
+    mcpContractVersion: "1.3",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -261,7 +310,7 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-mcp-contract",
   ok: true,
-  mcpContractVersion: "1.2",
+  mcpContractVersion: "1.3",
   tools: toolNames,
   generatedBodiesInModelContext: false,
   checkedFiles: [...checkedFiles].sort(),
