@@ -17,6 +17,12 @@ import { validateAnimatedSvgMotionSpec } from "./validation.js";
 const GENERATOR_VERSION = "0.4.0" as const;
 const MOTION_MARKER = "data-evavo-motion-contract";
 
+type PreparedMotionTrack = Readonly<{
+  track: NormalizedMotionTrack;
+  animatesOpacity: boolean;
+  animatesTransform: boolean;
+}>;
+
 function bytes(value: string): number {
   return Buffer.byteLength(value, "utf8");
 }
@@ -55,19 +61,38 @@ function transform(frame: NormalizedMotionKeyframe): string {
   ].join(" ");
 }
 
-function frameDeclarations(track: NormalizedMotionTrack, frame: NormalizedMotionKeyframe): string {
+function changes(
+  track: NormalizedMotionTrack,
+  property: keyof Omit<NormalizedMotionKeyframe, "offset">,
+): boolean {
+  const first = track.keyframes[0]?.[property];
+  return track.keyframes.some((frame) => frame[property] !== first);
+}
+
+function prepareTrack(track: NormalizedMotionTrack): PreparedMotionTrack {
+  return Object.freeze({
+    track,
+    animatesOpacity: changes(track, "opacity"),
+    animatesTransform: ["translateX", "translateY", "scale", "rotateDeg"].some((property) =>
+      changes(track, property as keyof Omit<NormalizedMotionKeyframe, "offset">),
+    ),
+  });
+}
+
+function frameDeclarations(prepared: PreparedMotionTrack, frame: NormalizedMotionKeyframe): string {
   const declarations: string[] = [];
-  if (track.animatesOpacity) declarations.push(`opacity:${formatNumber(frame.opacity)}`);
-  if (track.animatesTransform) declarations.push(`transform:${transform(frame)}`);
+  if (prepared.animatesOpacity) declarations.push(`opacity:${formatNumber(frame.opacity)}`);
+  if (prepared.animatesTransform) declarations.push(`transform:${transform(frame)}`);
   return declarations.join(";");
 }
 
 function animationRule(
   motionId: string,
   index: number,
-  track: NormalizedMotionTrack,
+  prepared: PreparedMotionTrack,
   spec: NormalizedAnimatedSvgMotionSpec,
 ): string {
+  const track = prepared.track;
   const name = `evavo_${motionId}_${index}`;
   const properties = [
     `animation-name:${name}`,
@@ -78,7 +103,7 @@ function animationRule(
     `animation-fill-mode:${spec.fillMode}`,
     `animation-timing-function:${easingCss(track.easing)}`,
   ];
-  if (track.animatesTransform) {
+  if (prepared.animatesTransform) {
     properties.push(`transform-box:${track.transformBox}`);
     properties.push(
       `transform-origin:${formatNumber(track.originXPercent)}% ${formatNumber(track.originYPercent)}%`,
@@ -87,22 +112,23 @@ function animationRule(
   return `${selector(track.targetId)}{${properties.join(";")}}`;
 }
 
-function keyframesRule(motionId: string, index: number, track: NormalizedMotionTrack): string {
+function keyframesRule(motionId: string, index: number, prepared: PreparedMotionTrack): string {
   const name = `evavo_${motionId}_${index}`;
-  const frames = track.keyframes
-    .map((frame) => `${formatOffset(frame.offset)}{${frameDeclarations(track, frame)}}`)
+  const frames = prepared.track.keyframes
+    .map((frame) => `${formatOffset(frame.offset)}{${frameDeclarations(prepared, frame)}}`)
     .join("");
   return `@keyframes ${name}{${frames}}`;
 }
 
-function reducedRule(track: NormalizedMotionTrack, spec: NormalizedAnimatedSvgMotionSpec): string {
+function reducedRule(prepared: PreparedMotionTrack, spec: NormalizedAnimatedSvgMotionSpec): string {
+  const track = prepared.track;
   const properties = ["animation:none!important"];
   if (spec.reducedMotion !== "source") {
     const frame = spec.reducedMotion === "first-frame"
       ? track.keyframes[0]!
       : track.keyframes[track.keyframes.length - 1]!;
-    if (track.animatesOpacity) properties.push(`opacity:${formatNumber(frame.opacity)}!important`);
-    if (track.animatesTransform) properties.push(`transform:${transform(frame)}!important`);
+    if (prepared.animatesOpacity) properties.push(`opacity:${formatNumber(frame.opacity)}!important`);
+    if (prepared.animatesTransform) properties.push(`transform:${transform(frame)}!important`);
   }
   return `${selector(track.targetId)}{${properties.join(";")}}`;
 }
@@ -123,7 +149,7 @@ function hasBaseTransform(tag: string): boolean {
   return /(?:^|;)\s*transform\s*:/i.test(style);
 }
 
-function assertSource(source: string, spec: NormalizedAnimatedSvgMotionSpec): void {
+function assertSource(source: string, preparedTracks: readonly PreparedMotionTrack[]): void {
   const inspection = inspectSvg(source);
   if (!inspection.valid) {
     throw new MotionEngineError(
@@ -141,7 +167,8 @@ function assertSource(source: string, spec: NormalizedAnimatedSvgMotionSpec): vo
       "The source already contains animation metadata or animation elements. Animate a clean governed SVG revision instead.",
     );
   }
-  for (const track of spec.tracks) {
+  for (const prepared of preparedTracks) {
+    const track = prepared.track;
     const tags = targetOpeningTags(source, track.targetId);
     const occurrences = tags.length;
     if (occurrences === 0) {
@@ -158,7 +185,7 @@ function assertSource(source: string, spec: NormalizedAnimatedSvgMotionSpec): vo
         { targetId: track.targetId, occurrences },
       );
     }
-    if (track.animatesTransform && hasBaseTransform(tags[0]!)) {
+    if (prepared.animatesTransform && hasBaseTransform(tags[0]!)) {
       throw new MotionEngineError(
         "MOTION_TARGET_BASE_TRANSFORM_UNSUPPORTED",
         `Motion target ${track.targetId} already has a base transform that CSS keyframes would replace.`,
@@ -279,12 +306,13 @@ export function createAnimatedSvg(
   input: AnimatedSvgMotionSpec | unknown,
 ): AnimatedSvgResult {
   const spec = validateAnimatedSvgMotionSpec(input);
-  assertSource(source, spec);
+  const preparedTracks = Object.freeze(spec.tracks.map(prepareTrack));
+  assertSource(source, preparedTracks);
   const motionId = motionIdentity(source, spec);
   const styleId = `evavo-motion-${motionId}`;
-  const animationRules = spec.tracks.map((track, index) => animationRule(motionId, index, track, spec));
-  const keyframeRules = spec.tracks.map((track, index) => keyframesRule(motionId, index, track));
-  const reducedRules = spec.tracks.map((track) => reducedRule(track, spec));
+  const animationRules = preparedTracks.map((track, index) => animationRule(motionId, index, track, spec));
+  const keyframeRules = preparedTracks.map((track, index) => keyframesRule(motionId, index, track));
+  const reducedRules = preparedTracks.map((track) => reducedRule(track, spec));
   const css = `${animationRules.join("")}${keyframeRules.join("")}@media(prefers-reduced-motion:reduce){${reducedRules.join("")}}`;
   const svg = injectMotion(source, motionId, styleId, css);
   const inspection = inspectAnimatedSvg(svg);
