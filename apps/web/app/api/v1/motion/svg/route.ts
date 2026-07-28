@@ -223,7 +223,10 @@ export function GET(): Response {
     },
     supportedProperties: ["opacity", "translateX", "translateY", "scale", "rotateDeg"],
     reducedMotionFallbackRequired: true,
-    lottieAvailable: false,
+    lottieJsonExportAvailable: true,
+    lottieEndpoint: "/api/v1/motion/lottie",
+    lottiePlayerRenderValidationAvailable: false,
+    dotLottieAvailable: false,
     authentication: "Bearer VECTOR_API_TOKEN in production",
     approval: "human review required",
   });
