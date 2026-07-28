@@ -3,6 +3,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, resolve } from "node:path";
 import { inspectSvg, optimiseSvg } from "@evavo/vector-core";
 import {
+  DEFAULT_DIFFERENCE_MAX_DIMENSION,
+  MAX_DIFFERENCE_DIMENSION,
   RasterEngineError,
   inspectRaster,
   traceRaster,
@@ -11,7 +13,7 @@ import {
   type RasterTraceProfileSelection,
 } from "@evavo/raster-engine";
 
-const VERSION = "0.2.0";
+const VERSION = "0.4.0";
 const TRACE_PROFILES = new Set<RasterTraceProfileSelection>(["auto", "logo", "icon", "line-art", "illustration", "photo"]);
 const CANDIDATE_MODES = new Set<RasterCandidateMode>(["adaptive", "single"]);
 
@@ -37,6 +39,7 @@ function usage(): string {
     "  evavo-vector trace <input.png> [--out output.svg] [--profile auto|logo|icon|line-art|illustration|photo]",
     "                     [--candidate-mode adaptive|single] [--max-colours 1..256]",
     "                     [--preserve-palette|--simplify-palette] [--no-optimise]",
+    "                     [--diff-out output.diff.png] [--difference-max-dimension 32..1024]",
     "                     [--title \"Accessible title\"]",
     "  evavo-vector manifest",
     "  evavo-vector --version",
@@ -45,13 +48,18 @@ function usage(): string {
   ].join("\n");
 }
 
-function option(args: readonly string[], name: string): string | null {
-  const index = args.indexOf(name);
-  return index >= 0 ? args[index + 1] ?? null : null;
-}
-
 function has(args: readonly string[], name: string): boolean {
   return args.includes(name);
+}
+
+function option(args: readonly string[], name: string): string | null {
+  const index = args.indexOf(name);
+  if (index < 0) return null;
+  const value = args[index + 1];
+  if (!value || value.startsWith("--")) {
+    fail({ error: "VECTOR_CLI_OPTION_VALUE_REQUIRED", option: name });
+  }
+  return value;
 }
 
 function parseIntegerOption(args: readonly string[], name: string): number | undefined {
@@ -60,6 +68,10 @@ function parseIntegerOption(args: readonly string[], name: string): number | und
   const value = Number(raw);
   if (!Number.isInteger(value)) fail({ error: "VECTOR_CLI_OPTION_INVALID", option: name, value: raw });
   return value;
+}
+
+function samePath(left: string, right: string): boolean {
+  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
 }
 
 function traceOptions(sourcePath: string, args: readonly string[]): RasterTraceOptions {
@@ -74,6 +86,32 @@ function traceOptions(sourcePath: string, args: readonly string[]): RasterTraceO
   if (has(args, "--preserve-palette") && has(args, "--simplify-palette")) {
     fail({ error: "VECTOR_CLI_OPTION_CONFLICT", options: ["--preserve-palette", "--simplify-palette"] });
   }
+
+  const differenceRequested = has(args, "--diff-out");
+  const differenceOutput = option(args, "--diff-out");
+  if (differenceRequested && differenceOutput === null) {
+    fail({ error: "VECTOR_CLI_OPTION_VALUE_REQUIRED", option: "--diff-out" });
+  }
+  const differenceMaxDimension = parseIntegerOption(args, "--difference-max-dimension");
+  if (differenceMaxDimension !== undefined && !differenceRequested) {
+    fail({
+      error: "VECTOR_CLI_OPTION_CONFLICT",
+      option: "--difference-max-dimension",
+      requires: "--diff-out",
+    });
+  }
+  if (
+    differenceMaxDimension !== undefined &&
+    (differenceMaxDimension < 32 || differenceMaxDimension > MAX_DIFFERENCE_DIMENSION)
+  ) {
+    fail({
+      error: "VECTOR_CLI_OPTION_INVALID",
+      option: "--difference-max-dimension",
+      value: differenceMaxDimension,
+      range: [32, MAX_DIFFERENCE_DIMENSION],
+    });
+  }
+
   const maxColours = parseIntegerOption(args, "--max-colours");
   return {
     sourceName: basename(sourcePath),
@@ -83,6 +121,8 @@ function traceOptions(sourcePath: string, args: readonly string[]): RasterTraceO
     maxColours,
     optimise: !has(args, "--no-optimise"),
     title: option(args, "--title") ?? undefined,
+    includeDifferenceArtifact: differenceRequested,
+    differenceMaxDimension,
   };
 }
 
@@ -103,7 +143,7 @@ async function inspectSvgFile(input: string): Promise<void> {
 async function optimiseSvgFile(input: string, args: readonly string[]): Promise<void> {
   const sourcePath = resolve(input);
   const outputPath = resolve(option(args, "--out") ?? sourcePath.replace(/\.svg$/i, ".optimised.svg"));
-  if (outputPath === sourcePath) fail({ error: "VECTOR_SOURCE_OVERWRITE_REJECTED", sourcePath }, 2);
+  if (samePath(outputPath, sourcePath)) fail({ error: "VECTOR_SOURCE_OVERWRITE_REJECTED", sourcePath }, 2);
   const source = await readFile(sourcePath, "utf8");
   const result = optimiseSvg(source);
   if (!result.inspection.valid) {
@@ -126,16 +166,39 @@ async function inspectRasterFile(input: string): Promise<void> {
 async function traceRasterFile(input: string, args: readonly string[]): Promise<void> {
   const sourcePath = resolve(input);
   const outputPath = resolve(option(args, "--out") ?? defaultTraceOutput(sourcePath));
-  if (outputPath === sourcePath) fail({ error: "VECTOR_SOURCE_OVERWRITE_REJECTED", sourcePath }, 2);
+  const rawDifferencePath = option(args, "--diff-out");
+  const differenceOutputPath = rawDifferencePath ? resolve(rawDifferencePath) : null;
+
+  if (samePath(outputPath, sourcePath)) fail({ error: "VECTOR_SOURCE_OVERWRITE_REJECTED", sourcePath }, 2);
+  if (differenceOutputPath && samePath(differenceOutputPath, sourcePath)) {
+    fail({ error: "VECTOR_SOURCE_OVERWRITE_REJECTED", sourcePath, differenceOutputPath }, 2);
+  }
+  if (differenceOutputPath && samePath(differenceOutputPath, outputPath)) {
+    fail({ error: "VECTOR_OUTPUT_PATH_COLLISION", outputPath, differenceOutputPath }, 2);
+  }
+
   const source = await readFile(sourcePath);
   const result = await traceRaster(source, traceOptions(sourcePath, args));
+  const differencePng = result.artifacts.differencePng;
+  if (differenceOutputPath && !differencePng) {
+    fail({ error: "VECTOR_DIFFERENCE_ARTIFACT_MISSING", differenceOutputPath }, 2);
+  }
+  if (!differenceOutputPath && differencePng) {
+    fail({ error: "VECTOR_DIFFERENCE_OUTPUT_PATH_MISSING" }, 2);
+  }
+
   await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, `${result.svg}\n`, "utf8");
+  if (differenceOutputPath) await mkdir(dirname(differenceOutputPath), { recursive: true });
+  const writes: Promise<void>[] = [writeFile(outputPath, `${result.svg}\n`, "utf8")];
+  if (differenceOutputPath && differencePng) writes.push(writeFile(differenceOutputPath, differencePng));
+  await Promise.all(writes);
+
   print({
     command: "trace",
     written: true,
     sourcePath,
     outputPath,
+    differenceOutputPath,
     approval: result.evidence.qualityGates.productionApproval,
     renderComparison: result.evidence.qualityGates.renderComparison,
     selectedCandidate: result.evidence.selection.selectedCandidateId,
@@ -149,7 +212,7 @@ function manifest(): JsonRecord {
   return {
     name: "evavo-vector",
     version: VERSION,
-    contractVersion: "1.3",
+    contractVersion: "1.4",
     deterministicCommands: ["inspect", "optimise", "raster:inspect"],
     boundedCommands: ["trace"],
     commands: {
@@ -158,8 +221,12 @@ function manifest(): JsonRecord {
       "raster:inspect": { input: "path to PNG, JPEG, WebP, GIF, BMP or classic TIFF", output: "JSON source analysis and profile recommendation" },
       trace: {
         input: "path to supported raster",
-        options: { "--candidate-mode": ["adaptive", "single"] },
-        output: "selected SVG plus source, candidate, geometry and alpha-aware render evidence",
+        options: {
+          "--candidate-mode": ["adaptive", "single"],
+          "--diff-out": "optional visual difference PNG path",
+          "--difference-max-dimension": { default: DEFAULT_DIFFERENCE_MAX_DIMENSION, range: [32, MAX_DIFFERENCE_DIMENSION] },
+        },
+        output: "selected SVG plus source, candidate, geometry, render and optional difference artefact evidence",
         approvalState: "human-review-required",
       },
     },
@@ -168,11 +235,14 @@ function manifest(): JsonRecord {
       foreignObjectRejected: true,
       externalReferencesRejected: true,
       sourceOverwrittenByDefault: false,
+      outputPathCollisionsRejected: true,
       maxInputBytes: 26214400,
       maxDecodedPixels: 40000000,
       rasterTracingAvailable: true,
       renderComparisonAvailable: true,
       renderComparisonMaximumDimensions: [64, 256, 1024],
+      differenceArtifactAvailable: true,
+      differenceArtifactMaximumDimension: MAX_DIFFERENCE_DIMENSION,
       adaptiveCandidateMaximums: { threeCandidatesThroughPixels: 4000000, twoCandidatesThroughPixels: 12000000, otherwise: 1 },
       productionAutoApprovalAvailable: false,
     },
