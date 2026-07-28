@@ -28,6 +28,8 @@ The objective is not to call one automatic trace “finished”. The system insp
 - deterministic, script-free animated SVG generation from validated ID-targeted motion plans;
 - opacity, translation, scale and rotation keyframes with easing and mandatory reduced-motion fallback;
 - motion-plan JSON Schema, normalized-plan validation, animated-SVG inspection and SHA-256 evidence;
+- responsive browser Motion Director with source screening, target discovery, presets, tracks, keyframes, playback controls, replay and verified downloads;
+- browser verification of source/output SHA-256, motion identity, style identity, target order, reduced-motion fallback and script-free evidence;
 - atomic new-file-only CLI transactions for optimised, traced and animated outputs;
 - local stdio MCP server with nine governed tracing, SVG and motion tools for ChatGPT-compatible MCP hosts, Claude, editors and agent runtimes;
 - canonical allowed-root access, new-files-only output, atomic multi-file commit and SHA-256 file receipts for MCP operations;
@@ -35,7 +37,7 @@ The objective is not to call one automatic trace “finished”. The system insp
 - tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, MCP SDK, path-policy and transaction boundaries;
 - dependency-free contract gates plus the GitHub Actions quality workflow source.
 
-Animated SVG production is available through the core motion package, HTTP API, CLI and MCP. The browser timeline/editor remains to be implemented. Lottie and dotLottie export remain unavailable until a separate validated renderer-compatibility contract exists.
+Animated SVG production is available through the browser Motion Director, core motion package, HTTP API, CLI and MCP. Lottie and dotLottie export remain unavailable until a separate validated renderer-compatibility contract exists.
 
 ## Quick start on Windows PowerShell
 
@@ -48,13 +50,20 @@ pnpm check
 pnpm dev
 ```
 
-Open `http://localhost:3000` for the tracing and evidence workspace.
+Open:
+
+```text
+http://localhost:3000          trace and evidence workspace
+http://localhost:3000/motion   Motion Director
+```
 
 For a protected production deployment, set a long server-only `VECTOR_API_TOKEN`. The browser accepts it per tab and does not require a public environment variable.
 
-## Browser workflow
+## Browser workflows
 
-The current browser workspace can:
+### Trace workspace
+
+The trace workspace can:
 
 1. preview the selected raster locally;
 2. choose an automatic or directed trace profile;
@@ -68,7 +77,22 @@ The current browser workspace can:
 
 White regions in the heatmap are measured matches. Red regions mark visual difference using a declared display amplification. The heatmap is review evidence, not a substitute for inspecting curves, compound paths, negative space and brand geometry.
 
-Motion authoring is available through the API, CLI and MCP. The browser does not yet claim a working timeline editor.
+### Motion Director
+
+Open `/motion` to author motion against a governed, ID-structured SVG. The browser Motion Director can:
+
+1. screen the SVG for scripts, external references, duplicate IDs and pre-existing animation before preview;
+2. discover portable target IDs and flag base transforms;
+3. add multiple target tracks;
+4. apply fade, rise, slide, soft-pop, rotate-settle and drift-loop presets;
+5. edit offsets, opacity, translation, scale, rotation, easing, transform box and transform origin;
+6. control duration, delay, iteration, direction, fill mode and reduced-motion strategy;
+7. generate through the authenticated motion API;
+8. verify source/output SHA-256, motion/style identity, target order, reduced-motion fallback and script-free evidence before display;
+9. replay and download the animated SVG, normalized motion plan and evidence record;
+10. mark the displayed result stale when the editor changes after generation.
+
+The editor uses Blob-backed `<img>` previews rather than injecting returned SVG markup into the application document. Browser completion and API completion remain `human-review-required`.
 
 ## CLI
 
@@ -179,14 +203,14 @@ Detailed contracts:
 
 - [`docs/QUALITY-EVIDENCE.md`](docs/QUALITY-EVIDENCE.md) explains source, reconstruction, topology, render, selection and approval evidence.
 - [`docs/INPUT-SAFETY.md`](docs/INPUT-SAFETY.md) explains the one-static-image policy and pre-decode rejection rules.
-- [`docs/MOTION.md`](docs/MOTION.md) defines the animated SVG v1 plan and review boundary.
+- [`docs/MOTION.md`](docs/MOTION.md) defines the animated SVG v1 plan, Motion Director and review boundary.
 - [`docs/MCP.md`](docs/MCP.md) defines the local agent tool and filesystem contract.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) defines runtime boundaries and the path toward durable workers.
 
 ## Repository layout
 
 ```text
-apps/web                  Next.js tracing and motion APIs plus tracing evidence UI
+apps/web                  Next.js trace workspace, Motion Director and authenticated APIs
 packages/vector-core      shared job, SVG safety, geometry and topology contracts
 packages/raster-engine    guarded decoding, analysis, tracing, comparison and difference evidence
 packages/motion-engine    validated deterministic animated SVG production
@@ -194,7 +218,7 @@ packages/cli              JSON-first tracing, optimisation and motion automation
 packages/mcp              local stdio tracing, SVG and motion tools with allowed-root policies
 schemas                   machine-readable governed production contracts
 fixtures                  deterministic raster, SVG and motion validation inputs
-scripts                   dependency-free release, topology, browser, MCP, motion and API gates
+scripts                   dependency-free release, topology, browser, MCP, motion, API and workspace gates
 docs                      architecture, CLI, API, MCP, motion, quality, input safety and hub records
 ```
 
