@@ -62,6 +62,17 @@ test("normalises omitted playback and frame properties", () => {
   assert.equal(spec.tracks[0]?.keyframes[0]?.scale, 1);
 });
 
+test("keeps normalized motion plans schema-compatible and reusable", () => {
+  const normalized = validateAnimatedSvgMotionSpec(SPEC);
+  const serialized = JSON.stringify(normalized);
+  assert.doesNotMatch(serialized, /animatesOpacity|animatesTransform/);
+  assert.deepEqual(validateAnimatedSvgMotionSpec(JSON.parse(serialized)), normalized);
+  const fromRaw = createAnimatedSvg(SOURCE, SPEC);
+  const fromNormalized = createAnimatedSvg(SOURCE, normalized);
+  assert.equal(fromNormalized.svg, fromRaw.svg);
+  assert.equal(fromNormalized.evidence.output.sha256, fromRaw.evidence.output.sha256);
+});
+
 test("rejects duplicate target tracks, no-op motion and unknown properties", () => {
   assert.throws(
     () => validateAnimatedSvgMotionSpec({
