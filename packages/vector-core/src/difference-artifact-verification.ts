@@ -46,7 +46,7 @@ export type VerifiedDifferenceArtifact = Readonly<{
 const PNG_SIGNATURE = Object.freeze([137, 80, 78, 71, 13, 10, 26, 10] as const);
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
-function decodeBase64(value: string): Uint8Array {
+function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
   if (typeof globalThis.atob !== "function") {
     throw new DifferenceArtifactVerificationError(
       "DIFFERENCE_BASE64_INVALID",
@@ -160,10 +160,7 @@ export async function verifyDifferenceArtifactPayload(
       "This runtime cannot verify the difference artefact SHA-256.",
     );
   }
-  const digestInput = Uint8Array.from(bytes);
-  const digest = new Uint8Array(
-    await cryptoApi.subtle.digest("SHA-256", digestInput.buffer),
-  );
+  const digest = new Uint8Array(await cryptoApi.subtle.digest("SHA-256", bytes));
   const receivedSha256 = bytesToHex(digest);
   if (receivedSha256 !== expectedSha256) {
     throw new DifferenceArtifactVerificationError(
