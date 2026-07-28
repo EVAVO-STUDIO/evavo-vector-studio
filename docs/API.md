@@ -2,9 +2,19 @@
 
 ## Runtime boundary
 
-`POST /api/v1/trace` performs bounded raster inspection, one or more bounded SVG candidates, structural validation, multi-scale visual comparison and candidate selection synchronously. It is intended for interactive use, CLI wrappers and agent tool calls that can wait for the response. It is not presented as a durable queue: persistence, resumability and long-running workers belong in a later worker service.
+`POST /api/v1/trace` performs bounded raster inspection, one or more bounded SVG candidates, structural validation, multi-scale visual comparison, candidate selection and optional difference-image generation synchronously.
 
-Production requests require `Authorization: Bearer <VECTOR_API_TOKEN>`. When `NODE_ENV=production` and `VECTOR_API_TOKEN` is absent, the endpoint returns `503` rather than opening an unauthenticated native-processing surface. Local development remains usable without a token.
+It is intended for interactive use and agent calls that can wait for the response. It is not a durable queue: persistence, resumability, object storage, retries and long-running workers belong in a later worker service.
+
+Production requests require `Authorization: Bearer <VECTOR_API_TOKEN>`. When `NODE_ENV=production` and `VECTOR_API_TOKEN` is absent, the endpoint returns `503` rather than exposing an unauthenticated native-processing surface. Local development remains usable without a token.
+
+## Service discovery
+
+```http
+GET /api/v1/trace
+```
+
+The response declares contract version `1.4`, profiles, candidate modes, input limits, adaptive budgets and difference-artefact bounds.
 
 ## Request
 
@@ -18,12 +28,18 @@ Send `multipart/form-data` with:
 | `maxColours` | no | integer from 1 to 256; a reconstruction target, not a hard palette guarantee |
 | `preservePalette` | no | `true` or `false`, default `true` |
 | `optimise` | no | `true` or `false`, default `true` |
-| `title` | no | SVG accessibility title, maximum 200 characters |
+| `title` | no | SVG accessibility title; the engine bounds it to 200 characters |
+| `includeDifference` | no | `true` or `false`, default `false` |
+| `differenceMaxDimension` | no | integer from 32 to 1024; requires `includeDifference=true`, default 512 |
 | `format` | no | `json` or `svg`, default `json` |
 
-The encoded file limit is 25 MiB. The header-declared and decoded canvas must remain at or below 40 million pixels.
+`includeDifference=true` requires `format=json`. A direct SVG response cannot safely carry a second PNG file and its evidence, so the API rejects that combination rather than silently discarding the requested artefact.
 
-Adaptive candidate execution is additionally bounded by decoded source size:
+The application-level encoded file limit is 25 MiB. Header-declared and decoded canvases must remain at or below 40 million pixels. A hosting provider may impose a smaller request-body or execution limit; deployment readiness must verify the actual target platform rather than assuming the application limit overrides it.
+
+## Adaptive execution limits
+
+Adaptive candidate execution is bounded by decoded source size:
 
 - at most three candidates through 4,000,000 pixels;
 - at most two candidates through 12,000,000 pixels;
@@ -31,7 +47,7 @@ Adaptive candidate execution is additionally bounded by decoded source size:
 
 The base candidate is mandatory. Alternative fidelity or economy candidates may fail without discarding a valid base result; their failure is retained in evidence.
 
-## PowerShell example
+## PowerShell example: complete JSON evidence
 
 ```powershell
 $Headers = @{ Authorization = "Bearer $env:VECTOR_API_TOKEN" }
@@ -42,18 +58,26 @@ $Form = @{
     maxColours = "16"
     preservePalette = "true"
     optimise = "true"
+    includeDifference = "true"
+    differenceMaxDimension = "512"
     title = "Brand mark"
     format = "json"
 }
 
-Invoke-RestMethod `
+$result = Invoke-RestMethod `
     -Method Post `
     -Uri "http://localhost:3000/api/v1/trace" `
     -Headers $Headers `
     -Form $Form
+
+$result.svg | Set-Content -Path ".\outputs\mark.svg" -Encoding UTF8
+[IO.File]::WriteAllBytes(
+    ".\outputs\mark.difference.png",
+    [Convert]::FromBase64String($result.artifacts.difference.data)
+)
 ```
 
-Windows PowerShell 5.1 does not provide the same `-Form` behaviour as modern PowerShell. Use `curl.exe` for a portable local call:
+Windows PowerShell 5.1 does not provide the same `-Form` behaviour as modern PowerShell. Use `curl.exe` for a portable multipart request. To obtain the complete difference artefact contract, request JSON and save the response:
 
 ```powershell
 curl.exe -X POST "http://localhost:3000/api/v1/trace" `
@@ -61,8 +85,10 @@ curl.exe -X POST "http://localhost:3000/api/v1/trace" `
   -F "file=@fixtures\mark.png" `
   -F "profile=logo" `
   -F "candidateMode=adaptive" `
-  -F "format=svg" `
-  --output "outputs\mark.svg"
+  -F "includeDifference=true" `
+  -F "differenceMaxDimension=512" `
+  -F "format=json" `
+  --output "outputs\mark.trace.json"
 ```
 
 ## JSON response
@@ -74,23 +100,58 @@ A successful JSON response contains:
 - detected source type, dimensions and SHA-256 evidence;
 - sampled palette, alpha, tonal and edge analysis;
 - requested and resolved trace profiles;
-- the exact reconstruction settings used by each candidate;
+- exact reconstruction settings used by each candidate;
 - SVG paths, commands, estimated anchors, groups, gradients and byte counts;
 - per-scale and aggregate visual comparison evidence for each completed candidate;
 - candidate failures, if any;
 - selected and best-visual candidate IDs;
 - eligible candidate IDs, selection reason, pixel budgets, tolerances and complete cost weights;
+- optional difference artefact metadata and base64 PNG data;
 - warnings and quality-gate state.
 
-The visual comparison rasterises every completed candidate at up to 64, 256 and 1024 pixels on the longest edge, capped by the source size. It compares premultiplied RGB, alpha, black compositing and white compositing. The result includes visual mean absolute error, root-mean-square visual error, mismatch fraction and aspect-ratio drift. The response also includes the exact `excellent` and `good` thresholds used to classify the evidence.
+The difference response shape is:
 
-Adaptive selection is visual-first. When all candidates require review, the best visual result wins. Otherwise, candidates must match the best quality class and remain within the declared visual-cost, mismatch-fraction and aspect-ratio tolerances. From those eligible candidates, the engine selects the lowest geometry cost. Geometry cost is calculated from estimated anchors, path count, command count and output bytes. The complete formula weights are returned in `evidence.selection.costModel`.
+```json
+{
+  "evidence": {
+    "differenceArtifact": {
+      "kind": "visual-difference-heatmap",
+      "mimeType": "image/png",
+      "width": 512,
+      "height": 320,
+      "bytes": 12345,
+      "sha256": "...",
+      "requestedMaxDimension": 512,
+      "displayAmplification": 4,
+      "colourMap": "white-to-red",
+      "sourceSampling": "bilinear",
+      "selectedCandidateId": "base"
+    }
+  },
+  "artifacts": {
+    "difference": {
+      "encoding": "base64",
+      "data": "iVBORw0KGgo..."
+    }
+  }
+}
+```
 
-`status: complete` means synchronous execution, comparison and selection finished. It does not mean the artwork is professionally approved. `productionApproval` remains `review-required` because pixel similarity cannot prove deliberate path topology, anchor economy, negative-space construction, layer quality or brand fidelity.
+The object in `artifacts.difference` also repeats the audited metadata so consumers can validate the bytes without guessing which candidate or settings produced them.
+
+## Visual evidence and selection
+
+Every completed candidate is rasterised at up to 64, 256 and 1024 pixels on the longest edge, capped by source size. The comparison evaluates premultiplied RGB, alpha, black compositing and white compositing. It records visual mean absolute error, root-mean-square visual error, mismatch fraction and aspect-ratio drift, plus exact classification thresholds.
+
+Adaptive selection is visual-first. When all candidates require review, the best visual result wins. Otherwise, candidates must match the best quality class and remain inside declared visual-cost, mismatch-fraction and aspect-ratio tolerances. From those eligible candidates, the engine selects the lowest geometry cost.
+
+The optional heatmap is produced only for the selected candidate. White represents measured agreement; red represents visual difference. A declared `4×` display amplification makes small errors visible. The heatmap is evidence, not approval.
+
+`status: complete` means synchronous execution, comparison, selection and any requested artefact generation finished. It does not mean the artwork is professionally approved. `productionApproval` remains `review-required` because pixel similarity cannot prove deliberate path topology, anchor economy, negative-space construction, layer quality or brand fidelity.
 
 ## Direct SVG response
 
-When `format=svg`, the response body is the selected SVG. Evidence that fits safely into headers is retained:
+When `format=svg` and `includeDifference` is false, the response body is the selected SVG. Evidence that fits safely into headers is retained:
 
 - `X-Vector-Job-Id`
 - `X-Vector-Review-Required: true`
@@ -100,10 +161,20 @@ When `format=svg`, the response body is the selected SVG. Evidence that fits saf
 - `X-Vector-Selected-Candidate`
 - `X-Vector-Candidate-Count`
 
-Use `format=json` when the complete evidence record is required.
+Use `format=json` whenever the complete evidence record or difference PNG is required.
 
 ## Error contract
 
-Expected rejections return a stable `error` code and appropriate HTTP status. Examples include `RASTER_INPUT_TOO_LARGE`, `RASTER_FORMAT_UNSUPPORTED`, `RASTER_HEADER_INVALID`, `RASTER_PIXEL_LIMIT_EXCEEDED`, `RASTER_OPTIONS_INVALID`, `RASTER_DECODE_FAILED`, `RASTER_OUTPUT_INVALID` and `RASTER_RENDER_COMPARISON_FAILED`.
+Expected rejections return a stable `error` code and an appropriate HTTP status. Examples include:
+
+- `RASTER_INPUT_TOO_LARGE`
+- `RASTER_FORMAT_UNSUPPORTED`
+- `RASTER_HEADER_INVALID`
+- `RASTER_PIXEL_LIMIT_EXCEEDED`
+- `RASTER_OPTIONS_INVALID`
+- `RASTER_DECODE_FAILED`
+- `RASTER_OUTPUT_INVALID`
+- `RASTER_RENDER_COMPARISON_FAILED`
+- `RASTER_DIFFERENCE_ARTIFACT_FAILED`
 
 Responses use `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
