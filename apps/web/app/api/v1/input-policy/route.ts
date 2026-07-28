@@ -2,7 +2,7 @@ import {
   DEFAULT_MAX_INPUT_BYTES,
   DEFAULT_MAX_PIXELS,
   RASTER_INPUT_POLICY,
-} from "@evavo/raster-engine";
+} from "@evavo/raster-engine/policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
