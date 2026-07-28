@@ -14,6 +14,7 @@ const MAX_SVG_INPUT_BYTES = 5 * 1024 * 1024;
 const MAX_MOTION_PLAN_BYTES = 256 * 1024;
 const MULTIPART_OVERHEAD_ALLOWANCE = 1024 * 1024;
 const MAX_REQUEST_BYTES = MAX_SVG_INPUT_BYTES + MAX_MOTION_PLAN_BYTES + MULTIPART_OVERHEAD_ALLOWANCE;
+const ALLOWED_FORM_FIELDS = new Set(["file", "motion", "motionFile", "format"]);
 
 type MotionPlanSource = Readonly<{
   plan: unknown;
@@ -68,6 +69,48 @@ function safeDownloadName(sourceName: string): string {
     .replace(/[^a-z0-9._-]+/gi, "-")
     .replace(/^-+|-+$/g, "");
   return `${stem || "vector"}.animated.svg`;
+}
+
+function validateFormShape(form: FormData): Response | null {
+  const counts = new Map<string, number>();
+  const unknownFields = new Set<string>();
+  let actualFieldBytes = 0;
+
+  for (const [name, value] of form.entries()) {
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+    if (!ALLOWED_FORM_FIELDS.has(name)) unknownFields.add(name);
+    actualFieldBytes += typeof value === "string"
+      ? Buffer.byteLength(value, "utf8")
+      : value.size;
+  }
+
+  if (unknownFields.size > 0) {
+    return json({
+      error: "MOTION_REQUEST_FIELD_UNSUPPORTED",
+      fields: [...unknownFields].sort(),
+      allowed: [...ALLOWED_FORM_FIELDS],
+    }, 400);
+  }
+
+  const duplicateFields = [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([name]) => name)
+    .sort();
+  if (duplicateFields.length > 0) {
+    return json({
+      error: "MOTION_REQUEST_FIELD_DUPLICATE",
+      fields: duplicateFields,
+    }, 400);
+  }
+
+  if (actualFieldBytes > MAX_REQUEST_BYTES) {
+    return json({
+      error: "MOTION_REQUEST_TOO_LARGE",
+      actualFieldBytes,
+      maxRequestBytes: MAX_REQUEST_BYTES,
+    }, 413);
+  }
+  return null;
 }
 
 function parsePlanJson(source: string, descriptor: Readonly<Record<string, unknown>>): unknown {
@@ -170,6 +213,7 @@ export function GET(): Response {
       motionFile: "motion v1 JSON file; mutually exclusive with motion",
       format: ["json", "svg"],
     },
+    strictFieldSet: true,
     limits: {
       maxSvgInputBytes: MAX_SVG_INPUT_BYTES,
       maxMotionPlanBytes: MAX_MOTION_PLAN_BYTES,
@@ -206,7 +250,19 @@ export async function POST(request: Request): Promise<Response> {
     if (request.signal.aborted) {
       return json({ error: "MOTION_REQUEST_ABORTED", retryable: true }, 499);
     }
-    const form = await request.formData();
+
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch {
+      return json({
+        error: "MOTION_MULTIPART_INVALID",
+        message: "The multipart request could not be parsed.",
+      }, 400);
+    }
+    const shapeFailure = validateFormShape(form);
+    if (shapeFailure) return shapeFailure;
+
     const file = form.get("file");
     if (!(file instanceof File)) {
       return json({ error: "MOTION_SVG_FILE_REQUIRED", field: "file" }, 400);
