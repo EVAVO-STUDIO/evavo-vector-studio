@@ -23,13 +23,14 @@ Implemented now:
 - compressed and uncompressed size limits;
 - deterministic archive SHA-256 evidence;
 - atomic new-file-only CLI package and optional evidence output;
-- CLI structural inspection for existing `.lottie` files.
+- CLI structural inspection for existing `.lottie` files;
+- authenticated HTTP packaging from the same governed SVG and motion plan used by Lottie JSON export;
+- direct `.lottie` delivery and bounded base64 wrapper evidence.
 
 Not yet available:
 
-- dotLottie HTTP API;
 - dotLottie MCP tools;
-- browser `.lottie` archive generation or archive-load validation;
+- browser `.lottie` archive generation or browser archive-load validation;
 - themes;
 - state machines;
 - packaged images, fonts or audio;
@@ -125,6 +126,44 @@ evavo-dotlottie capabilities
 
 Existing output paths are never replaced. Source, archive and evidence paths must be distinct.
 
+## HTTP API workflow
+
+The authenticated packaging endpoint is:
+
+```http
+GET  /api/v1/motion/dotlottie
+POST /api/v1/motion/dotlottie
+```
+
+It accepts one governed path-based SVG and exactly one inline `motion` plan or uploaded `motionFile`. Optional fields are `frameRate`, `precision`, `name`, `animationId` and `format`.
+
+Use `format=dotlottie` for direct binary delivery:
+
+```powershell
+curl.exe -X POST "http://localhost:3000/api/v1/motion/dotlottie" `
+  -H "Authorization: Bearer $env:VECTOR_API_TOKEN" `
+  -F "file=@fixtures\motion\gentle-entrance.source.svg;type=image/svg+xml" `
+  -F "motionFile=@fixtures\motion\gentle-entrance.motion.json;type=application/json" `
+  -F "animationId=gentle-entrance" `
+  -F "format=dotlottie" `
+  --output "outputs\gentle-entrance.lottie"
+```
+
+Direct responses use `application/zip+dotlottie` and retain compact contract, manifest, hash, entry-count, inspection and compatibility headers.
+
+`format=json` returns the archive as bounded base64 together with the generated Lottie inspection, manifest, archive inspection and evidence. Base64 wrapper transport is capped at 8 MiB; direct archives may use the full 25 MiB application limit.
+
+The endpoint performs:
+
+1. strict multipart field validation;
+2. production bearer-token enforcement;
+3. fatal UTF-8 decoding;
+4. governed Lottie JSON generation;
+5. deterministic dotLottie v2 packaging;
+6. archive and embedded-Lottie inspection;
+7. exact source, intermediate and archive SHA-256 evidence;
+8. explicit player-render and browser archive-load non-claims.
+
 ## Deterministic archive policy
 
 For identical input JSON and options, the package bytes and SHA-256 are identical.
@@ -181,6 +220,7 @@ A structurally invalid archive returns findings and `structural-repair-required`
 ```text
 Lottie JSON input or embedded animation 20 MiB
 Generated or inspected archive          25 MiB
+Base64 API wrapper archive               8 MiB
 Total declared uncompressed content     24 MiB
 Manifest                                64 KiB
 ZIP entries                             16 maximum
