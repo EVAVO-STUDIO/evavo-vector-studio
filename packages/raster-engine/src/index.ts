@@ -4,4 +4,5 @@ export * from "./engine.js";
 export * from "./errors.js";
 export * from "./preflight.js";
 export * from "./presets.js";
+export * from "./selection.js";
 export * from "./types.js";
