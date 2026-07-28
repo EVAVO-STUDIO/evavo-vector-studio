@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: vector-studio-quality-${{ github.ref }}
@@ -75,8 +76,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p .ci
-          set -o pipefail
-          pnpm lint 2>&1 | tee .ci/lint.log
+          set +e
+          pnpm lint > .ci/lint.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            grep -E -m 8 "error TS[0-9]+|Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|Module not found|Type error|Cannot find|is not assignable|does not exist" .ci/lint.log || tail -n 40 .ci/lint.log
+          fi
+          exit "$status"
 
       - name: Run typecheck
         id: typecheck
@@ -84,8 +90,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p .ci
-          set -o pipefail
-          pnpm typecheck 2>&1 | tee .ci/typecheck.log
+          set +e
+          pnpm typecheck > .ci/typecheck.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            grep -E -m 8 "error TS[0-9]+|Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|Module not found|Type error|Cannot find|is not assignable|does not exist" .ci/typecheck.log || tail -n 40 .ci/typecheck.log
+          fi
+          exit "$status"
 
       - name: Run tests
         id: tests
@@ -93,8 +104,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p .ci
-          set -o pipefail
-          pnpm test 2>&1 | tee .ci/test.log
+          set +e
+          pnpm test > .ci/test.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            grep -E -m 8 "error TS[0-9]+|Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|AssertionError|Module not found|Type error|Cannot find|is not assignable|does not exist" .ci/test.log || tail -n 40 .ci/test.log
+          fi
+          exit "$status"
 
       - name: Run production build
         id: build
@@ -102,8 +118,47 @@ jobs:
         shell: bash
         run: |
           mkdir -p .ci
-          set -o pipefail
-          pnpm build 2>&1 | tee .ci/build.log
+          set +e
+          pnpm build > .ci/build.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            grep -E -m 8 "error TS[0-9]+|Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|Module not found|Type error|Cannot find|is not assignable|does not exist" .ci/build.log || tail -n 40 .ci/build.log
+          fi
+          exit "$status"
+
+      - name: Publish governed quality diagnostics
+        if: ${{ always() }}
+        uses: actions/github-script@v7
+        env:
+          LINT_OUTCOME: ${{ steps.lint.outcome }}
+          TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const gates = [
+              ["lint", ".ci/lint.log", process.env.LINT_OUTCOME],
+              ["typecheck", ".ci/typecheck.log", process.env.TYPECHECK_OUTCOME],
+              ["tests", ".ci/test.log", process.env.TEST_OUTCOME],
+              ["build", ".ci/build.log", process.env.BUILD_OUTCOME],
+            ];
+            const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            for (const [name, file, outcome] of gates) {
+              const source = fs.existsSync(file) ? fs.readFileSync(file, "utf8").replace(/\u001b\[[0-9;]*m/g, "") : "";
+              const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+              const diagnostic = lines.find((line) => /error TS\d+|Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|AssertionError|Module not found|Type error|Cannot find|is not assignable|does not exist/i.test(line)) || lines.at(-1) || `${name} did not produce a diagnostic`;
+              const state = outcome === "success" ? "success" : "failure";
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state,
+                context: `vector/${name}`,
+                description: state === "success" ? `${name} passed` : diagnostic.slice(0, 140),
+                target_url: targetUrl,
+              });
+            }
 
       - name: Preserve governed quality diagnostics
         if: ${{ failure() }}
