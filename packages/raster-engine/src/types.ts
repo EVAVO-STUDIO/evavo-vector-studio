@@ -8,6 +8,7 @@ export type RasterFormat = "png" | "jpeg" | "webp" | "gif" | "bmp" | "tiff";
 export type RasterTraceProfile = "logo" | "icon" | "line-art" | "illustration" | "photo";
 export type RasterTraceProfileSelection = RasterTraceProfile | "auto";
 export type RasterWarningSeverity = "warning" | "review";
+export type RasterComparisonQuality = "excellent" | "good" | "review";
 
 export type RasterWarning = Readonly<{
   code: string;
@@ -95,11 +96,57 @@ export type TraceConfigurationEvidence = Readonly<{
   pathPrecision: number;
 }>;
 
+export type RasterComparisonMetrics = Readonly<{
+  visualMae: number;
+  premultipliedRgbMae: number;
+  alphaMae: number;
+  compositeBlackMae: number;
+  compositeWhiteMae: number;
+  rmsVisualError: number;
+  mismatchFraction: number;
+  aspectRatioDelta: number;
+}>;
+
+export type RasterComparisonScale = RasterComparisonMetrics & Readonly<{
+  requestedMaxDimension: number;
+  width: number;
+  height: number;
+  pixelCount: number;
+}>;
+
+export type RasterRenderComparison = Readonly<{
+  renderer: Readonly<{
+    name: "@resvg/resvg-js";
+    version: "2.6.2";
+    systemFontsLoaded: false;
+    shapeRendering: "geometricPrecision";
+  }>;
+  scales: readonly RasterComparisonScale[];
+  aggregate: RasterComparisonMetrics & Readonly<{
+    comparedPixelCount: number;
+    largestComparedDimension: number;
+  }>;
+  quality: RasterComparisonQuality;
+  thresholds: Readonly<{
+    mismatchPixelError: number;
+    excellent: Readonly<{
+      visualMae: number;
+      mismatchFraction: number;
+      aspectRatioDelta: number;
+    }>;
+    good: Readonly<{
+      visualMae: number;
+      mismatchFraction: number;
+      aspectRatioDelta: number;
+    }>;
+  }>;
+}>;
+
 export type RasterTraceEvidence = Readonly<{
-  contractVersion: "1.0";
+  contractVersion: "1.1";
   engine: Readonly<{
     name: "@neplex/vectorizer";
-    adapterVersion: "0.1.0";
+    adapterVersion: "0.2.0";
   }>;
   analysis: RasterAnalysis;
   trace: TraceConfigurationEvidence;
@@ -111,17 +158,20 @@ export type RasterTraceEvidence = Readonly<{
     gradientCount: number;
     viewBox: readonly [number, number, number, number] | null;
   }>;
+  comparison: RasterRenderComparison;
   qualityGates: Readonly<{
     svgSafety: "passed";
     structuralValidation: "passed";
-    renderComparison: "not-run";
-    productionApproval: "withheld-pending-render-comparison";
+    renderComparison: "passed" | "review-required";
+    visualEvidenceAvailable: true;
+    productionApproval: "review-required";
     byteStableOutputGuaranteed: false;
   }>;
   timingsMs: Readonly<{
     decodeAndAnalyse: number;
     trace: number;
     optimise: number;
+    compare: number;
     total: number;
   }>;
   warnings: readonly RasterWarning[];
