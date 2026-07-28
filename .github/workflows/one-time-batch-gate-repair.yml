@@ -1,0 +1,82 @@
+name: One-time durable batch gate repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/batch-gate-repair.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-durable-batch-gate-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply exact gate repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          readme = Path("README.md")
+          source = readme.read_text(encoding="utf-8")
+          replacements = {
+              "### dotLottie\n\nDeterministic dotLottie v2 packaging is available":
+                  "### dotLottie\n\nThe deterministic dotLottie v2 packaging is available",
+              "Browser archive-load validation is available after exact archive verification.":
+                  "The browser archive-load validation is available after exact archive verification.",
+          }
+          for old, new in replacements.items():
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"README_BATCH_GATE_REPLACEMENT_INVALID:{old}:{count}")
+              source = source.replace(old, new, 1)
+          readme.write_text(source, encoding="utf-8")
+
+          gate = Path("scripts/check-batch-contract.mjs")
+          source = gate.read_text(encoding="utf-8")
+          old = '  "Object.keys(source).sort()",'
+          new = '  "Object.keys(source)",\n  ".sort()",'
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f"BATCH_GATE_SOURCE_TOKEN_INVALID:{count}")
+          gate.write_text(source.replace(old, new, 1), encoding="utf-8")
+          PY
+          git diff --check
+
+      - name: Verify repaired dependency-free gates
+        run: |
+          node scripts/check-dotlottie-contract.mjs
+          node scripts/check-dotlottie-api-contract.mjs
+          node scripts/check-batch-contract.mjs
+
+      - name: Commit repair and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-batch-gate-repair.yml \
+            .github/batch-gate-repair.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "test(jobs): stabilise durable batch gates"
+          git pull --rebase origin main
+          node scripts/check-dotlottie-contract.mjs
+          node scripts/check-dotlottie-api-contract.mjs
+          node scripts/check-batch-contract.mjs
+          git push origin HEAD:main
