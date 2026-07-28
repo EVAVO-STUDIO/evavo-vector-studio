@@ -136,7 +136,7 @@ jobs:
               r'async function descriptor\([\s\S]*?\n\}\n\nfunction jsonEvidence',
           )
           source, count = pattern.subn(
-              replacement + '\n\nfunction jsonEvidence',
+              lambda _: replacement + '\n\nfunction jsonEvidence',
               source,
               count=1,
           )
