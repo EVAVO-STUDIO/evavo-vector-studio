@@ -21,7 +21,7 @@
     "dotlottie-api:check": "node scripts/check-dotlottie-api-contract.mjs",
     "dotlottie-workspace:check": "node scripts/check-dotlottie-workspace-contract.mjs",
     "batch:check": "node scripts/check-batch-contract.mjs",
-    "build:packages": "turbo run build --filter=@evavo/vector-core --filter=@evavo/raster-engine --filter=@evavo/motion-engine --filter=@evavo/lottie-engine --filter=@evavo/job-engine --filter=@evavo/vector-cli --filter=@evavo/vector-mcp",
+    "build:packages": "turbo run build --filter=@evavo/vector-core --filter=@evavo/raster-engine --filter=@evavo/motion-engine --filter=@evavo/lottie-engine --filter=@evavo/job-engine --filter=@evavo/vector-cli --filter=@evavo/vector-jobs --filter=@evavo/vector-mcp",
     "dev": "pnpm build:packages && turbo run dev --parallel",
     "build": "turbo run build",
     "lint": "turbo run lint",
