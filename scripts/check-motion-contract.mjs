@@ -94,19 +94,27 @@ if (!String(rootPackage?.scripts?.check ?? "").includes("pnpm motion:check")) {
 requireTokens(files.types, sources.types, [
   'MOTION_CONTRACT_VERSION = "1.0"',
   "$schema?: string",
+  "type NormalizedMotionTrack",
   'approval: "review-required"',
   "reducedMotionFallback: true",
   "deterministicOutput: true",
 ]);
+forbidTokens(files.types, sources.types, [
+  "animatesOpacity: boolean",
+  "animatesTransform: boolean",
+]);
 requireTokens(files.validation, sources.validation, [
-  "assertKnownKeys(source, ROOT_KEYS, \"motion\")",
+  'assertKnownKeys(source, ROOT_KEYS, "motion")',
   '"$schema"',
   "keyframe offsets must be strictly increasing",
   "Each motion target may appear in only one track",
   "does not change opacity or transform values",
   "unknownKeys",
+  "keyframes,",
 ]);
 requireTokens(files.animatedSvg, sources.animatedSvg, [
+  "type PreparedMotionTrack",
+  "function prepareTrack",
   'data-evavo-motion-contract',
   "@keyframes",
   "@media(prefers-reduced-motion:reduce)",
@@ -124,6 +132,9 @@ requireTokens(files.errors, sources.errors, [
 ]);
 requireTokens(files.tests, sources.tests, [
   "deterministic script-free CSS motion",
+  "keeps normalized motion plans schema-compatible and reusable",
+  "assert.doesNotMatch(serialized, /animatesOpacity|animatesTransform/)",
+  "assert.deepEqual(validateAnimatedSvgMotionSpec(JSON.parse(serialized)), normalized)",
   "rejects duplicate target tracks, no-op motion and unknown properties",
   "MOTION_SOURCE_ALREADY_ANIMATED",
   "MOTION_TARGET_BASE_TRANSFORM_UNSUPPORTED",
@@ -156,6 +167,7 @@ requireTokens(files.docs, sources.docs, [
   "motion:validate",
   "animate-svg",
   "new-file-only",
+  "normalized plan remains a valid motion v1 input",
   "Lottie remains unavailable",
 ]);
 forbidTokens(files.animatedSvg, sources.animatedSvg, ["<script>", "eval(", "new Function("]);
@@ -208,5 +220,6 @@ process.stdout.write(`${JSON.stringify({
   ok: true,
   motionContractVersion: "1.0",
   supportedProperties: ["opacity", "translateX", "translateY", "scale", "rotateDeg"],
+  normalizedPlansReusable: true,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
