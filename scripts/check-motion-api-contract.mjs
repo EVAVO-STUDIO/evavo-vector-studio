@@ -46,6 +46,7 @@ const rootPackage = await readJson("package.json");
 const webPackage = await readJson("apps/web/package.json");
 const files = {
   route: "apps/web/app/api/v1/motion/svg/route.ts",
+  workspace: "apps/web/app/motion/components/MotionWorkspace.tsx",
   apiDocs: "docs/API.md",
   motionDocs: "docs/MOTION.md",
   readme: "README.md",
@@ -88,6 +89,12 @@ forbidTokens(files.route, sources.route, [
   "new Function(",
 ]);
 
+requireTokens(files.workspace, sources.workspace, [
+  'fetch("/api/v1/motion/svg"',
+  'form.set("motion", JSON.stringify(planState.plan))',
+  "await verifyMotionResponse(payload, sourceText, planState.plan)",
+]);
+
 requireTokens(files.apiDocs, sources.apiDocs, [
   "POST /api/v1/motion/svg",
   "motionFile",
@@ -101,13 +108,16 @@ requireTokens(files.motionDocs, sources.motionDocs, [
   "/api/v1/motion/svg",
   "inline plan",
   "direct animated SVG",
+  "browser Motion Director",
 ]);
 requireTokens(files.readme, sources.readme, [
   "/api/v1/motion/svg",
-  "Motion authoring is available through the API",
+  "browser Motion Director",
+  "human-review-required",
 ]);
 requireTokens(files.page, sources.page, [
-  "API + CLI + MCP available",
+  "UI + API + CLI + MCP",
+  'href="/motion"',
 ]);
 
 if (errors.length > 0) {
@@ -125,5 +135,6 @@ process.stdout.write(`${JSON.stringify({
   ok: true,
   motionContractVersion: "1.0",
   endpoint: "/api/v1/motion/svg",
+  browserConsumer: "/motion",
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
