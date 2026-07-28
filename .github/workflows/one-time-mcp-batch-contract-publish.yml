@@ -1,0 +1,342 @@
+name: One-time MCP batch contract publication
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/mcp-batch-contract-publish.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-mcp-batch-contract-publication
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Publish MCP batch 1.4 contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str, code: str) -> None:
+              target = Path(path)
+              source = target.read_text(encoding="utf-8")
+              if source.count(old) != 1:
+                  raise SystemExit(code)
+              target.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "README.md",
+              "MCP contract `1.3` exposes thirteen tools, including:",
+              "MCP contract `1.4` exposes fifteen tools, including:",
+              "README_VERSION_INVALID",
+          )
+          replace_once(
+              "README.md",
+              "vector_package_dotlottie\nvector_inspect_dotlottie\n```",
+              "vector_package_dotlottie\nvector_inspect_dotlottie\nvector_run_batch\nvector_inspect_batch\n```",
+              "README_TOOLS_INVALID",
+          )
+          replace_once(
+              "README.md",
+              "The Lottie MCP and dotLottie MCP operations use canonical allowed roots, new-file-only transactions and receipt-only results. Generated SVG, PNG, Lottie JSON and ZIP bodies remain outside model context.",
+              "The Lottie, dotLottie and durable batch MCP operations use canonical allowed roots, new-file-only transactions and receipt-only results. Generated SVG, PNG, Lottie JSON and ZIP bodies remain outside model context. MCP batches are cancellation-aware, paginated, resumable when invoked again, capped at 100 manifest items and explicitly not a hosted background queue.",
+              "README_BOUNDARY_INVALID",
+          )
+
+          replace_once(
+              "docs/MCP.md",
+              "MCP contract version `1.3` is a local, bounded execution surface. It is not a remote public endpoint, browser extension or durable job queue.",
+              "MCP contract version `1.4` is a local, bounded execution surface. It includes persistent resumable batch state, but it is not a remote public endpoint, browser extension or hosted background queue.",
+              "MCP_DOC_VERSION_INVALID",
+          )
+          replace_once(
+              "docs/MCP.md",
+              "| `vector_inspect_dotlottie` | Inspects ZIP safety, manifest-v2 semantics, deterministic metadata and embedded governed Lottie structure. |",
+              "| `vector_inspect_dotlottie` | Inspects ZIP safety, manifest-v2 semantics, deterministic metadata and embedded governed Lottie structure. |\n| `vector_run_batch` | Runs or resumes one bounded batch-v1 manifest with persistent local state and paginated receipt-only results. |\n| `vector_inspect_batch` | Inspects retained batch progress, receipts, failures, lock state and recent events without executing production work. |",
+              "MCP_DOC_TOOL_ROWS_INVALID",
+          )
+          replace_once(
+              "docs/MCP.md",
+              "Animated SVG, governed Lottie JSON and deterministic dotLottie v2 packaging are available. Independent source-to-player render validation and browser archive-load validation remain unavailable and are reported as such.",
+              "Animated SVG, governed Lottie JSON, deterministic dotLottie v2 packaging and local durable batches are available. MCP batch manifests are capped at 100 items; the local batch CLI supports up to 1,000. Independent source-to-player render validation remains unavailable and is reported as such.",
+              "MCP_DOC_AVAILABILITY_INVALID",
+          )
+          insert_anchor = "## Evidence and model-context policy\n"
+          batch_section = '''## Recommended durable batch workflow
+
+Use the batch tools when a set of file operations must retain progress across separate agent calls.
+
+1. Create a strict batch-v1 manifest beneath an allowed root.
+2. Call `vector_run_batch` with the manifest path and, optionally, an explicit execution root.
+3. Use `itemOffset` and `itemLimit` to page through item receipts.
+4. Call `vector_inspect_batch` in later turns to read progress without executing work.
+5. Call `vector_run_batch` again to resume interrupted or failed work after correcting its underlying input.
+
+```json
+{
+  "manifestPath": "C:\\EVAVO\\VectorAssets\\batches\\brand-assets.batch.json",
+  "rootPath": "C:\\EVAVO\\VectorAssets",
+  "itemOffset": 0,
+  "itemLimit": 25,
+  "eventLimit": 25
+}
+```
+
+The MCP batch boundary is:
+
+```text
+Manifest items through MCP       100 maximum
+Manifest items through local CLI 1,000 maximum
+Item page size                   1 to 100
+Recent event count               0 to 100
+Persistent state                 yes
+Resume on a later tool call      yes
+Request cancellation forwarded   yes
+Generated bodies in context      false
+Hosted background queue          false
+```
+
+The MCP process must remain alive for the current synchronous call. A later call can resume retained state, but work does not continue after the server process or machine stops.
+
+'''
+          target = Path("docs/MCP.md")
+          source = target.read_text(encoding="utf-8")
+          if source.count(insert_anchor) != 1 or "## Recommended durable batch workflow" in source:
+              raise SystemExit("MCP_DOC_BATCH_SECTION_INVALID")
+          target.write_text(source.replace(insert_anchor, batch_section + insert_anchor, 1), encoding="utf-8")
+          replace_once(
+              "docs/MCP.md",
+              "Raster, motion, Lottie and dotLottie tools return settings, inspections, hashes, warnings, compatibility state and file receipts.",
+              "Raster, motion, Lottie, dotLottie and durable batch tools return settings, inspections, hashes, warnings, compatibility state, paginated job state and file receipts.",
+              "MCP_DOC_EVIDENCE_INVALID",
+          )
+          replace_once(
+              "docs/MCP.md",
+              "This applies to traced SVG plus difference PNG, animated SVG plus evidence JSON, normalized motion-plan output, Lottie JSON plus evidence JSON, and dotLottie archive plus evidence JSON. The server never replaces an existing output. Choose a new revisioned file name when rerunning work.",
+              "This applies to traced SVG plus difference PNG, animated SVG plus evidence JSON, normalized motion-plan output, Lottie JSON plus evidence JSON, dotLottie archive plus evidence JSON, and every output set committed by a durable batch item. The server never replaces an existing output. Choose a new revisioned file name when rerunning work.",
+              "MCP_DOC_TRANSACTION_INVALID",
+          )
+          replace_once(
+              "docs/MCP.md",
+              "MCP request cancellation is forwarded into native raster work. Pure motion, Lottie and dotLottie operations check cancellation before validation, processing and output commit.",
+              "MCP request cancellation is forwarded into native raster work and durable batch execution. Pure motion, Lottie and dotLottie operations check cancellation before validation, processing and output commit. Batch state remains inspectable after cancellation.",
+              "MCP_DOC_CANCELLATION_INVALID",
+          )
+
+          batch_anchor = "## Manifest schema\n"
+          batch_mcp = '''## MCP workflow
+
+MCP contract `1.4` exposes:
+
+- `vector_run_batch`;
+- `vector_inspect_batch`.
+
+Both tools use the same batch-v1 manifest, persistent state, canonical path policy, revision checks and output receipts as the local CLI. MCP execution is capped at 100 manifest items and returns paginated item summaries using `itemOffset` and `itemLimit`. `eventLimit` controls how many recent append-only events are returned.
+
+`vector_run_batch` forwards request cancellation and can resume retained state when called again. `vector_inspect_batch` never executes production work. Neither tool places generated SVG, PNG, Lottie JSON or archive bodies in model context.
+
+This remains a local synchronous MCP surface. It is not a hosted background queue and does not continue after the MCP server process stops.
+
+'''
+          target = Path("docs/BATCH.md")
+          source = target.read_text(encoding="utf-8")
+          if source.count(batch_anchor) != 1 or "## MCP workflow" in source:
+              raise SystemExit("BATCH_DOC_MCP_SECTION_INVALID")
+          target.write_text(source.replace(batch_anchor, batch_mcp + batch_anchor, 1), encoding="utf-8")
+          replace_once(
+              "docs/BATCH.md",
+              "Manifest root and item fields are strict. Item IDs must be unique. A manifest supports 1 to 1,000 items.",
+              "Manifest root and item fields are strict. Item IDs must be unique. A manifest supports 1 to 1,000 items through the local CLI; MCP execution accepts at most 100 items per manifest.",
+              "BATCH_DOC_LIMIT_INVALID",
+          )
+
+          gate = Path("scripts/check-mcp-contract.mjs")
+          source = gate.read_text(encoding="utf-8")
+          source = source.replace(
+              '  dotLottieTools: "packages/mcp/src/dotlottie-tools.ts",\n',
+              '  dotLottieTools: "packages/mcp/src/dotlottie-tools.ts",\n  batchTools: "packages/mcp/src/batch-tools.ts",\n',
+              1,
+          )
+          source = source.replace(
+              '  serverTests: "packages/mcp/src/server.test.ts",\n',
+              '  serverTests: "packages/mcp/src/server.test.ts",\n  serverBatchTests: "packages/mcp/src/server-batch.test.ts",\n',
+              1,
+          )
+          source = source.replace(
+              '  dotLottieDocs: "docs/DOTLOTTIE.md",\n',
+              '  dotLottieDocs: "docs/DOTLOTTIE.md",\n  batchDocs: "docs/BATCH.md",\n',
+              1,
+          )
+          dependency_anchor = '''if (mcpPackage?.dependencies?.["@evavo/lottie-engine"] !== "workspace:*") {
+            fail("packages/mcp must consume the governed Lottie engine through the workspace.");
+          }
+'''
+          dependency_addition = dependency_anchor + '''if (mcpPackage?.dependencies?.["@evavo/job-engine"] !== "workspace:*") {
+            fail("packages/mcp must consume the durable job engine through the workspace.");
+          }
+          if (mcpPackage?.dependencies?.["@evavo/vector-jobs"] !== "workspace:*") {
+            fail("packages/mcp must consume the shared vector batch registry through the workspace.");
+          }
+'''
+          if source.count(dependency_anchor) != 1:
+              raise SystemExit("MCP_GATE_DEPENDENCY_ANCHOR_INVALID")
+          source = source.replace(dependency_anchor, dependency_addition, 1)
+          source = source.replace(
+              '  "vector_inspect_dotlottie",\n];',
+              '  "vector_inspect_dotlottie",\n  "vector_run_batch",\n  "vector_inspect_batch",\n];',
+              1,
+          )
+          source = source.replace(
+              '  "VECTOR_MCP_DOTLOTTIE_CONTRACT_VERSION",\n  "dotLottieOperations",',
+              '  \'VECTOR_MCP_SERVER_CONTRACT_VERSION = "1.4"\',\n  "dotLottieOperations",\n  "extendVectorMcpBatchCapabilities",\n  "registerVectorMcpBatchTools",\n  "batchOperations",',
+              1,
+          )
+          dot_forbid = '''forbidTokens(files.dotLottieTools, sources.dotLottieTools, [
+            "archiveBytes: result.bytes",
+            "bytes: result.bytes",
+            "lottieJson: input.source",
+            'playerRenderValidation: "passed"',
+            'browserArchiveLoadValidation: "passed"',
+            'approval: "approved"',
+          ]);
+'''
+          batch_checks = dot_forbid + '''
+          requireTokens(files.batchTools, sources.batchTools, [
+            'VECTOR_MCP_BATCH_CONTRACT_VERSION = "1.0"',
+            "VECTOR_MCP_BATCH_MAX_ITEMS = 100",
+            '"vector_run_batch"',
+            '"vector_inspect_batch"',
+            "createVectorMcpBatchOperations",
+            "registerVectorMcpBatchTools",
+            "extendVectorMcpBatchCapabilities",
+            "runDurableBatch",
+            "inspectDurableBatch",
+            "createVectorBatchOperationRegistry",
+            "extra.signal",
+            "itemOffset",
+            "itemLimit",
+            "eventLimit",
+            "generatedBodiesInModelContext: false",
+            "hostedBackgroundQueue: false",
+            'approval: "human-review-required"',
+          ]);
+          forbidTokens(files.batchTools, sources.batchTools, [
+            "svg: result.svg",
+            "differencePng",
+            "lottieJson: result",
+            "archiveBytes",
+            'hostedBackgroundQueue: true',
+            'approval: "approved"',
+          ]);
+'''
+          if source.count(dot_forbid) != 1:
+              raise SystemExit("MCP_GATE_BATCH_TOOL_INSERT_INVALID")
+          source = source.replace(dot_forbid, batch_checks, 1)
+          source = source.replace(
+              '  "LottieEngineError",\n',
+              '  "BatchEngineError",\n  "LottieEngineError",\n',
+              1,
+          )
+          server_test_anchor = '''requireTokens(files.serverTests, sources.serverTests, [
+            "InMemoryTransport.createLinkedPair()",
+'''
+          if source.count(server_test_anchor) != 1:
+              raise SystemExit("MCP_GATE_SERVER_TEST_ANCHOR_INVALID")
+          source = source.replace(
+              server_test_anchor,
+              '''requireTokens(files.serverTests, sources.serverTests, [
+            "InMemoryTransport.createLinkedPair()",
+            "VECTOR_MCP_BATCH_TOOL_NAMES",
+            "VECTOR_MCP_SERVER_CONTRACT_VERSION",
+''',
+              1,
+          )
+          server_test_end = '''  '"VECTOR_MCP_OUTPUT_EXISTS"',
+          ]);
+'''
+          batch_test_section = server_test_end + '''requireTokens(files.serverBatchTests, sources.serverBatchTests, [
+            "VECTOR_MCP_BATCH_CONTRACT_VERSION",
+            "VECTOR_MCP_BATCH_MAX_ITEMS",
+            "VECTOR_MCP_BATCH_TOOL_NAMES",
+            'name: "vector_run_batch"',
+            'name: "vector_inspect_batch"',
+            "itemOffset",
+            "itemLimit",
+            "eventLimit",
+            "item-reused",
+            '"VECTOR_MCP_BATCH_TOO_LARGE"',
+            "doesNotMatch(JSON.stringify(firstPayload), /<svg",
+          ]);
+'''
+          if source.count(server_test_end) != 1:
+              raise SystemExit("MCP_GATE_BATCH_TEST_INSERT_INVALID")
+          source = source.replace(server_test_end, batch_test_section, 1)
+          source = source.replace('  "MCP contract version `1.3`",', '  "MCP contract version `1.4`",', 1)
+          source = source.replace(
+              '  "vector_inspect_dotlottie",\n  "VECTOR_MCP_ALLOWED_ROOTS",',
+              '  "vector_inspect_dotlottie",\n  "vector_run_batch",\n  "vector_inspect_batch",\n  "100 items",\n  "paginated",\n  "hosted background queue",\n  "VECTOR_MCP_ALLOWED_ROOTS",',
+              1,
+          )
+          batch_docs_anchor = '''requireTokens(files.dotLottieDocs, sources.dotLottieDocs, [
+            "vector_package_dotlottie",
+            "vector_inspect_dotlottie",
+            "browserArchiveLoadValidation: not-yet-performed",
+          ]);
+'''
+          batch_docs_checks = batch_docs_anchor + '''requireTokens(files.batchDocs, sources.batchDocs, [
+            "MCP contract `1.4`",
+            "vector_run_batch",
+            "vector_inspect_batch",
+            "100 items",
+            "itemOffset",
+            "itemLimit",
+            "eventLimit",
+            "not a hosted background queue",
+          ]);
+'''
+          if source.count(batch_docs_anchor) != 1:
+              raise SystemExit("MCP_GATE_BATCH_DOC_INSERT_INVALID")
+          source = source.replace(batch_docs_anchor, batch_docs_checks, 1)
+          source = source.replace(
+              '  "vector_inspect_dotlottie",\n  "MCP contract `1.3`",',
+              '  "vector_inspect_dotlottie",\n  "vector_run_batch",\n  "vector_inspect_batch",\n  "MCP contract `1.4`",',
+              1,
+          )
+          source = source.replace('    mcpContractVersion: "1.3",', '    mcpContractVersion: "1.4",', 1)
+          source = source.replace('  mcpContractVersion: "1.3",', '  mcpContractVersion: "1.4",', 1)
+          gate.write_text(source, encoding="utf-8")
+          PY
+          grep -Fq 'MCP contract version `1.4`' docs/MCP.md
+          grep -Fq 'vector_run_batch' docs/MCP.md
+          grep -Fq 'VECTOR_MCP_BATCH_MAX_ITEMS = 100' scripts/check-mcp-contract.mjs
+          grep -Fq 'server-batch.test.ts' scripts/check-mcp-contract.mjs
+          git diff --check
+
+      - name: Commit publication and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-mcp-batch-contract-publish.yml \
+            .github/mcp-batch-contract-publish.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "docs(mcp): publish durable batch contract 1.4"
+          git pull --rebase origin main
+          git push origin HEAD:main
