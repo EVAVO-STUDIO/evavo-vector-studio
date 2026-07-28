@@ -128,6 +128,8 @@ async function traceRasterFile(input: string, args: readonly string[]): Promise<
     written: true,
     sourcePath,
     outputPath,
+    approval: result.evidence.qualityGates.productionApproval,
+    renderComparison: result.evidence.qualityGates.renderComparison,
     inspection: result.inspection,
     evidence: result.evidence,
   });
@@ -137,14 +139,18 @@ function manifest(): JsonRecord {
   return {
     name: "evavo-vector",
     version: VERSION,
-    contractVersion: "1.1",
+    contractVersion: "1.2",
     deterministicCommands: ["inspect", "optimise", "raster:inspect"],
     boundedCommands: ["trace"],
     commands: {
       inspect: { input: "path to SVG", output: "JSON safety and structure inspection" },
       optimise: { input: "path to SVG", options: { "--out": "output path" }, output: "optimised SVG plus JSON evidence" },
       "raster:inspect": { input: "path to PNG, JPEG, WebP, GIF, BMP or classic TIFF", output: "JSON source analysis and profile recommendation" },
-      trace: { input: "path to supported raster", output: "SVG file plus JSON evidence", approvalState: "review-required-until-render-comparison" },
+      trace: {
+        input: "path to supported raster",
+        output: "SVG file plus source, geometry and alpha-aware multi-scale render evidence",
+        approvalState: "human-review-required",
+      },
     },
     safety: {
       scriptsRejected: true,
@@ -153,7 +159,8 @@ function manifest(): JsonRecord {
       maxInputBytes: 26214400,
       maxDecodedPixels: 40000000,
       rasterTracingAvailable: true,
-      renderComparisonAvailable: false,
+      renderComparisonAvailable: true,
+      renderComparisonMaximumDimensions: [64, 256, 1024],
       productionAutoApprovalAvailable: false,
     },
   };
