@@ -6,5 +6,6 @@ export * from "./errors.js";
 export * from "./input-policy.js";
 export * from "./preflight.js";
 export * from "./presets.js";
+export * from "./runtime-guard.js";
 export * from "./selection.js";
 export * from "./types.js";
