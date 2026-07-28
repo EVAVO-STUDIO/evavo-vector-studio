@@ -127,7 +127,8 @@ requireTokens(files.apiDocs, sources.apiDocs, [
   "20 MiB",
   "X-Vector-Lottie-Player-Validation",
   "not-performed",
-  "separate `/api/v1/motion/dotlottie` endpoint",
+  "# dotLottie API",
+  "POST /api/v1/motion/dotlottie",
 ]);
 requireTokens(files.lottieDocs, sources.lottieDocs, [
   "## HTTP API workflow",
