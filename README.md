@@ -25,12 +25,16 @@ The objective is not to call one automatic trace “finished”. The system insp
 - responsive browser review for source, selected SVG, difference image, topology, candidates, metrics and downloads;
 - authenticated multipart API for bounded synchronous execution;
 - JSON-first CLI suitable for people, ChatGPT, Claude and workers;
-- local stdio MCP server with six governed tools for ChatGPT-compatible MCP hosts, Claude, editors and agent runtimes;
+- deterministic, script-free animated SVG generation from validated ID-targeted motion plans;
+- opacity, translation, scale and rotation keyframes with easing and mandatory reduced-motion fallback;
+- motion-plan JSON Schema, normalized-plan validation, animated-SVG inspection and SHA-256 evidence;
+- atomic new-file-only CLI transactions for optimised, traced and animated outputs;
+- local stdio MCP server with six governed tracing and SVG tools for ChatGPT-compatible MCP hosts, Claude, editors and agent runtimes;
 - canonical allowed-root access, new-files-only output, atomic multi-file commit and SHA-256 file receipts for MCP operations;
-- tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, MCP path-policy and transaction boundaries;
+- tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, MCP path-policy and transaction boundaries;
 - dependency-free contract gates plus the GitHub Actions quality workflow source.
 
-Animated SVG and Lottie production remain planned. The interface and capability contracts describe those intended outputs without claiming that timeline authoring or Lottie export is implemented.
+Animated SVG production is available through the core motion package and CLI. The browser timeline/editor, motion API and MCP motion tool remain to be implemented. Lottie and dotLottie export remain unavailable until a separate validated renderer-compatibility contract exists.
 
 ## Quick start on Windows PowerShell
 
@@ -43,13 +47,13 @@ pnpm check
 pnpm dev
 ```
 
-Open `http://localhost:3000` for the studio workspace.
+Open `http://localhost:3000` for the tracing and evidence workspace.
 
 For a protected production deployment, set a long server-only `VECTOR_API_TOKEN`. The browser accepts it per tab and does not require a public environment variable.
 
 ## Browser workflow
 
-The workspace can:
+The current browser workspace can:
 
 1. preview the selected raster locally;
 2. choose an automatic or directed trace profile;
@@ -62,6 +66,8 @@ The workspace can:
 9. download the SVG and optional difference PNG separately.
 
 White regions in the heatmap are measured matches. Red regions mark visual difference using a declared display amplification. The heatmap is review evidence, not a substitute for inspecting curves, compound paths, negative space and brand geometry.
+
+Motion authoring is currently CLI-first. The browser does not yet claim a working timeline editor.
 
 ## CLI
 
@@ -84,12 +90,21 @@ pnpm vector:trace -- `
 pnpm vector:inspect -- .\fixtures\mark.svg
 pnpm vector:optimise -- .\fixtures\mark.svg --out .\outputs\mark.optimised.svg
 
+# Validate and apply a governed animated-SVG motion plan
+pnpm vector:motion:validate -- .\fixtures\motion\gentle-entrance.motion.json
+pnpm vector:animate-svg -- `
+  .\fixtures\motion\gentle-entrance.source.svg `
+  --motion .\fixtures\motion\gentle-entrance.motion.json `
+  --out .\outputs\gentle-entrance.animated.svg `
+  --evidence-out .\outputs\gentle-entrance.motion.evidence.json
+pnpm vector:motion:inspect -- .\outputs\gentle-entrance.animated.svg
+
 # Print machine-readable contracts
 pnpm vector:input-policy
 pnpm vector:manifest
 ```
 
-The CLI refuses to overwrite its source, rejects SVG/difference output collisions and will not silently ignore a requested difference artefact. See [`docs/CLI.md`](docs/CLI.md) for the complete contract.
+CLI output commands use atomic new-file-only transactions. Existing destinations, source/output collisions and multi-output collisions are rejected. See [`docs/CLI.md`](docs/CLI.md) and [`docs/MOTION.md`](docs/MOTION.md) for the complete contracts.
 
 ## Local MCP automation
 
@@ -100,7 +115,7 @@ $env:VECTOR_MCP_ALLOWED_ROOTS = "C:\GitRepos\evavo-vector-studio;C:\EVAVO\Vector
 pnpm vector:mcp
 ```
 
-The server exposes:
+The server currently exposes:
 
 - `vector_capabilities`;
 - `vector_input_policy`;
@@ -113,7 +128,7 @@ MCP inputs must be existing regular files beneath a configured canonical root. O
 
 `vector_trace_raster` supports compact `summary` evidence and complete `full` evidence. Both remain `human-review-required`; a successful tool call records completion and evidence, not artistic approval.
 
-See [`docs/MCP.md`](docs/MCP.md) for generic host configuration, allowed-root policy, tool inputs, runtime limits and the recommended agent workflow.
+Animated SVG creation is not yet exposed as an MCP tool. See [`docs/MCP.md`](docs/MCP.md) for the current tool boundary.
 
 ## API
 
@@ -122,13 +137,13 @@ See [`docs/MCP.md`](docs/MCP.md) for generic host configuration, allowed-root po
 - JSON containing the SVG, inspection, topology, candidate evidence and optional base64 difference PNG; or
 - a direct SVG response when no separate difference artefact is requested.
 
-Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token. See [`docs/API.md`](docs/API.md) for fields, limits, response shapes and PowerShell examples.
+Production access is closed unless `VECTOR_API_TOKEN` is configured and supplied as a bearer token. Motion authoring is not yet exposed through the API. See [`docs/API.md`](docs/API.md) for the current tracing contract.
 
 ## Quality model
 
-A trace can finish successfully while remaining `review-required`.
+A trace or motion build can finish successfully while remaining `review-required`.
 
-The engine may choose a lower-complexity candidate only when it remains inside explicit visual-cost, mismatch and aspect-ratio tolerances relative to the best visual candidate. If every candidate requires review, the best measured visual candidate wins rather than sacrificing fidelity for smaller geometry.
+The tracing engine may choose a lower-complexity candidate only when it remains inside explicit visual-cost, mismatch and aspect-ratio tolerances relative to the best visual candidate. If every candidate requires review, the best measured visual candidate wins rather than sacrificing fidelity for smaller geometry.
 
 Every trace retains:
 
@@ -141,33 +156,46 @@ Every trace retains:
 - difference artefact dimensions, size, hash and selected-candidate binding when requested;
 - warnings and timing evidence.
 
-Pixel similarity cannot prove deliberate Bézier placement, compound-path quality, future editability or brand fidelity. Production auto-approval therefore remains unavailable.
+Every animated SVG build retains:
+
+- normalized playback and easing settings;
+- target IDs, track count and keyframe count;
+- source and output hashes;
+- deterministic motion/style identity;
+- reduced-motion and script-free safety assertions;
+- warnings and approval state.
+
+Pixel similarity and deterministic animation cannot prove deliberate Bézier placement, compound-path quality, future editability, motion direction or brand fidelity. Production auto-approval therefore remains unavailable.
 
 Detailed contracts:
 
 - [`docs/QUALITY-EVIDENCE.md`](docs/QUALITY-EVIDENCE.md) explains source, reconstruction, topology, render, selection and approval evidence.
 - [`docs/INPUT-SAFETY.md`](docs/INPUT-SAFETY.md) explains the one-static-image policy and pre-decode rejection rules.
+- [`docs/MOTION.md`](docs/MOTION.md) defines the animated SVG v1 plan and review boundary.
 - [`docs/MCP.md`](docs/MCP.md) defines the local agent tool and filesystem contract.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) defines runtime boundaries and the path toward durable workers.
 
 ## Repository layout
 
 ```text
-apps/web                  Next.js studio UI and authenticated API
+apps/web                  Next.js tracing, evidence UI and authenticated tracing API
 packages/vector-core      shared job, SVG safety, geometry and topology contracts
 packages/raster-engine    guarded decoding, analysis, tracing, comparison and difference evidence
-packages/cli              JSON-first local and agent automation surface
-packages/mcp              local stdio MCP tools with allowed-root and no-overwrite policies
-scripts                   dependency-free release, topology, browser-evidence and MCP contract gates
-docs                      architecture, CLI, API, MCP, quality, input safety and hub-integration records
+packages/motion-engine    validated deterministic animated SVG production
+packages/cli              JSON-first tracing, optimisation and motion automation
+packages/mcp              local stdio tracing and SVG tools with allowed-root policies
+schemas                   machine-readable governed production contracts
+fixtures                  deterministic raster, SVG and motion validation inputs
+scripts                   dependency-free release, topology, browser, MCP and motion gates
+docs                      architecture, CLI, API, MCP, motion, quality, input safety and hub records
 ```
 
 ## Deployment boundary
 
 The EVAVO website hub integration remains a signed federated candidate. This repository does not mark itself client-released until its deployment, authentication, runtime limits and live smoke evidence are verified.
 
-The current API is a bounded synchronous surface, not a durable queue. Persistent jobs, resumability, object storage, worker retries and signed hub handoff belong in the next deployment phase. The local stdio MCP server is also synchronous and bounded; it does not claim durable background execution.
+The current API is a bounded synchronous tracing surface, not a durable queue. Persistent jobs, resumability, object storage, worker retries and signed hub handoff belong in the next deployment phase. The local stdio MCP server is also synchronous and bounded; it does not claim durable background execution.
 
 ## Philosophy
 
-Preserve source intent. Reconstruct deliberate geometry. Minimise unnecessary anchors. Keep outputs editable. Record material decisions. Reject unsafe or misleading results instead of silently producing something different.
+Preserve source intent. Reconstruct deliberate geometry. Minimise unnecessary anchors. Keep outputs editable. Direct motion intentionally. Record material decisions. Reject unsafe or misleading results instead of silently producing something different.
