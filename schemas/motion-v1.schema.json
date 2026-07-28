@@ -7,6 +7,10 @@
   "additionalProperties": false,
   "required": ["version", "name", "durationMs", "tracks"],
   "properties": {
+    "$schema": {
+      "type": "string",
+      "maxLength": 2048
+    },
     "version": {
       "const": "1.0"
     },
