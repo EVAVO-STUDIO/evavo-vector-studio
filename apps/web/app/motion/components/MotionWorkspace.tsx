@@ -7,6 +7,7 @@ import {
   type DragEvent,
   type FormEvent,
 } from "react";
+import LottieReview from "./LottieReview";
 import styles from "./MotionWorkspace.module.css";
 import {
   MOTION_PRESETS,
@@ -625,6 +626,15 @@ export default function MotionWorkspace() {
             <p>Builds are verified against source and output SHA-256, motion identity, style identity, target order, reduced-motion fallback and script-free evidence before display.</p>
           </section>
         )}
+        <LottieReview
+          sourceFile={sourceFile}
+          sourceText={sourceText}
+          plan={planState.plan}
+          planJson={planJson}
+          token={token}
+          baseName={baseName}
+          prefersReducedMotion={prefersReducedMotion}
+        />
         <details className={styles.planPreview}>
           <summary>Inspect current motion JSON</summary>
           <pre>{planJson ?? "Complete a valid motion plan to inspect its normalized JSON."}</pre>
