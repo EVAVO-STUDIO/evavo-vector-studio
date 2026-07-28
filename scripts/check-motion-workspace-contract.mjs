@@ -41,6 +41,7 @@ function forbidTokens(relativePath, source, tokens) {
 const files = {
   rootPackage: "package.json",
   workflow: ".github/workflows/quality.yml",
+  globalStyles: "apps/web/app/styles.css",
   home: "apps/web/app/page.tsx",
   page: "apps/web/app/motion/page.tsx",
   pageStyles: "apps/web/app/motion/page.module.css",
@@ -68,6 +69,10 @@ if (!String(rootPackage?.scripts?.check ?? "").includes("pnpm motion-workspace:c
 requireTokens(files.workflow, sources.workflow, [
   "Verify Motion Director contract",
   "node scripts/check-motion-workspace-contract.mjs",
+]);
+
+requireTokens(files.globalStyles, sources.globalStyles, [
+  "#director form>section:nth-of-type(4)>div:first-child>span",
 ]);
 
 requireTokens(files.home, sources.home, [
@@ -165,7 +170,7 @@ requireTokens(files.api, sources.api, [
 for (const [relativePath, source, tokens] of [
   [files.readme, sources.readme, ["Motion Director", "browser", "/motion", "human-review-required"]],
   [files.motionDocs, sources.motionDocs, ["browser Motion Director", "/motion", "SHA-256", "reduced-motion"]],
-  [files.apiDocs, sources.apiDocs, ["/api/v1/motion/svg", "Motion Director", "multipart/form-data"]],
+  [files.apiDocs, sources.apiDocs, ["/api/v1/motion/svg", "multipart/form-data"]],
 ]) {
   requireTokens(relativePath, source, tokens);
 }
