@@ -17,6 +17,8 @@ Implemented now:
 - required `prefers-reduced-motion` fallback;
 - source and output SHA-256 evidence;
 - animated SVG inspection;
+- responsive browser Motion Director at `/motion`;
+- browser target discovery, presets, multi-track keyframe editing, replay and verified downloads;
 - CLI creation and optional JSON evidence output;
 - authenticated motion authoring through the HTTP API;
 - API inline and uploaded plan files with JSON or direct animated SVG responses;
@@ -31,7 +33,7 @@ Not implemented in motion v1:
 - colour, gradient, stroke, filter or mask animation;
 - separate X and Y scale;
 - spring or physics simulation;
-- timeline editing in the web workspace;
+- graphical Bézier-curve handles or a drag-to-scrub timeline;
 - Lottie export;
 - dotLottie packaging.
 
@@ -118,7 +120,34 @@ Every generated file includes a `prefers-reduced-motion: reduce` rule. The plan 
 - `first-frame`: disable animation and apply the first normalized keyframe;
 - `last-frame`: disable animation and apply the final normalized keyframe.
 
-The fallback is mandatory and is checked by CLI `motion:inspect`, the HTTP endpoint and MCP `vector_inspect_animated_svg`.
+The fallback is mandatory and is checked by the browser Motion Director, CLI `motion:inspect`, the HTTP endpoint and MCP `vector_inspect_animated_svg`.
+
+## Browser Motion Director workflow
+
+Open:
+
+```text
+http://localhost:3000/motion
+```
+
+The browser Motion Director performs local screening before it sends anything to the API. It rejects malformed SVG, scripts, `foreignObject`, inline event handlers, `javascript:` links, network-dependent references, duplicate IDs and pre-existing animation.
+
+After a source passes screening, the workspace:
+
+1. discovers portable IDs on graphic elements;
+2. identifies targets with base transforms;
+3. creates one or more target tracks;
+4. offers fade, rise, slide-left, soft-pop, rotate-settle, drift-loop and custom plans;
+5. supports editable keyframe offsets, opacity, translation, scale and rotation;
+6. supports easing, transform box and transform origin per track;
+7. supports playback duration, delay, iteration, direction, fill mode and reduced-motion strategy;
+8. sends normalized JSON to `POST /api/v1/motion/svg`;
+9. verifies the source and output SHA-256, motion identity, style identity, target order, reduced-motion fallback and script-free evidence;
+10. displays source and animated output through Blob-backed `<img>` previews instead of injecting SVG markup;
+11. allows replay and download of the animated SVG, normalized plan and evidence record;
+12. marks the shown result stale when the editor changes after generation.
+
+The browser accepts a bearer token per tab when the deployed API is protected. It does not place the token in a public environment variable or persist it as part of the motion plan.
 
 ## CLI workflow
 
@@ -162,7 +191,7 @@ It accepts `multipart/form-data` with:
 - exactly one inline plan in `motion` or uploaded JSON plan in `motionFile`;
 - optional `format`: `json` or `svg`, default `json`.
 
-The application limits one SVG to 5 MiB and one motion plan to 256 KiB. The same runtime validation used by CLI and MCP remains authoritative.
+The application limits one SVG to 5 MiB and one motion plan to 256 KiB. The same runtime validation used by browser, CLI and MCP remains authoritative.
 
 ### JSON response from an inline plan
 
@@ -283,7 +312,7 @@ The result records:
 - script-free and reduced-motion safety assertions;
 - warnings and approval state.
 
-Optional CLI and MCP evidence files do not embed a second copy of the SVG. The API JSON response intentionally includes the SVG because an HTTP client requested the generated body.
+Optional CLI and MCP evidence files do not embed a second copy of the SVG. The API JSON response intentionally includes the SVG because an HTTP client requested the generated body. The Motion Director verifies that returned body before it creates a preview or download.
 
 ## Approval boundary
 
