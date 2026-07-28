@@ -1,105 +1,198 @@
 # Architecture
 
-EVAVO Vector Studio separates source inspection, vector reconstruction, evidence, delivery and governed motion authoring so that no successful native call is mistaken for a professionally approved asset.
+EVAVO Vector Studio separates source inspection, vector reconstruction, evidence, motion, delivery and durable automation so that successful execution is never mistaken for professional approval.
 
-## Current execution pipeline
+## Static reconstruction pipeline
 
 1. **Encoded preflight**
    - identify PNG, JPEG, WebP, GIF, BMP or classic TIFF from bytes;
-   - reject empty, malformed, oversized or excessive-canvas input before native decoding.
+   - reject empty, malformed, oversized and excessive-canvas input before native decoding;
+   - reject animation and multi-page containers rather than selecting one frame or page silently.
 2. **Decode and source analysis**
    - decode one RGBA buffer;
    - verify dimensions and complete pixel length;
-   - record source hash, alpha coverage, palette signals, tone, entropy and edge density.
+   - retain source SHA-256, alpha coverage, palette signals, tone, entropy and edge density.
 3. **Profile resolution**
    - resolve `auto` to logo, icon, line-art, illustration or photo;
-   - preserve the requested and resolved profile in evidence.
+   - retain requested and resolved profiles.
 4. **Bounded candidate planning**
-   - create base, fidelity and economy configurations where source-pixel budgets permit;
-   - cap work at three, two or one candidate according to decoded size.
+   - create base, fidelity and economy candidates when source-pixel budgets permit;
+   - cap work at three, two or one candidate.
 5. **Geometry reconstruction**
    - reconstruct spline paths from decoded RGBA data;
-   - retain the exact colour, hierarchy, corner, length, splice and precision settings.
+   - retain colour, hierarchy, corner, length, splice and precision settings.
 6. **Safe SVG optimisation**
-   - run the native safe optimiser under a bounded multipass policy;
-   - apply an optional escaped accessibility title.
+   - run the reviewed optimiser under a bounded multipass policy;
+   - add an escaped accessibility title when requested.
 7. **Independent SVG inspection**
-   - reject scripts, `foreignObject`, event handlers, `javascript:` links and network-dependent references;
-   - record paths, path data, commands, subpaths, curves, straight segments and estimated anchors.
+   - reject scripts, `foreignObject`, event handlers, `javascript:` links and external references;
+   - inspect paths, commands, subpaths, curves, straight segments, anchors, IDs and topology.
 8. **Multi-scale render comparison**
-   - render each completed candidate with system fonts disabled;
-   - compare against the decoded source at bounded scales using alpha-aware black and white compositing.
-9. **Visual-first candidate selection**
-   - retain the best visual candidate when all results require review;
-   - otherwise allow a lower-geometry candidate only inside explicit visual, mismatch and aspect-ratio tolerances.
+   - render candidates with system fonts disabled;
+   - compare against the decoded source using alpha-aware black and white compositing.
+9. **Visual-first selection**
+   - retain the best visual candidate when every candidate requires review;
+   - select lower geometry cost only inside explicit visual, mismatch and aspect-ratio tolerances.
 10. **Selected-candidate difference evidence**
-    - optionally render a bounded white-to-red PNG heatmap for the selected candidate;
-    - record dimensions, bytes, SHA-256, source sampling, display amplification and candidate binding.
-11. **Packaging**
-    - return the selected SVG, complete evidence and optional PNG bytes through the engine;
-    - expose them through the browser, authenticated API and JSON-first CLI without overwriting source files.
-12. **Governed motion authoring**
-    - validate and normalize a bounded motion v1 plan before authoring;
-    - target existing SVG element IDs with supported opacity and transform properties only;
-    - emit script-free CSS animated SVG with reduced-motion fallback and inspectable timing evidence;
-    - create related outputs atomically without overwriting existing files.
+    - optionally create a bounded white-to-red PNG heatmap;
+    - retain dimensions, byte count, SHA-256, source sampling, amplification and candidate binding.
+11. **Packaging and delivery**
+    - retain selected SVG, inspection, evidence and optional PNG;
+    - deliver through browser, API, CLI, MCP or durable batch operation without overwriting source files.
 
-## Evidence and approval
+## Motion and delivery pipeline
 
-Machine completion, measured render quality and professional approval are separate states.
+### Animated SVG
 
-The system can establish that:
+1. validate and normalize motion-v1 input;
+2. resolve each target ID exactly once;
+3. reject existing animation and unsafe base transforms;
+4. emit deterministic script-free CSS keyframes;
+5. add mandatory reduced-motion fallback;
+6. inspect motion identity, rules, targets and fallback;
+7. retain source/output SHA-256 and review evidence.
 
-- input and output passed declared safety checks;
-- the SVG rendered within measured error bounds;
-- a candidate was selected under a published policy;
-- a difference image belongs to the selected candidate;
-- geometry complexity was counted consistently;
-- an animated SVG follows the validated motion contract and reduced-motion policy.
+### Lottie JSON
 
-It cannot establish automatically that:
+1. require governed path-based SVG geometry;
+2. convert supported SVG commands into Lottie Bézier paths;
+3. preserve source paint order through explicit stack translation;
+4. convert one normal motion cycle into frame keyframes;
+5. reject gradients, text, images, masks, filters, expressions and precompositions;
+6. serialize deterministic JSON;
+7. inspect shape layers, paths, fills, strokes, transforms and keyframes;
+8. retain compatibility non-claims and review state.
 
-- Bézier handles are placed as a senior vector artist would place them;
-- negative space and compound paths are semantically ideal;
-- a brand mark preserves every intentional optical correction;
-- layers are organised for every future editing workflow;
-- motion direction is creatively appropriate.
+### dotLottie
 
-Production auto-approval is not available. `productionApproval` therefore remains `review-required` for both static reconstruction and governed motion output.
+1. require governed Lottie JSON;
+2. canonicalize embedded JSON;
+3. create manifest-v2 metadata;
+4. package exactly `manifest.json` and `a/<animation-id>.json`;
+5. use DEFLATE and fixed ZIP metadata;
+6. inspect local headers, central directory, paths, sizes and manifest semantics;
+7. retain archive and embedded-Lottie SHA-256 and inspection evidence;
+8. optionally verify exact archive loading in the browser while keeping player-render validation separate.
 
 ## Runtime surfaces
 
 ### Browser
 
-The Next.js workspace submits bounded multipart jobs, previews raster and SVG outputs without injecting generated markup, displays evidence and offers separate SVG and difference-PNG downloads. Browser motion authoring remains outside the released surface until it has equivalent validation, evidence and editing controls.
+The Next.js application provides:
 
-### API
+- trace, source/SVG comparison and visual-difference evidence;
+- topology and candidate review;
+- animated-SVG Motion Director;
+- verified Lottie JSON player preview;
+- verified dotLottie archive delivery and browser load evidence;
+- separate asset and evidence downloads.
 
-`POST /api/v1/trace` is synchronous and bearer-protected in production. JSON is the complete evidence transport. Direct SVG delivery is available only when no second artefact is requested.
+Generated SVG markup is not injected into the application document. Browser evidence does not grant production approval.
 
-### CLI
+### Authenticated API
 
-The CLI is the preferred local and agent automation surface. It writes explicit output paths, rejects collisions and emits machine-readable JSON to stdout. It also validates motion plans, authors animated SVG and inspects governed motion metadata without overwriting source assets.
+The current API exposes bounded synchronous routes:
+
+```text
+POST /api/v1/trace
+POST /api/v1/motion/svg
+POST /api/v1/motion/lottie
+POST /api/v1/motion/dotlottie
+```
+
+Production requests require a bearer token. Responses use `no-store`. These endpoints are interactive processing surfaces, not durable queues.
+
+### Single-file CLI
+
+The CLI is the direct local automation surface for inspection, tracing, optimisation, animated SVG, Lottie JSON and dotLottie. Output paths are explicit, collisions are rejected and operational results are JSON.
 
 ### MCP
 
-The stdio MCP server exposes bounded inspection, tracing, optimisation and animated SVG tools through allowed filesystem roots. Inline or file-based motion plans pass through the same motion engine contract as the CLI, and generated markup is written to files rather than returned to model context.
+The stdio MCP server exposes raster, SVG, motion, Lottie and dotLottie operations through canonical allowed roots. Generated bodies are written to files and represented in model context by path, MIME type, byte count and SHA-256 receipts.
+
+### Durable batch
+
+`@evavo/job-engine` and `evavo-vector-batch` add restartable manifest execution around the same governed engines.
+
+A durable batch retains:
+
+```text
+.evavo-vector-jobs/<job-id>/state.json
+.evavo-vector-jobs/<job-id>/events.ndjson
+.evavo-vector-jobs/<job-id>/runner.lock
+```
+
+The batch layer provides:
+
+- canonical manifest SHA-256 and immutable job identity;
+- exclusive local runner ownership;
+- stale-lock recovery;
+- atomic state replacement;
+- append-only events;
+- per-item input revisions;
+- interrupted-item recovery;
+- output receipt verification before reuse;
+- `continue` and `fail-fast` modes;
+- per-item atomic engine outputs and explicit evidence files.
+
+A completed item is reused only when its input revision and every output receipt still match. Input drift, missing output or modified output produces an explicit failure instead of silent reuse.
+
+The local runner resumes when invoked again. It does not execute after its process or machine has stopped and is not a distributed queue.
+
+## Evidence and approval
+
+Machine completion, structural validity, measured render quality, archive loading and professional approval are separate states.
+
+The system can establish that:
+
+- input and output passed declared safety checks;
+- selected SVG rendering was measured under published thresholds;
+- a candidate was selected under a retained policy;
+- a difference image belongs to the selected candidate;
+- geometry and topology were counted consistently;
+- motion follows the validated contract and reduced-motion policy;
+- Lottie JSON passed the governed structural subset;
+- dotLottie passed archive and embedded-Lottie inspection;
+- a browser player accepted exact verified archive bytes;
+- a durable item retained the same input revision and output receipts.
+
+It cannot establish automatically that:
+
+- Bézier handles are placed as a senior vector artist would place them;
+- negative space and compound paths are semantically ideal;
+- optical brand corrections are preserved perfectly;
+- layers are ideal for every future editing workflow;
+- motion direction and rhythm are creatively appropriate;
+- one browser player is pixel-equivalent to the source or every other player.
+
+Production auto-approval is unavailable. Outputs remain `review-required` or `human-review-required`.
+
+## Security and integrity boundaries
+
+- encoded raster limits precede native decode;
+- static-image policy rejects animated and multi-page ambiguity;
+- SVG active content and external references are rejected;
+- filesystem outputs are new-file-only;
+- MCP paths stay within canonical allowed roots;
+- batch operation paths stay beneath the declared root;
+- related files commit atomically;
+- archive entry names, counts and sizes are checked before decompression;
+- durable manifest drift and completed output drift are rejected.
+
+These controls are application boundaries, not an operating-system sandbox.
 
 ## Deployment boundary
 
-The current runtime is not a durable worker system. A production deployment must still add or verify:
+The repository now has restartable local batch execution, but a hosted EVAVO application still needs:
 
-- actual host request-body and execution limits;
+- database-backed job records and idempotency keys;
 - object storage for source and generated artefacts;
-- persistent job records and idempotency keys;
-- resumable workers, retries and cancellation;
-- signed EVAVO hub launch and workspace-scoped authorisation;
-- live smoke, native-binary and cold-start evidence.
+- queue leases, worker heartbeats and visibility timeouts;
+- bounded retry and backoff policy;
+- remote cancellation and progress streaming;
+- workspace-scoped authorisation;
+- signed EVAVO hub launch;
+- host request, execution and storage limits;
+- native-binary, cold-start and live smoke evidence.
 
-Until those controls exist, Vector Studio remains a federated candidate rather than a released EVAVO hub application.
-
-## Motion boundary
-
-Animated SVG is available through the governed motion engine, CLI and MCP surfaces. It operates on explicit target IDs, a bounded property set, deterministic CSS keyframes, reduced-motion fallbacks and inspectable evidence. It must not animate an unreviewed trace and call that polish.
-
-Lottie export remains unavailable until the renderer subset, asset packaging, text policy, expression rejection, cross-player evidence and deterministic inspection contract are implemented. Capability outputs must continue to report that boundary accurately.
+Until those controls are deployed and verified, Vector Studio remains a signed federated candidate rather than a released EVAVO hub application.
