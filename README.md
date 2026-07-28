@@ -173,7 +173,7 @@ Lottie is not yet exposed through MCP. All current tools remain `human-review-re
 
 The authenticated API exposes:
 
-- `POST /api/v1/trace` for static raster reconstruction, candidate evidence and optional difference PNG;
+- `POST /api/v1/trace` for static raster reconstruction, candidate evidence and optional base64 difference PNG;
 - `POST /api/v1/motion/svg` for validated animated SVG creation from an inline or uploaded motion v1 plan;
 - `POST /api/v1/motion/lottie` for governed path-based Lottie JSON from the same validated motion plan.
 
