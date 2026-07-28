@@ -1,6 +1,6 @@
 {
   "name": "@evavo/vector-web",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,6 +10,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@evavo/raster-engine": "workspace:*",
     "@evavo/vector-core": "workspace:*",
     "next": "14.2.4",
     "react": "18.3.1",
