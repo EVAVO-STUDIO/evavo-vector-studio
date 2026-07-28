@@ -111,13 +111,14 @@ requireTokens(files.dotLottieRoute, sources.dotLottieRoute, [
 ]);
 requireTokens(files.page, sources.page, [
   "Lottie + dotLottie",
-  "UI + API + CLI + MCP available",
+  "UI + API + CLI + MCP available for Lottie",
   "Independent source-to-player render validation",
 ]);
 requireTokens(files.readme, sources.readme, [
   "POST /api/v1/motion/lottie",
   "Governed Lottie JSON export and inspection are available through the core Lottie package, CLI and HTTP API",
-  "Independent player-render and browser archive-load validation also remain unavailable",
+  "Browser archive-load validation is available after exact archive verification",
+  "Independent player-render validation remains unavailable",
 ]);
 requireTokens(files.apiDocs, sources.apiDocs, [
   "# Lottie JSON API",
@@ -138,7 +139,7 @@ requireTokens(files.lottieDocs, sources.lottieDocs, [
 requireTokens(files.motionDocs, sources.motionDocs, [
   "Lottie HTTP API is available",
   "/api/v1/motion/lottie",
-  "Independent player-render validation",
+  "independent source-to-player",
 ]);
 requireTokens(files.workflow, sources.workflow, [
   "Verify Lottie API contract",
@@ -164,6 +165,7 @@ process.stdout.write(`${JSON.stringify({
   separateDotLottieEndpoint: "/api/v1/motion/dotlottie",
   compatibility: {
     structuralInspection: true,
+    browserArchiveLoadValidation: true,
     playerRenderValidation: false,
   },
   checkedFiles: [...checkedFiles].sort(),
