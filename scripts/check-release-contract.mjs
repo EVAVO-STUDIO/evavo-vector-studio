@@ -46,6 +46,7 @@ const rootPackage = await readJson("package.json");
 const packagePaths = [
   "packages/vector-core/package.json",
   "packages/raster-engine/package.json",
+  "packages/motion-engine/package.json",
   "packages/cli/package.json",
   "packages/mcp/package.json",
   "apps/web/package.json",
@@ -155,11 +156,15 @@ requireTokens(files.rasterIndex, sources.rasterIndex, [
 requireTokens(files.cli, sources.cli, [
   `const VERSION = "${releaseVersion}"`,
   'contractVersion: "1.4"',
+  'motionContractVersion: "1.0"',
   '"--diff-out"',
   '"--difference-max-dimension"',
   "VECTOR_OUTPUT_PATH_COLLISION",
   "VECTOR_DIFFERENCE_ARTIFACT_MISSING",
-  "writeFile(differenceOutputPath, differencePng)",
+  "commitNewOutputFiles",
+  'existingOutputsOverwritten: false',
+  'animatedSvgAvailable: true',
+  'lottieAvailable: false',
 ]);
 
 requireTokens(files.api, sources.api, [
