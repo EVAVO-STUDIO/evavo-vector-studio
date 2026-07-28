@@ -7,7 +7,7 @@ import {
 } from "react";
 import type { MotionPlan } from "./motion-model";
 import LottiePreview from "./LottiePreview";
-import styles from "./MotionWorkspace.module.css";
+import styles from "./LottieReview.module.css";
 
 const DEFAULT_FRAME_RATE = 60;
 const DEFAULT_PRECISION = 4;
