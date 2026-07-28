@@ -3,7 +3,7 @@ import TraceWorkspace from "./components/TraceWorkspace";
 
 const outputCards = [
   ["Clean SVG", "Available now", "Adaptive spline reconstruction, measured candidate selection, geometry inspection and optional difference PNG evidence."],
-  ["Animated SVG", "CLI + MCP available", "Validated ID-targeted opacity and transform motion, deterministic CSS, reduced-motion fallback and review evidence. Browser authoring is planned."],
+  ["Animated SVG", "API + CLI + MCP available", "Validated ID-targeted opacity and transform motion, deterministic CSS, reduced-motion fallback and review evidence. Browser authoring is planned."],
   ["Lottie", "Planned", "Portable timelines remain unavailable until feature-subset, schema and renderer compatibility validation is implemented."],
 ] as const;
 
@@ -43,12 +43,10 @@ export default function HomePage() {
       <section id="automation" className="section outputs">
         <div className="sectionIntro"><p className="eyebrow">ONE ENGINE, MULTIPLE SURFACES</p><h2>UI for judgement. API, CLI and MCP for repeatability.</h2></div>
         <div className="outputGrid">{outputCards.map(([title, status, copy]) => <article key={title}><span>{status}</span><h3>{title}</h3><p>{copy}</p></article>)}</div>
-        <pre><code>{`POST /api/v1/trace
-file=mark.png
-profile=auto
-includeDifference=true
-differenceMaxDimension=512
-format=json
+        <pre><code>{`POST /api/v1/motion/svg
+file=mark.svg
+motionFile=mark.motion.json
+format=svg
 
 vector_animate_svg {
   "inputPath": "mark.svg",
