@@ -6,7 +6,7 @@ The objective is not broad best-effort conversion. The exporter accepts a delibe
 
 ## Current availability
 
-Implemented in `@evavo/lottie-engine` and the `evavo-vector` CLI:
+Implemented in `@evavo/lottie-engine`, the `evavo-vector` CLI and the authenticated HTTP API:
 
 - static SVG path geometry converted to Lottie bezier paths;
 - absolute and relative `M`, `L`, `H`, `V`, `C`, `S`, `Q`, `T`, `A`, and `Z` commands;
@@ -18,11 +18,12 @@ Implemented in `@evavo/lottie-engine` and the `evavo-vector` CLI:
 - deterministic JSON, SHA-256 evidence, and independent structural inspection;
 - static layers for source paths outside motion targets;
 - atomic new-file-only CLI output and optional evidence JSON;
+- strict bounded API input with wrapper evidence or direct Lottie JSON delivery;
 - explicit source-subset, motion-subset, compatibility, and approval boundaries.
 
 Not yet available:
 
-- Lottie HTTP API or MCP tools;
+- Lottie MCP tools;
 - browser Lottie authoring or player preview;
 - independent player-render comparison;
 - dotLottie packaging;
@@ -57,6 +58,68 @@ pnpm vector:lottie:inspect -- `
 
 The CLI rejects source, plan, output, and evidence path collisions. It never replaces an existing output. Lottie JSON and optional evidence commit as one transaction or roll back together. The evidence file does not contain a duplicate copy of the Lottie JSON body.
 
+## Lottie HTTP API workflow
+
+The authenticated endpoint is:
+
+```http
+GET  /api/v1/motion/lottie
+POST /api/v1/motion/lottie
+```
+
+`POST` requires `multipart/form-data` with:
+
+| Field | Required | Values |
+| --- | --- | --- |
+| `file` | yes | governed path-based static SVG, maximum 5 MiB |
+| `motion` | one of two | inline motion-v1 JSON |
+| `motionFile` | one of two | uploaded motion-v1 JSON, maximum 256 KiB |
+| `format` | no | `json` or `lottie`, default `json` |
+| `frameRate` | no | integer from 1 to 120, default 60 |
+| `precision` | no | integer from 0 to 6, default 4 |
+| `name` | no | composition name, 1 to 120 characters |
+
+Exactly one plan source is required. Unknown or duplicate fields, malformed multipart data, invalid UTF-8, unsupported source semantics and unsupported motion are rejected.
+
+Wrapper JSON example:
+
+```powershell
+$Headers = @{ Authorization = "Bearer $env:VECTOR_API_TOKEN" }
+$Motion = Get-Content ".\fixtures\motion\gentle-entrance.motion.json" -Raw
+$Form = @{
+    file = Get-Item ".\fixtures\motion\gentle-entrance.source.svg"
+    motion = $Motion
+    frameRate = "60"
+    precision = "4"
+    name = "Gentle entrance"
+    format = "json"
+}
+$result = Invoke-RestMethod `
+    -Method Post `
+    -Uri "http://localhost:3000/api/v1/motion/lottie" `
+    -Headers $Headers `
+    -Form $Form
+```
+
+The response returns exact serialized JSON in `lottie.data`, normalized plan, structural inspection and complete evidence. The SHA-256 and byte count apply to that exact string.
+
+Direct output uses `format=lottie`:
+
+```powershell
+curl.exe -X POST "http://localhost:3000/api/v1/motion/lottie" `
+  -H "Authorization: Bearer $env:VECTOR_API_TOKEN" `
+  -F "file=@fixtures\motion\gentle-entrance.source.svg;type=image/svg+xml" `
+  -F "motionFile=@fixtures\motion\gentle-entrance.motion.json;type=application/json" `
+  -F "frameRate=60" `
+  -F "precision=4" `
+  -F "format=lottie" `
+  --output "outputs\gentle-entrance.lottie.json"
+```
+
+The direct response uses `video/lottie+json` and retains job ID, contract, source/output SHA-256, structural-inspection state, layer and path counts, `player validation: not-performed`, `dotLottie: unavailable`, and review-required state in headers.
+
+The generated body is capped at 20 MiB. The endpoint is synchronous and does not persist files.
+
 ## Programmatic workflow
 
 ```ts
@@ -78,12 +141,7 @@ if (!result.inspection.valid) {
 const independentInspection = inspectLottie(result.json);
 ```
 
-The result contains:
-
-- parsed animation data;
-- deterministic formatted JSON;
-- independent structural inspection;
-- source, motion, subset, output, compatibility, and approval evidence.
+The result contains parsed animation data, deterministic formatted JSON, independent structural inspection, and source, motion, subset, output, compatibility, and approval evidence.
 
 ## SVG source requirements
 
@@ -92,7 +150,7 @@ The source must pass the existing governed SVG inspection and include an integer
 Lottie v1 accepts only:
 
 - `svg`, `g`, metadata elements, and `path` geometry;
-- solid hex, `rgb()`, `rgba()`, and the small documented portable named-colour set;
+- solid hex, `rgb()`, `rgba()`, and the portable named-colour set;
 - unitless or `px` stroke widths;
 - butt, round, and square caps;
 - miter, round, and bevel joins;
@@ -168,17 +226,7 @@ Structural validity is necessary but not sufficient for renderer compatibility.
 
 ## Evidence and compatibility boundary
 
-Each export records:
-
-- source bytes, SHA-256, viewBox, and governed SVG inspection;
-- normalized motion plan and animated target count;
-- static layer count;
-- output bytes, SHA-256, dimensions, frame rate, duration, layers, and path count;
-- exact supported and unsupported feature subset;
-- structural inspection state;
-- independent player-render validation state;
-- dotLottie availability state;
-- warnings and approval state.
+Each export records source bytes, SHA-256, viewBox, governed SVG inspection, normalized motion, static/animated layer counts, output dimensions and timing, supported subset, structural state, compatibility non-claims, warnings and approval.
 
 The current compatibility evidence deliberately reports:
 
@@ -195,14 +243,6 @@ Lottie JSON cannot embed the animated SVG `prefers-reduced-motion` media rule. D
 
 A generated file remains `review-required` even when structural inspection passes.
 
-Human review must assess:
-
-- source-versus-player visual equivalence;
-- fill rules, stroke rendering, and paint order;
-- transform origins and layer movement;
-- timing and easing character;
-- player and platform compatibility;
-- accessibility and reduced-motion delivery;
-- logo, illustration, and brand fidelity.
+Human review must assess source-versus-player visual equivalence, fill and stroke rendering, paint order, transform origins, timing, easing, player compatibility, accessibility and brand fidelity.
 
 Production availability will not be claimed until independent player-render evidence is implemented and retained.
