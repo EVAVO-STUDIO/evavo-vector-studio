@@ -3,6 +3,8 @@ import type { SvgInspection } from "@evavo/vector-core";
 export const DEFAULT_MAX_INPUT_BYTES = 25 * 1024 * 1024;
 export const DEFAULT_MAX_PIXELS = 40_000_000;
 export const DEFAULT_ANALYSIS_DIMENSION = 384;
+export const DEFAULT_DIFFERENCE_MAX_DIMENSION = 512;
+export const MAX_DIFFERENCE_DIMENSION = 1024;
 
 export type RasterFormat = "png" | "jpeg" | "webp" | "gif" | "bmp" | "tiff";
 export type RasterTraceProfile = "logo" | "icon" | "line-art" | "illustration" | "photo";
@@ -78,6 +80,8 @@ export type RasterTraceOptions = RasterInspectionOptions & Readonly<{
   optimise?: boolean;
   title?: string;
   candidateMode?: RasterCandidateMode;
+  includeDifferenceArtifact?: boolean;
+  differenceMaxDimension?: number;
 }>;
 
 export type TraceConfigurationEvidence = Readonly<{
@@ -227,11 +231,25 @@ export type TraceSelectionEvidence = Readonly<{
   }>;
 }>;
 
+export type DifferenceArtifactEvidence = Readonly<{
+  kind: "visual-difference-heatmap";
+  mimeType: "image/png";
+  width: number;
+  height: number;
+  bytes: number;
+  sha256: string;
+  requestedMaxDimension: number;
+  displayAmplification: number;
+  colourMap: "white-to-red";
+  sourceSampling: "bilinear";
+  selectedCandidateId: string;
+}>;
+
 export type RasterTraceEvidence = Readonly<{
-  contractVersion: "1.3";
+  contractVersion: "1.4";
   engine: Readonly<{
     name: "@neplex/vectorizer";
-    adapterVersion: "0.3.1";
+    adapterVersion: "0.4.0";
   }>;
   analysis: RasterAnalysis;
   trace: TraceConfigurationEvidence;
@@ -239,11 +257,13 @@ export type RasterTraceEvidence = Readonly<{
   comparison: RasterRenderComparison;
   candidates: readonly TraceCandidateEvidence[];
   selection: TraceSelectionEvidence;
+  differenceArtifact: DifferenceArtifactEvidence | null;
   qualityGates: Readonly<{
     svgSafety: "passed";
     structuralValidation: "passed";
     renderComparison: "passed" | "review-required";
     visualEvidenceAvailable: true;
+    differenceArtifact: "available" | "not-requested";
     productionApproval: "review-required";
     byteStableOutputGuaranteed: false;
   }>;
@@ -253,15 +273,21 @@ export type RasterTraceEvidence = Readonly<{
     optimise: number;
     compare: number;
     candidateSelection: number;
+    differenceArtifact: number;
     total: number;
   }>;
   warnings: readonly RasterWarning[];
+}>;
+
+export type RasterTraceArtifacts = Readonly<{
+  differencePng?: Uint8Array;
 }>;
 
 export type RasterTraceResult = Readonly<{
   svg: string;
   inspection: SvgInspection;
   evidence: RasterTraceEvidence;
+  artifacts: RasterTraceArtifacts;
 }>;
 
 export type DecodedRaster = Readonly<{
