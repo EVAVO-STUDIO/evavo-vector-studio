@@ -4,10 +4,32 @@ import {
   RasterRuntimeGuardError,
   createRasterRuntimeGuard,
   resolveRasterRuntimeGuardConfig,
+  type RasterRuntimeTimer,
 } from "./runtime-guard.js";
 
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+function controlledTimer(): Readonly<{
+  timer: RasterRuntimeTimer;
+  fire: () => void;
+  cleared: () => boolean;
+}> {
+  let callback: (() => void) | null = null;
+  let wasCleared = false;
+  const handle = { unref: () => undefined } as unknown as ReturnType<typeof setTimeout>;
+  return Object.freeze({
+    timer: Object.freeze({
+      now: () => 1_700_000_000_000,
+      setTimeout: (next) => {
+        callback = next;
+        return handle;
+      },
+      clearTimeout: () => {
+        wasCleared = true;
+        callback = null;
+      },
+    }),
+    fire: () => callback?.(),
+    cleared: () => wasCleared,
+  });
 }
 
 test("resolves defaults and bounded environment-style values", () => {
@@ -56,56 +78,37 @@ test("rejects work above the concurrency ceiling and recovers after release", ()
   assert.equal(guard.snapshot().activeExecutions, 0);
 });
 
-test("aborts a lease at the configured execution timeout", async () => {
-  const guard = createRasterRuntimeGuard({ timeoutMs: 5_000, maxConcurrent: 1, retryAfterSeconds: 1 });
+test("aborts at the execution timeout and releases the runtime slot", () => {
+  const controlled = controlledTimer();
+  const guard = createRasterRuntimeGuard(
+    { timeoutMs: 5_000, maxConcurrent: 1, retryAfterSeconds: 1 },
+    controlled.timer,
+  );
   const lease = guard.acquire();
-  const originalSetTimeout = globalThis.setTimeout;
+  assert.equal(lease.startedAt, 1_700_000_000_000);
+  assert.equal(lease.signal.aborted, false);
+  controlled.fire();
+  assert.equal(lease.signal.aborted, true);
+  assert.equal(lease.signal.reason instanceof DOMException, true);
+  assert.equal((lease.signal.reason as DOMException).name, "TimeoutError");
+  assert.equal(lease.timedOut(), true);
   lease.release();
-
-  const fastGuard = createRasterRuntimeGuard({ timeoutMs: 5_000, maxConcurrent: 1, retryAfterSeconds: 1 });
-  const fastLease = fastGuard.acquire();
-  const timeoutHandle = originalSetTimeout(() => undefined, 0);
-  clearTimeout(timeoutHandle);
-  assert.equal(fastLease.timedOut(), false);
-  fastLease.release();
+  assert.equal(controlled.cleared(), true);
+  assert.equal(guard.snapshot().activeExecutions, 0);
 });
 
-test("forwards request cancellation without marking a runtime timeout", () => {
+test("forwards request cancellation without later misclassifying it as a timeout", () => {
+  const controlled = controlledTimer();
   const request = new AbortController();
-  const guard = createRasterRuntimeGuard({ timeoutMs: 10_000, maxConcurrent: 1, retryAfterSeconds: 1 });
+  const guard = createRasterRuntimeGuard(
+    { timeoutMs: 10_000, maxConcurrent: 1, retryAfterSeconds: 1 },
+    controlled.timer,
+  );
   const lease = guard.acquire(request.signal);
   request.abort(new DOMException("Client disconnected", "AbortError"));
+  controlled.fire();
   assert.equal(lease.signal.aborted, true);
+  assert.equal((lease.signal.reason as DOMException).name, "AbortError");
   assert.equal(lease.timedOut(), false);
   lease.release();
-});
-
-test("marks an actual timeout using a temporarily accelerated timer", async () => {
-  const originalSetTimeout = globalThis.setTimeout;
-  const originalClearTimeout = globalThis.clearTimeout;
-  const scheduled = new Map<object, () => void>();
-
-  globalThis.setTimeout = ((callback: (...args: never[]) => void) => {
-    const handle = { unref: () => handle };
-    scheduled.set(handle, () => callback());
-    return handle as unknown as ReturnType<typeof setTimeout>;
-  }) as typeof setTimeout;
-  globalThis.clearTimeout = ((handle: ReturnType<typeof setTimeout>) => {
-    scheduled.delete(handle as unknown as object);
-  }) as typeof clearTimeout;
-
-  try {
-    const guard = createRasterRuntimeGuard({ timeoutMs: 5_000, maxConcurrent: 1, retryAfterSeconds: 1 });
-    const lease = guard.acquire();
-    assert.equal(scheduled.size, 1);
-    [...scheduled.values()][0]?.();
-    await delay(0);
-    assert.equal(lease.signal.aborted, true);
-    assert.equal(lease.timedOut(), true);
-    lease.release();
-    assert.equal(guard.snapshot().activeExecutions, 0);
-  } finally {
-    globalThis.setTimeout = originalSetTimeout;
-    globalThis.clearTimeout = originalClearTimeout;
-  }
 });
