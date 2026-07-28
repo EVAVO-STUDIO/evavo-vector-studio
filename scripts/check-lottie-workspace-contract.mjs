@@ -47,6 +47,7 @@ const files = {
   preview: "apps/web/app/motion/components/LottiePreview.tsx",
   styles: "apps/web/app/motion/components/LottieReview.module.css",
   api: "apps/web/app/api/v1/motion/lottie/route.ts",
+  dotLottieApi: "apps/web/app/api/v1/motion/dotlottie/route.ts",
   home: "apps/web/app/page.tsx",
   readme: "README.md",
   motionDocs: "docs/MOTION.md",
@@ -147,14 +148,18 @@ requireTokens(files.api, sources.api, [
   'playerRenderValidation: false',
   'dotLottiePackaging: false',
 ]);
+requireTokens(files.dotLottieApi, sources.dotLottieApi, [
+  'endpoint: "/api/v1/motion/dotlottie"',
+  'browserArchiveLoadValidation: false',
+]);
 requireTokens(files.home, sources.home, [
-  "Core + CLI + API available · MCP + browser preview",
-  "Independent player-render validation",
-  "dotLottie remain planned",
+  "Lottie + dotLottie",
+  "UI + API + CLI + MCP available",
+  "Independent source-to-player render validation",
 ]);
 requireTokens(files.readme, sources.readme, [
   "browser Lottie player preview",
-  "player-render validation remains unavailable",
+  "Independent player-render and browser archive-load validation also remain unavailable",
   "/api/v1/motion/lottie",
 ]);
 requireTokens(files.motionDocs, sources.motionDocs, [
@@ -165,11 +170,13 @@ requireTokens(files.lottieDocs, sources.lottieDocs, [
   "browser Lottie player preview",
   "@lottiefiles/dotlottie-react",
   "not independent source-to-player validation",
+  "/api/v1/motion/dotlottie",
 ]);
 requireTokens(files.apiDocs, sources.apiDocs, [
   "/api/v1/motion/lottie",
   "browser Motion Director",
   "player preview",
+  "/api/v1/motion/dotlottie",
 ]);
 
 if (errors.length > 0) {
@@ -187,6 +194,7 @@ process.stdout.write(`${JSON.stringify({
   ok: true,
   contractVersion: "1.0",
   player: "@lottiefiles/dotlottie-react@0.19.12",
+  separateDotLottieEndpoint: "/api/v1/motion/dotlottie",
   verifiedBoundaries: [
     "exact JSON transport verification",
     "source and output SHA-256",
