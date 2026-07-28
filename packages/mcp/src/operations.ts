@@ -1,5 +1,12 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  createAnimatedSvg,
+  inspectAnimatedSvg,
+  validateAnimatedSvgMotionSpec,
+  type NormalizedAnimatedSvgMotionSpec,
+} from "@evavo/motion-engine";
 import {
   DEFAULT_DIFFERENCE_MAX_DIMENSION,
   DEFAULT_MAX_INPUT_BYTES,
@@ -21,7 +28,7 @@ import { commitNewVectorFiles, type VectorMcpFileReceipt } from "./file-transact
 import type { VectorMcpPathPolicy } from "./path-policy.js";
 
 export const VECTOR_MCP_VERSION = "0.4.0";
-export const VECTOR_MCP_CONTRACT_VERSION = "1.0";
+export const VECTOR_MCP_CONTRACT_VERSION = "1.1";
 
 export const VECTOR_MCP_TOOL_NAMES = Object.freeze([
   "vector_capabilities",
@@ -30,6 +37,9 @@ export const VECTOR_MCP_TOOL_NAMES = Object.freeze([
   "vector_trace_raster",
   "vector_inspect_svg",
   "vector_optimise_svg",
+  "vector_validate_motion_plan",
+  "vector_animate_svg",
+  "vector_inspect_animated_svg",
 ] as const);
 
 export type VectorMcpEvidenceLevel = "summary" | "full";
@@ -48,6 +58,21 @@ export type VectorMcpTraceRequest = Readonly<{
   evidenceLevel?: VectorMcpEvidenceLevel;
 }>;
 
+export type VectorMcpMotionPlanSource = Readonly<{
+  motionPath?: string;
+  motionPlan?: unknown;
+}>;
+
+export type VectorMcpValidateMotionRequest = VectorMcpMotionPlanSource & Readonly<{
+  normalizedOutputPath?: string;
+}>;
+
+export type VectorMcpAnimateSvgRequest = VectorMcpMotionPlanSource & Readonly<{
+  inputPath: string;
+  outputSvgPath: string;
+  evidenceOutputPath?: string;
+}>;
+
 export type VectorMcpOperations = Readonly<{
   capabilities: () => Readonly<Record<string, unknown>>;
   inputPolicy: () => Readonly<Record<string, unknown>>;
@@ -58,11 +83,28 @@ export type VectorMcpOperations = Readonly<{
     inputPath: string,
     outputPath: string,
   ) => Promise<Readonly<Record<string, unknown>>>;
+  validateMotionPlan: (
+    request: VectorMcpValidateMotionRequest,
+    signal?: AbortSignal,
+  ) => Promise<Readonly<Record<string, unknown>>>;
+  animateSvg: (
+    request: VectorMcpAnimateSvgRequest,
+    signal?: AbortSignal,
+  ) => Promise<Readonly<Record<string, unknown>>>;
+  inspectAnimatedSvg: (inputPath: string) => Promise<Readonly<Record<string, unknown>>>;
 }>;
 
 export type VectorMcpOperationsOptions = Readonly<{
   pathPolicy: VectorMcpPathPolicy;
   runtimeGuard?: RasterRuntimeGuard;
+}>;
+
+type ResolvedMotionPlan = Readonly<{
+  normalized: NormalizedAnimatedSvgMotionSpec;
+  canonicalJson: string;
+  sha256: string;
+  source: Readonly<Record<string, unknown>>;
+  resolvedPath: string | null;
 }>;
 
 function assertEvidenceLevel(value: VectorMcpEvidenceLevel | undefined): VectorMcpEvidenceLevel {
@@ -74,7 +116,7 @@ function assertEvidenceLevel(value: VectorMcpEvidenceLevel | undefined): VectorM
   );
 }
 
-function assertOutputExtension(requestedPath: string, extension: ".svg" | ".png", field: string): void {
+function assertOutputExtension(requestedPath: string, extension: string, field: string): void {
   if (path.extname(requestedPath).toLowerCase() !== extension) {
     throw new VectorMcpOperationError(
       "VECTOR_MCP_OUTPUT_EXTENSION_INVALID",
@@ -102,6 +144,33 @@ function assertDifferenceOptions(request: VectorMcpTraceRequest): void {
       "VECTOR_MCP_OPTIONS_INVALID",
       `differenceMaxDimension must be an integer from 32 to ${MAX_DIFFERENCE_DIMENSION}.`,
       { details: { differenceMaxDimension: request.differenceMaxDimension } },
+    );
+  }
+}
+
+function throwIfCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new VectorMcpOperationError(
+      "VECTOR_MCP_CANCELLED",
+      "The MCP operation was cancelled before completion.",
+      { retryable: true },
+    );
+  }
+}
+
+function parseJson(source: string, inputPath: string): unknown {
+  try {
+    return JSON.parse(source) as unknown;
+  } catch (error) {
+    throw new VectorMcpOperationError(
+      "VECTOR_MCP_JSON_INVALID",
+      "The motion plan file is not valid JSON.",
+      {
+        details: {
+          inputPath,
+          cause: error instanceof Error ? error.message : String(error),
+        },
+      },
     );
   }
 }
@@ -187,12 +256,17 @@ function summariseTraceEvidence(result: RasterTraceResult): Readonly<Record<stri
   });
 }
 
+function pathKey(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 function receiptByPath(
   receipts: readonly VectorMcpFileReceipt[],
   outputPath: string,
 ): VectorMcpFileReceipt {
-  const resolved = path.resolve(outputPath);
-  const receipt = receipts.find((item) => path.resolve(item.path) === resolved);
+  const key = pathKey(outputPath);
+  const receipt = receipts.find((item) => pathKey(item.path) === key);
   if (!receipt) {
     throw new VectorMcpOperationError(
       "VECTOR_MCP_OUTPUT_RECEIPT_MISSING",
@@ -245,6 +319,45 @@ export function createVectorMcpOperations(
     }
   }
 
+  async function resolveMotionPlan(
+    request: VectorMcpMotionPlanSource,
+    signal?: AbortSignal,
+  ): Promise<ResolvedMotionPlan> {
+    throwIfCancelled(signal);
+    const hasPath = typeof request.motionPath === "string" && request.motionPath.trim().length > 0;
+    const hasInline = request.motionPlan !== undefined;
+    if (hasPath === hasInline) {
+      throw new VectorMcpOperationError(
+        "VECTOR_MCP_OPTIONS_INVALID",
+        "Provide exactly one of motionPath or motionPlan.",
+        { details: { hasMotionPath: hasPath, hasInlineMotionPlan: hasInline } },
+      );
+    }
+
+    let rawPlan: unknown;
+    let resolvedPath: string | null = null;
+    let source: Readonly<Record<string, unknown>>;
+    if (hasPath) {
+      resolvedPath = await pathPolicy.resolveInputFile(request.motionPath!);
+      const json = await readFile(resolvedPath, "utf8");
+      rawPlan = parseJson(json, resolvedPath);
+      source = Object.freeze({ mode: "file", requestedPath: request.motionPath, path: resolvedPath });
+    } else {
+      rawPlan = request.motionPlan;
+      source = Object.freeze({ mode: "inline" });
+    }
+    throwIfCancelled(signal);
+    const normalized = validateAnimatedSvgMotionSpec(rawPlan);
+    const canonicalJson = `${JSON.stringify(normalized, null, 2)}\n`;
+    return Object.freeze({
+      normalized,
+      canonicalJson,
+      sha256: createHash("sha256").update(canonicalJson, "utf8").digest("hex"),
+      source,
+      resolvedPath,
+    });
+  }
+
   function capabilities(): Readonly<Record<string, unknown>> {
     return Object.freeze({
       ok: true,
@@ -272,11 +385,21 @@ export function createVectorMcpOperations(
           maximumDimension: MAX_DIFFERENCE_DIMENSION,
         }),
       }),
+      motion: Object.freeze({
+        contractVersion: "1.0",
+        schemaPath: "schemas/motion-v1.schema.json",
+        inlinePlans: true,
+        planFiles: true,
+        supportedProperties: Object.freeze(["opacity", "translateX", "translateY", "scale", "rotateDeg"]),
+        reducedMotionFallbackRequired: true,
+        existingAnimationRejected: true,
+        transformedTargetsRejectedForTransformTracks: true,
+      }),
       runtime: runtimeGuard.snapshot(),
       outputs: Object.freeze({
         svg: true,
         visualDifferencePng: true,
-        animatedSvg: false,
+        animatedSvg: true,
         lottie: false,
       }),
       approval: "human-review-required",
@@ -385,18 +508,13 @@ export function createVectorMcpOperations(
         : []),
     ]);
 
-    const svgReceipt = receiptByPath(receipts, commitSvgPath);
-    const differenceReceipt = commitDifferencePath
-      ? receiptByPath(receipts, commitDifferencePath)
-      : null;
-
     return Object.freeze({
       ok: true,
       operation: "trace-raster",
       input: Object.freeze({ requestedPath: request.inputPath, path: resolvedInputPath }),
       outputs: Object.freeze({
-        svg: svgReceipt,
-        differencePng: differenceReceipt,
+        svg: receiptByPath(receipts, commitSvgPath),
+        differencePng: commitDifferencePath ? receiptByPath(receipts, commitDifferencePath) : null,
       }),
       inspection: result.inspection,
       evidenceLevel,
@@ -453,6 +571,121 @@ export function createVectorMcpOperations(
     });
   }
 
+  async function validateMotionPlan(
+    request: VectorMcpValidateMotionRequest,
+    signal?: AbortSignal,
+  ): Promise<Readonly<Record<string, unknown>>> {
+    const plan = await resolveMotionPlan(request, signal);
+    const requestedOutputPath = request.normalizedOutputPath;
+    let output: VectorMcpFileReceipt | null = null;
+    if (requestedOutputPath) {
+      assertOutputExtension(requestedOutputPath, ".json", "normalizedOutputPath");
+      const resolvedOutputPath = await pathPolicy.resolveOutputFile(requestedOutputPath);
+      pathPolicy.assertDistinct([
+        ...(plan.resolvedPath ? [plan.resolvedPath] : []),
+        resolvedOutputPath,
+      ]);
+      throwIfCancelled(signal);
+      const commitOutputPath = await pathPolicy.resolveOutputFile(resolvedOutputPath);
+      const receipts = await commitNewVectorFiles([
+        { path: commitOutputPath, data: plan.canonicalJson, mimeType: "application/json" },
+      ]);
+      output = receiptByPath(receipts, commitOutputPath);
+    }
+    return Object.freeze({
+      ok: true,
+      operation: "validate-motion-plan",
+      source: plan.source,
+      motionContractVersion: "1.0",
+      sha256: plan.sha256,
+      normalized: plan.normalized,
+      output,
+    });
+  }
+
+  async function animateSvg(
+    request: VectorMcpAnimateSvgRequest,
+    signal?: AbortSignal,
+  ): Promise<Readonly<Record<string, unknown>>> {
+    assertOutputExtension(request.outputSvgPath, ".svg", "outputSvgPath");
+    if (request.evidenceOutputPath) {
+      assertOutputExtension(request.evidenceOutputPath, ".json", "evidenceOutputPath");
+    }
+    const resolvedInputPath = await pathPolicy.resolveInputFile(request.inputPath);
+    const plan = await resolveMotionPlan(request, signal);
+    const resolvedSvgPath = await pathPolicy.resolveOutputFile(request.outputSvgPath);
+    const resolvedEvidencePath = request.evidenceOutputPath
+      ? await pathPolicy.resolveOutputFile(request.evidenceOutputPath)
+      : null;
+    pathPolicy.assertDistinct([
+      resolvedInputPath,
+      ...(plan.resolvedPath ? [plan.resolvedPath] : []),
+      resolvedSvgPath,
+      ...(resolvedEvidencePath ? [resolvedEvidencePath] : []),
+    ]);
+
+    throwIfCancelled(signal);
+    const source = await readFile(resolvedInputPath, "utf8");
+    const result = createAnimatedSvg(source, plan.normalized);
+    throwIfCancelled(signal);
+
+    const commitSvgPath = await pathPolicy.resolveOutputFile(resolvedSvgPath);
+    const commitEvidencePath = resolvedEvidencePath
+      ? await pathPolicy.resolveOutputFile(resolvedEvidencePath)
+      : null;
+    pathPolicy.assertDistinct([
+      resolvedInputPath,
+      ...(plan.resolvedPath ? [plan.resolvedPath] : []),
+      commitSvgPath,
+      ...(commitEvidencePath ? [commitEvidencePath] : []),
+    ]);
+    const evidenceDocument = Object.freeze({
+      operation: "animate-svg",
+      motionContractVersion: "1.0",
+      input: Object.freeze({ requestedPath: request.inputPath, path: resolvedInputPath }),
+      motionPlan: Object.freeze({ ...plan.source, sha256: plan.sha256 }),
+      outputPath: commitSvgPath,
+      inspection: result.inspection,
+      evidence: result.evidence,
+    });
+    const receipts = await commitNewVectorFiles([
+      { path: commitSvgPath, data: `${result.svg}\n`, mimeType: "image/svg+xml" },
+      ...(commitEvidencePath
+        ? [{
+            path: commitEvidencePath,
+            data: `${JSON.stringify(evidenceDocument, null, 2)}\n`,
+            mimeType: "application/json",
+          }]
+        : []),
+    ]);
+
+    return Object.freeze({
+      ok: true,
+      operation: "animate-svg",
+      input: Object.freeze({ requestedPath: request.inputPath, path: resolvedInputPath }),
+      motionPlan: Object.freeze({ ...plan.source, sha256: plan.sha256 }),
+      outputs: Object.freeze({
+        animatedSvg: receiptByPath(receipts, commitSvgPath),
+        evidence: commitEvidencePath ? receiptByPath(receipts, commitEvidencePath) : null,
+      }),
+      inspection: result.inspection,
+      evidence: result.evidence,
+      approval: result.evidence.approval,
+    });
+  }
+
+  async function inspectAnimatedSvgFile(inputPath: string): Promise<Readonly<Record<string, unknown>>> {
+    const resolvedInputPath = await pathPolicy.resolveInputFile(inputPath);
+    const source = await readFile(resolvedInputPath, "utf8");
+    return Object.freeze({
+      ok: true,
+      operation: "inspect-animated-svg",
+      input: Object.freeze({ requestedPath: inputPath, path: resolvedInputPath }),
+      bytes: Buffer.byteLength(source, "utf8"),
+      inspection: inspectAnimatedSvg(source),
+    });
+  }
+
   return Object.freeze({
     capabilities,
     inputPolicy,
@@ -460,5 +693,8 @@ export function createVectorMcpOperations(
     traceRaster,
     inspectSvg: inspectSvgFile,
     optimiseSvg: optimiseSvgFile,
+    validateMotionPlan,
+    animateSvg,
+    inspectAnimatedSvg: inspectAnimatedSvgFile,
   });
 }
