@@ -7,6 +7,8 @@ export const DEFAULT_ANALYSIS_DIMENSION = 384;
 export type RasterFormat = "png" | "jpeg" | "webp" | "gif" | "bmp" | "tiff";
 export type RasterTraceProfile = "logo" | "icon" | "line-art" | "illustration" | "photo";
 export type RasterTraceProfileSelection = RasterTraceProfile | "auto";
+export type RasterCandidateMode = "single" | "adaptive";
+export type TraceCandidateRole = "base" | "fidelity" | "economy";
 export type RasterWarningSeverity = "warning" | "review";
 export type RasterComparisonQuality = "excellent" | "good" | "review";
 
@@ -75,6 +77,7 @@ export type RasterTraceOptions = RasterInspectionOptions & Readonly<{
   maxColours?: number;
   optimise?: boolean;
   title?: string;
+  candidateMode?: RasterCandidateMode;
 }>;
 
 export type TraceConfigurationEvidence = Readonly<{
@@ -142,23 +145,85 @@ export type RasterRenderComparison = Readonly<{
   }>;
 }>;
 
+export type TraceOutputEvidence = Readonly<{
+  mimeType: "image/svg+xml";
+  bytes: number;
+  pathCount: number;
+  groupCount: number;
+  gradientCount: number;
+  viewBox: readonly [number, number, number, number] | null;
+  pathDataBytes: number;
+  commandCount: number;
+  estimatedAnchorCount: number;
+  subpathCount: number;
+  straightSegmentCount: number;
+  curveSegmentCount: number;
+}>;
+
+export type TraceCandidateTimings = Readonly<{
+  trace: number;
+  optimise: number;
+  compare: number;
+  total: number;
+}>;
+
+export type TraceCandidateCompleteEvidence = Readonly<{
+  id: string;
+  role: TraceCandidateRole;
+  status: "complete";
+  selected: boolean;
+  trace: TraceConfigurationEvidence;
+  output: TraceOutputEvidence;
+  comparison: RasterRenderComparison;
+  visualCost: number;
+  geometryCost: number;
+  timingsMs: TraceCandidateTimings;
+}>;
+
+export type TraceCandidateFailedEvidence = Readonly<{
+  id: string;
+  role: TraceCandidateRole;
+  status: "failed";
+  selected: false;
+  trace: TraceConfigurationEvidence;
+  errorCode: string;
+  message: string;
+  elapsedMs: number;
+}>;
+
+export type TraceCandidateEvidence = TraceCandidateCompleteEvidence | TraceCandidateFailedEvidence;
+
+export type TraceSelectionEvidence = Readonly<{
+  mode: RasterCandidateMode;
+  maximumCandidateCount: number;
+  attemptedCandidateCount: number;
+  completedCandidateCount: number;
+  selectedCandidateId: string;
+  bestVisualCandidateId: string;
+  eligibleCandidateIds: readonly string[];
+  reason: "single-candidate" | "best-visual-review-required" | "lowest-geometry-cost-within-visual-tolerance";
+  visualTolerance: Readonly<{
+    visualCost: number;
+    mismatchFraction: number;
+  }>;
+  pixelBudgetPolicy: Readonly<{
+    threeCandidateMaximumPixels: number;
+    twoCandidateMaximumPixels: number;
+  }>;
+}>;
+
 export type RasterTraceEvidence = Readonly<{
-  contractVersion: "1.1";
+  contractVersion: "1.2";
   engine: Readonly<{
     name: "@neplex/vectorizer";
-    adapterVersion: "0.2.0";
+    adapterVersion: "0.3.0";
   }>;
   analysis: RasterAnalysis;
   trace: TraceConfigurationEvidence;
-  output: Readonly<{
-    mimeType: "image/svg+xml";
-    bytes: number;
-    pathCount: number;
-    groupCount: number;
-    gradientCount: number;
-    viewBox: readonly [number, number, number, number] | null;
-  }>;
+  output: TraceOutputEvidence;
   comparison: RasterRenderComparison;
+  candidates: readonly TraceCandidateEvidence[];
+  selection: TraceSelectionEvidence;
   qualityGates: Readonly<{
     svgSafety: "passed";
     structuralValidation: "passed";
@@ -172,6 +237,7 @@ export type RasterTraceEvidence = Readonly<{
     trace: number;
     optimise: number;
     compare: number;
+    candidateSelection: number;
     total: number;
   }>;
   warnings: readonly RasterWarning[];
