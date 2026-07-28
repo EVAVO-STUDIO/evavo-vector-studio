@@ -1,1 +1,1 @@
-apply isolated Lottie review CSS module
+apply isolated Lottie review CSS module v2
