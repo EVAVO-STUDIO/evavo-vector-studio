@@ -14,6 +14,41 @@ const PROFILE_COLOURS = {
 } as const;
 
 type Profile = keyof typeof PROFILE_COLOURS;
+type CandidateMode = "adaptive" | "single";
+type ComparisonQuality = "excellent" | "good" | "review";
+
+type ComparisonSummary = {
+  quality: ComparisonQuality;
+  aggregate: {
+    visualMae: number;
+    alphaMae: number;
+    mismatchFraction: number;
+    aspectRatioDelta: number;
+    comparedPixelCount: number;
+    largestComparedDimension: number;
+  };
+  scales: Array<{ width: number; height: number; visualMae: number; mismatchFraction: number }>;
+};
+
+type CompleteCandidate = {
+  id: string;
+  role: string;
+  status: "complete";
+  selected: boolean;
+  output: { bytes: number; pathCount: number; commandCount: number; estimatedAnchorCount: number };
+  comparison: ComparisonSummary;
+  visualCost: number;
+  geometryCost: number;
+};
+
+type FailedCandidate = {
+  id: string;
+  role: string;
+  status: "failed";
+  selected: false;
+  errorCode: string;
+  message: string;
+};
 
 type TraceEvidence = {
   analysis: {
@@ -23,18 +58,24 @@ type TraceEvidence = {
     detail: { edgeDensity: number };
   };
   trace: { requestedProfile: string; resolvedProfile: string };
-  output: { bytes: number; pathCount: number; groupCount: number; viewBox: [number, number, number, number] | null };
-  comparison: {
-    quality: "excellent" | "good" | "review";
-    aggregate: {
-      visualMae: number;
-      alphaMae: number;
-      mismatchFraction: number;
-      aspectRatioDelta: number;
-      comparedPixelCount: number;
-      largestComparedDimension: number;
-    };
-    scales: Array<{ width: number; height: number; visualMae: number; mismatchFraction: number }>;
+  output: {
+    bytes: number;
+    pathCount: number;
+    groupCount: number;
+    commandCount: number;
+    estimatedAnchorCount: number;
+    viewBox: [number, number, number, number] | null;
+  };
+  comparison: ComparisonSummary;
+  candidates: Array<CompleteCandidate | FailedCandidate>;
+  selection: {
+    mode: CandidateMode;
+    attemptedCandidateCount: number;
+    completedCandidateCount: number;
+    selectedCandidateId: string;
+    bestVisualCandidateId: string;
+    eligibleCandidateIds: string[];
+    reason: string;
   };
   qualityGates: { renderComparison: "passed" | "review-required"; productionApproval: "review-required" };
   warnings: Array<{ code: string; severity: string; message: string }>;
@@ -63,12 +104,20 @@ function acceptedRaster(file: File): boolean {
   return /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(file.name);
 }
 
+function selectionReason(reason: string): string {
+  if (reason === "single-candidate") return "Single bounded candidate";
+  if (reason === "best-visual-review-required") return "Best visual candidate; manual repair may be needed";
+  if (reason === "lowest-geometry-cost-within-visual-tolerance") return "Lowest geometry cost inside visual tolerance";
+  return reason;
+}
+
 export default function TraceWorkspace() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [svgUrl, setSvgUrl] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile>("auto");
+  const [candidateMode, setCandidateMode] = useState<CandidateMode>("adaptive");
   const [maxColours, setMaxColours] = useState(PROFILE_COLOURS.auto);
   const [preservePalette, setPreservePalette] = useState(true);
   const [optimise, setOptimise] = useState(true);
@@ -133,6 +182,7 @@ export default function TraceWorkspace() {
       const form = new FormData();
       form.set("file", file);
       form.set("profile", profile);
+      form.set("candidateMode", candidateMode);
       form.set("maxColours", String(maxColours));
       form.set("preservePalette", String(preservePalette));
       form.set("optimise", String(optimise));
@@ -188,6 +238,12 @@ export default function TraceWorkspace() {
                 <option value="photo">Photographic source</option>
               </select>
             </label>
+            <label className={styles.field}>Candidate policy
+              <select value={candidateMode} onChange={(event) => setCandidateMode(event.target.value as CandidateMode)}>
+                <option value="adaptive">Adaptive visual and geometry review</option>
+                <option value="single">Single deterministic candidate</option>
+              </select>
+            </label>
             <label className={styles.field}>Target colours
               <input type="number" min="1" max="256" value={maxColours} onChange={(event) => setMaxColours(Number(event.target.value))} />
             </label>
@@ -206,8 +262,8 @@ export default function TraceWorkspace() {
           </label>
 
           <div className={styles.submitRow}>
-            <button className={styles.submitButton} type="submit" disabled={!file || running}>{running ? "Tracing and comparing…" : "Create governed SVG"}</button>
-            <span>{file ? "Source ready for bounded tracing and multi-scale render comparison." : "Select a source to begin."}</span>
+            <button className={styles.submitButton} type="submit" disabled={!file || running}>{running ? "Building and comparing candidates…" : "Create governed SVG"}</button>
+            <span>{file ? `${candidateMode === "adaptive" ? "Adaptive" : "Single"} bounded reconstruction is ready.` : "Select a source to begin."}</span>
           </div>
           {error ? <p className={styles.error} role="alert">{error}</p> : null}
         </form>
@@ -221,14 +277,14 @@ export default function TraceWorkspace() {
             <div className={styles.checker}>{sourceUrl ? <img src={sourceUrl} alt="Raster source" /> : <p>Select artwork to create a local preview.</p>}</div>
           </figure>
           <figure>
-            <figcaption><span>SVG reconstruction</span>{result ? readableBytes(result.evidence.output.bytes) : "Not generated"}</figcaption>
-            <div className={styles.checker}>{svgUrl ? <img src={svgUrl} alt="Generated SVG reconstruction" /> : <p>The reconstructed SVG will appear here without injecting its markup into the page.</p>}</div>
+            <figcaption><span>Selected SVG</span>{result ? readableBytes(result.evidence.output.bytes) : "Not generated"}</figcaption>
+            <div className={styles.checker}>{svgUrl ? <img src={svgUrl} alt="Selected SVG reconstruction" /> : <p>The selected SVG will appear here without injecting its markup into the page.</p>}</div>
           </figure>
         </div>
 
         <div className={styles.metrics} aria-live="polite">
           <span><b>Profile</b>{result ? `${result.evidence.trace.resolvedProfile}${result.evidence.trace.requestedProfile === "auto" ? " · auto" : " · directed"}` : "pending"}</span>
-          <span><b>Geometry</b>{result ? `${result.evidence.output.pathCount.toLocaleString()} paths` : "pending"}</span>
+          <span><b>Geometry</b>{result ? `${result.evidence.output.estimatedAnchorCount.toLocaleString()} anchors · ${result.evidence.output.pathCount.toLocaleString()} paths` : "pending"}</span>
           <span><b>Render evidence</b>{result ? `${result.evidence.comparison.quality} · MAE ${percentage(result.evidence.comparison.aggregate.visualMae)}` : "pending"}</span>
         </div>
 
@@ -237,17 +293,41 @@ export default function TraceWorkspace() {
             <div className={styles.resultHeader}>
               <div>
                 <small>JOB {result.id}</small>
-                <strong>Visual comparison: {result.evidence.comparison.quality}</strong>
-                <span>Compared {result.evidence.comparison.aggregate.comparedPixelCount.toLocaleString()} rendered pixels across {result.evidence.comparison.scales.length} scale{result.evidence.comparison.scales.length === 1 ? "" : "s"}, up to {result.evidence.comparison.aggregate.largestComparedDimension}px. Human production approval remains required.</span>
+                <strong>Selected {result.evidence.selection.selectedCandidateId} candidate · {result.evidence.comparison.quality} render evidence</strong>
+                <span>{selectionReason(result.evidence.selection.reason)}. Compared {result.evidence.comparison.aggregate.comparedPixelCount.toLocaleString()} rendered pixels across {result.evidence.comparison.scales.length} scale{result.evidence.comparison.scales.length === 1 ? "" : "s"}. Human production approval remains required.</span>
               </div>
               {svgUrl ? <a className={styles.download} href={svgUrl} download={`${file?.name.replace(/\.[^.]+$/, "") || "vector"}.svg`}>Download SVG</a> : null}
             </div>
             <dl className={styles.evidenceGrid}>
               <div><dt>Source</dt><dd>{result.evidence.analysis.source.width} × {result.evidence.analysis.source.height}</dd></div>
               <div><dt>Detected colours</dt><dd>{result.evidence.analysis.colour.estimatedColours.toLocaleString()}</dd></div>
-              <div><dt>Visual MAE</dt><dd>{percentage(result.evidence.comparison.aggregate.visualMae)}</dd></div>
+              <div><dt>Estimated anchors</dt><dd>{result.evidence.output.estimatedAnchorCount.toLocaleString()}</dd></div>
               <div><dt>Mismatch pixels</dt><dd>{percentage(result.evidence.comparison.aggregate.mismatchFraction)}</dd></div>
             </dl>
+
+            <div className={styles.candidateReview}>
+              <div className={styles.candidateHeading}>
+                <div><small>Candidate evidence</small><strong>{result.evidence.selection.attemptedCandidateCount} attempted · {result.evidence.selection.completedCandidateCount} completed</strong></div>
+                <span>{result.evidence.selection.mode}</span>
+              </div>
+              <ul>
+                {result.evidence.candidates.map((candidate) => (
+                  <li key={candidate.id} className={candidate.selected ? styles.candidateSelected : undefined}>
+                    <div className={styles.candidateIdentity}><b>{candidate.role}</b><span>{candidate.id}{candidate.selected ? " · selected" : ""}</span></div>
+                    {candidate.status === "complete" ? (
+                      <>
+                        <span><b>{candidate.comparison.quality}</b>MAE {percentage(candidate.comparison.aggregate.visualMae)}</span>
+                        <span><b>{candidate.output.estimatedAnchorCount.toLocaleString()}</b>estimated anchors</span>
+                        <span><b>{readableBytes(candidate.output.bytes)}</b>SVG output</span>
+                      </>
+                    ) : (
+                      <span className={styles.candidateFailure}><b>{candidate.errorCode}</b>{candidate.message}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
             {result.evidence.warnings.length ? <ul className={styles.warningList}>{result.evidence.warnings.map((warning) => <li key={`${warning.code}-${warning.message}`}><b>{warning.code}</b><span>{warning.message}</span></li>)}</ul> : null}
           </div>
         ) : null}
