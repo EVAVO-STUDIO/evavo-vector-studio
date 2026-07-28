@@ -38,6 +38,10 @@ const profileSchema = z
 
 const candidateModeSchema = z.enum(["adaptive", "single"]).optional();
 const evidenceLevelSchema = z.enum(["summary", "full"]).optional();
+const motionPlanSchema = z
+  .record(z.unknown())
+  .describe("Inline EVAVO motion v1 plan. Use either motionPlan or motionPath, not both.")
+  .optional();
 
 function textPayload(payload: Readonly<Record<string, unknown>>): string {
   return JSON.stringify(payload, null, 2);
@@ -83,11 +87,12 @@ export async function createVectorMcpServer(
     {
       instructions: [
         `EVAVO Vector Studio MCP contract ${VECTOR_MCP_CONTRACT_VERSION}.`,
-        "Call vector_capabilities and vector_input_policy before the first trace in a workspace.",
+        "Call vector_capabilities and vector_input_policy before the first raster trace in a workspace.",
         "Raster tools accept one static image at a time and never flatten animation frames or TIFF pages.",
+        "Motion tools accept a validated inline plan or one JSON plan file and produce script-free CSS animated SVG.",
         "All filesystem paths must remain within the configured allowed roots.",
-        "Output tools create new files only, never overwrite, and commit SVG plus difference PNG atomically.",
-        "Trace completion is not production approval. Inspect render, topology, editability and brand fidelity evidence before publication.",
+        "Output tools create new files only, never overwrite, and commit related outputs atomically.",
+        "Trace and motion completion are not production approval. Inspect render, topology, editability, timing and brand fidelity evidence before publication.",
       ].join(" "),
     },
   );
@@ -96,7 +101,7 @@ export async function createVectorMcpServer(
     "vector_capabilities",
     {
       title: "Vector Studio Capabilities",
-      description: "Return the current MCP, filesystem, tracing, output and approval contract without reading a file.",
+      description: "Return the current MCP, filesystem, tracing, motion, output and approval contract without reading a file.",
       inputSchema: {},
     },
     async () => executeTool(() => operations.capabilities()),
@@ -174,6 +179,59 @@ export async function createVectorMcpServer(
     },
     async ({ inputPath, outputPath }) =>
       executeTool(() => operations.optimiseSvg(inputPath, outputPath)),
+  );
+
+  server.registerTool(
+    "vector_validate_motion_plan",
+    {
+      title: "Validate Animated SVG Motion Plan",
+      description: "Validate and normalize a motion v1 plan supplied inline or from one allowed JSON file. Optionally save the normalized plan to a new JSON path.",
+      inputSchema: {
+        motionPath: pathSchema
+          .describe("Existing motion-plan JSON path. Use either motionPath or motionPlan.")
+          .optional(),
+        motionPlan: motionPlanSchema,
+        normalizedOutputPath: pathSchema
+          .describe("Optional new JSON output path for the normalized plan.")
+          .optional(),
+      },
+    },
+    async (input, extra) =>
+      executeTool(() => operations.validateMotionPlan(input, extra.signal)),
+  );
+
+  server.registerTool(
+    "vector_animate_svg",
+    {
+      title: "Create Governed Animated SVG",
+      description: "Apply a validated inline or file-based motion v1 plan to one governed static SVG. Writes a new animated SVG and optional evidence JSON atomically without returning SVG markup to model context.",
+      inputSchema: {
+        inputPath: pathSchema.describe("Existing governed static SVG within an allowed root."),
+        motionPath: pathSchema
+          .describe("Existing motion-plan JSON path. Use either motionPath or motionPlan.")
+          .optional(),
+        motionPlan: motionPlanSchema,
+        outputSvgPath: pathSchema.describe("New animated SVG output path."),
+        evidenceOutputPath: pathSchema
+          .describe("Optional new JSON evidence output path.")
+          .optional(),
+      },
+    },
+    async (input, extra) =>
+      executeTool(() => operations.animateSvg(input, extra.signal)),
+  );
+
+  server.registerTool(
+    "vector_inspect_animated_svg",
+    {
+      title: "Inspect Animated SVG",
+      description: "Inspect EVAVO motion metadata, target rules, keyframes, reduced-motion fallback and underlying SVG safety without modifying the file.",
+      inputSchema: {
+        inputPath: pathSchema.describe("Existing animated SVG within an allowed root."),
+      },
+    },
+    async ({ inputPath }) =>
+      executeTool(() => operations.inspectAnimatedSvg(inputPath)),
   );
 
   return Object.freeze({ server, operations, pathPolicy });
