@@ -4,7 +4,7 @@ import TraceWorkspace from "./components/TraceWorkspace";
 const outputCards = [
   ["Clean SVG", "Available now", "Adaptive spline reconstruction, measured candidate selection, geometry inspection and optional difference PNG evidence."],
   ["Animated SVG", "UI + API + CLI + MCP available", "Direct ID-targeted opacity and transform motion in the browser, then verify deterministic CSS, reduced-motion fallback and output evidence."],
-  ["Lottie", "Core + CLI available", "Governed path-based shape-layer JSON export and structural inspection are available. Independent player-render validation, API, MCP, browser preview and dotLottie remain planned."],
+  ["Lottie", "Core + CLI + API available", "Governed path-based shape-layer JSON export and structural inspection are available. Independent player-render validation, MCP, browser preview and dotLottie remain planned."],
 ] as const;
 
 export default function HomePage() {
@@ -55,6 +55,13 @@ POST /api/v1/motion/svg
 file=mark.svg
 motionFile=mark.motion.json
 format=svg
+
+POST /api/v1/motion/lottie
+file=mark.svg
+motionFile=mark.motion.json
+frameRate=60
+precision=4
+format=lottie
 
 pnpm vector:lottie:export -- \\
   mark.svg \\
