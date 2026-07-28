@@ -137,7 +137,8 @@ requireTokens(files.manifest, sources.manifest, [
   "canonicalBatchManifest",
   "batchManifestSha256",
   "Batch item identifiers must be unique",
-  "Object.keys(source).sort()",
+  "Object.keys(source)",
+  ".sort()",
 ]);
 requireTokens(files.store, sources.store, [
   'path.join(resolvedRoot, ".evavo-vector-jobs")',

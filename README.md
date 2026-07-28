@@ -50,7 +50,7 @@ Governed Lottie JSON export and inspection are available through the core Lottie
 
 ### dotLottie
 
-Deterministic dotLottie v2 packaging is available through core, CLI, `POST /api/v1/motion/dotlottie`, MCP, the browser Motion Director and the resumable batch runner.
+The deterministic dotLottie v2 packaging is available through core, CLI, `POST /api/v1/motion/dotlottie`, MCP, the browser Motion Director and the resumable batch runner.
 
 - exact `manifest.json` plus `a/<animation-id>.json` layout;
 - DEFLATE compression and fixed ZIP metadata;
@@ -61,7 +61,7 @@ Deterministic dotLottie v2 packaging is available through core, CLI, `POST /api/
 - official-player `load` and `loadError` lifecycle evidence;
 - separate `.lottie` and evidence downloads.
 
-Browser archive-load validation is available after exact archive verification. Independent player-render validation remains unavailable.
+The browser archive-load validation is available after exact archive verification. Independent player-render validation remains unavailable.
 
 ### Durable batch automation
 
