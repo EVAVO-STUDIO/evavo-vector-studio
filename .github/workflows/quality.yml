@@ -67,6 +67,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-motion-api-contract.mjs
 
+      - name: Verify Motion Director contract
+        if: ${{ !cancelled() }}
+        run: node scripts/check-motion-workspace-contract.mjs
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
