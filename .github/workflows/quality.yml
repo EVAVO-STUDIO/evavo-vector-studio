@@ -75,6 +75,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-native-runtime-boundary.mjs
 
+      - name: Verify Lottie core contract
+        if: ${{ !cancelled() }}
+        run: node scripts/check-lottie-contract.mjs
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
