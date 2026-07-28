@@ -1,20 +1,24 @@
 {
   "name": "evavo-vector-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Professional raster-to-vector, SVG animation and Lottie production platform.",
   "license": "MIT",
   "packageManager": "pnpm@10.14.0",
   "scripts": {
-    "dev": "turbo run dev --parallel",
+    "build:packages": "turbo run build --filter=@evavo/vector-core --filter=@evavo/raster-engine --filter=@evavo/vector-cli",
+    "dev": "pnpm build:packages && turbo run dev --parallel",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "vector:inspect": "pnpm --filter @evavo/vector-cli exec evavo-vector inspect",
-    "vector:optimise": "pnpm --filter @evavo/vector-cli exec evavo-vector optimise",
-    "vector:manifest": "pnpm --filter @evavo/vector-cli exec evavo-vector manifest"
+    "vector:build": "turbo run build --filter=@evavo/vector-cli",
+    "vector:inspect": "pnpm vector:build && node packages/cli/dist/index.js inspect",
+    "vector:optimise": "pnpm vector:build && node packages/cli/dist/index.js optimise",
+    "vector:raster:inspect": "pnpm vector:build && node packages/cli/dist/index.js raster:inspect",
+    "vector:trace": "pnpm vector:build && node packages/cli/dist/index.js trace",
+    "vector:manifest": "pnpm vector:build && node packages/cli/dist/index.js manifest"
   },
   "devDependencies": {
     "turbo": "^2.5.6",
