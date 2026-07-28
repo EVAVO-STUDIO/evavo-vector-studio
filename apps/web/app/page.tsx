@@ -3,7 +3,7 @@ import TraceWorkspace from "./components/TraceWorkspace";
 
 const outputCards = [
   ["Clean SVG", "Available now", "Adaptive spline reconstruction, measured candidate selection, geometry inspection and optional difference PNG evidence."],
-  ["Animated SVG", "CLI available", "Validated ID-targeted opacity and transform motion, deterministic CSS, reduced-motion fallback and review evidence. Browser authoring is planned."],
+  ["Animated SVG", "CLI + MCP available", "Validated ID-targeted opacity and transform motion, deterministic CSS, reduced-motion fallback and review evidence. Browser authoring is planned."],
   ["Lottie", "Planned", "Portable timelines remain unavailable until feature-subset, schema and renderer compatibility validation is implemented."],
 ] as const;
 
@@ -43,11 +43,12 @@ export default function HomePage() {
       <section id="automation" className="section outputs">
         <div className="sectionIntro"><p className="eyebrow">ONE ENGINE, MULTIPLE SURFACES</p><h2>UI for judgement. API, CLI and MCP for repeatability.</h2></div>
         <div className="outputGrid">{outputCards.map(([title, status, copy]) => <article key={title}><span>{status}</span><h3>{title}</h3><p>{copy}</p></article>)}</div>
-        <pre><code>{`pnpm vector:animate-svg -- \\
-  .\\fixtures\\motion\\gentle-entrance.source.svg \\
-  --motion .\\fixtures\\motion\\gentle-entrance.motion.json \\
-  --out .\\outputs\\gentle-entrance.animated.svg \\
-  --evidence-out .\\outputs\\gentle-entrance.motion.evidence.json`}</code></pre>
+        <pre><code>{`vector_animate_svg {
+  "inputPath": "mark.svg",
+  "motionPath": "mark.motion.json",
+  "outputSvgPath": "mark.animated.svg",
+  "evidenceOutputPath": "mark.motion.evidence.json"
+}`}</code></pre>
       </section>
 
       <footer><span>EVAVO VECTOR STUDIO</span><span>Deliberate geometry. Verifiable output.</span></footer>
