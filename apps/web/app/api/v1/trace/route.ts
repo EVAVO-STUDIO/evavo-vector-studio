@@ -1,7 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 import { createJobId } from "@evavo/vector-core";
 import {
+  DEFAULT_DIFFERENCE_MAX_DIMENSION,
   DEFAULT_MAX_INPUT_BYTES,
+  MAX_DIFFERENCE_DIMENSION,
   RasterEngineError,
   traceRaster,
   type RasterCandidateMode,
@@ -77,6 +79,7 @@ export function GET(): Response {
   return json({
     service: "evavo-vector-studio",
     version: "v1",
+    contractVersion: "1.4",
     execution: "bounded-synchronous",
     endpoint: "/api/v1/trace",
     input: "multipart/form-data with a file field",
@@ -84,6 +87,14 @@ export function GET(): Response {
     candidateModes: [...CANDIDATE_MODES],
     adaptiveCandidateBudget: { threeCandidatesThroughPixels: 4_000_000, twoCandidatesThroughPixels: 12_000_000, otherwise: 1 },
     limits: { maxInputBytes: DEFAULT_MAX_INPUT_BYTES, maxDecodedPixels: 40_000_000 },
+    differenceArtifacts: {
+      available: true,
+      requestField: "includeDifference",
+      maximumDimensionField: "differenceMaxDimension",
+      defaultMaximumDimension: DEFAULT_DIFFERENCE_MAX_DIMENSION,
+      maximumDimension: MAX_DIFFERENCE_DIMENSION,
+      transport: "base64-encoded PNG in JSON responses",
+    },
     authentication: "Bearer VECTOR_API_TOKEN in production",
     visualEvidence: "alpha-aware multi-scale source-versus-SVG render comparison",
     approval: "human review required even when render comparison passes",
@@ -123,6 +134,25 @@ export async function POST(request: Request): Promise<Response> {
       return json({ error: "RASTER_OPTIONS_INVALID", field: "maxColours", range: [1, 256] }, 400);
     }
 
+    const includeDifference = booleanField(form, "includeDifference", false);
+    const differenceMaxDimension = integerField(form, "differenceMaxDimension");
+    if (differenceMaxDimension !== undefined && !includeDifference) {
+      return json({ error: "RASTER_OPTIONS_INVALID", field: "differenceMaxDimension", message: "includeDifference must be true." }, 400);
+    }
+    if (
+      differenceMaxDimension !== undefined &&
+      (differenceMaxDimension < 32 || differenceMaxDimension > MAX_DIFFERENCE_DIMENSION)
+    ) {
+      return json({ error: "RASTER_OPTIONS_INVALID", field: "differenceMaxDimension", range: [32, MAX_DIFFERENCE_DIMENSION] }, 400);
+    }
+    if (format === "svg" && includeDifference) {
+      return json({
+        error: "RASTER_OPTIONS_INVALID",
+        field: "includeDifference",
+        message: "Difference PNG artefacts require format=json so both outputs can be returned without discarding evidence.",
+      }, 400);
+    }
+
     const jobId = createJobId();
     const source = new Uint8Array(await file.arrayBuffer());
     const result = await traceRaster(source, {
@@ -133,6 +163,8 @@ export async function POST(request: Request): Promise<Response> {
       preservePalette: booleanField(form, "preservePalette", true),
       optimise: booleanField(form, "optimise", true),
       title: stringField(form, "title"),
+      includeDifferenceArtifact: includeDifference,
+      differenceMaxDimension,
       signal: request.signal,
     });
 
@@ -153,6 +185,25 @@ export async function POST(request: Request): Promise<Response> {
       });
     }
 
+    const differenceEvidence = result.evidence.differenceArtifact;
+    const differencePng = result.artifacts.differencePng;
+    if ((differenceEvidence && !differencePng) || (!differenceEvidence && differencePng)) {
+      throw new RasterEngineError(
+        "RASTER_DIFFERENCE_ARTIFACT_FAILED",
+        "Difference artefact bytes and evidence are inconsistent.",
+        500,
+      );
+    }
+    const artifacts = differenceEvidence && differencePng
+      ? {
+          difference: {
+            ...differenceEvidence,
+            encoding: "base64" as const,
+            data: Buffer.from(differencePng).toString("base64"),
+          },
+        }
+      : {};
+
     return json({
       id: jobId,
       status: "complete",
@@ -166,6 +217,7 @@ export async function POST(request: Request): Promise<Response> {
       svg: result.svg,
       inspection: result.inspection,
       evidence: result.evidence,
+      artifacts,
     });
   } catch (error) {
     if (error instanceof RasterEngineError) {
