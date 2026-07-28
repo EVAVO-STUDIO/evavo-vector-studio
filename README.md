@@ -40,7 +40,11 @@ The objective is not to call one automatic trace “finished”. The system insp
 - tests for format, decompression-bomb, multi-image, topology, candidate-selection, alpha-comparison, PNG, motion, Lottie geometry, Lottie structural output, MCP SDK, path-policy and transaction boundaries;
 - dependency-free contract gates plus the GitHub Actions quality workflow.
 
-Animated SVG production is available through the browser Motion Director, core motion package, HTTP API, CLI and MCP. Governed Lottie JSON export and inspection are available through core, CLI, HTTP and MCP, and verified JSON can now be reviewed in the browser Motion Director. Independent player-render validation remains unavailable, and dotLottie packaging remains unavailable.
+Animated SVG production is available through the browser Motion Director, core motion package, HTTP API, CLI and MCP.
+
+Governed Lottie JSON export and inspection are available through the core Lottie package, CLI and HTTP API. MCP and browser review use the same governed Lottie contract. Independent player-render validation remains unavailable, and dotLottie packaging remains unavailable.
+
+All execution surfaces remain `human-review-required`. Successful processing and verification do not grant artistic, brand, accessibility or player-equivalence approval.
 
 ## Quick start on Windows PowerShell
 
@@ -173,7 +177,7 @@ MCP inputs must be existing regular files beneath a configured canonical root. O
 
 `vector_trace_raster` supports compact `summary` and complete `full` evidence. Motion and Lottie plans may be supplied inline or through allowed-root JSON files. `vector_export_lottie` creates Lottie JSON and optional evidence atomically; `vector_inspect_lottie` checks the committed result. The Lottie MCP contract never places generated Lottie JSON into model context.
 
-Every MCP operation remains human-review-gated. Successful execution records completion and evidence, not artistic or player approval. See [`docs/MCP.md`](docs/MCP.md).
+Every MCP operation remains `human-review-required`; successful execution records completion and evidence, not artistic or player approval. See [`docs/MCP.md`](docs/MCP.md).
 
 ## API
 
