@@ -47,6 +47,7 @@ const packagePaths = [
   "packages/vector-core/package.json",
   "packages/raster-engine/package.json",
   "packages/motion-engine/package.json",
+  "packages/lottie-engine/package.json",
   "packages/cli/package.json",
   "packages/mcp/package.json",
   "apps/web/package.json",
@@ -157,6 +158,7 @@ requireTokens(files.cli, sources.cli, [
   `const VERSION = "${releaseVersion}"`,
   'contractVersion: "1.4"',
   'motionContractVersion: "1.0"',
+  'lottieContractVersion: "1.0"',
   '"--diff-out"',
   '"--difference-max-dimension"',
   "VECTOR_OUTPUT_PATH_COLLISION",
@@ -164,7 +166,13 @@ requireTokens(files.cli, sources.cli, [
   "commitNewOutputFiles",
   'existingOutputsOverwritten: false',
   'animatedSvgAvailable: true',
-  'lottieAvailable: false',
+  '"lottie:inspect"',
+  '"lottie:export"',
+  "createLottieFromSvgMotion",
+  "inspectLottie",
+  'lottieJsonExportAvailable: true',
+  'lottiePlayerRenderValidationAvailable: false',
+  'dotLottieAvailable: false',
 ]);
 
 requireTokens(files.api, sources.api, [
