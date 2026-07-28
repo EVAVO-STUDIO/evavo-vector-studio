@@ -1,0 +1,86 @@
+name: One-time Lottie review style repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/lottie-review-style.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-lottie-review-style-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply exact CSS-module boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          target = Path("apps/web/app/motion/components/LottieReview.tsx")
+          source = target.read_text(encoding="utf-8")
+          old = 'import styles from "./MotionWorkspace.module.css";'
+          new = 'import styles from "./LottieReview.module.css";'
+          old_count = source.count(old)
+          new_count = source.count(new)
+          if old_count == 1 and new_count == 0:
+              target.write_text(source.replace(old, new, 1), encoding="utf-8")
+          elif old_count == 0 and new_count == 1:
+              pass
+          else:
+              raise SystemExit(
+                  f"LOTTIE_REVIEW_STYLE_SCOPE_INVALID:old={old_count}:new={new_count}"
+              )
+          PY
+          grep -Fq 'import styles from "./LottieReview.module.css";' apps/web/app/motion/components/LottieReview.tsx
+          git diff --check
+
+      - name: Install workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Verify web package
+        run: |
+          pnpm --filter @evavo/vector-web lint
+          pnpm --filter @evavo/vector-web typecheck
+          pnpm --filter @evavo/vector-web build
+
+      - name: Commit verified repair and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-lottie-review-style.yml \
+            .github/lottie-review-style.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "fix(web): isolate Lottie review styles"
+          git pull --rebase origin main
+          grep -Fq 'import styles from "./LottieReview.module.css";' apps/web/app/motion/components/LottieReview.tsx
+          pnpm --filter @evavo/vector-web typecheck
+          git push origin HEAD:main
