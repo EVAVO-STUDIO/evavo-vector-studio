@@ -1,8 +1,8 @@
 # EVAVO Vector Studio Motion Contract
 
-Vector Studio motion v1 creates deterministic, script-free CSS animation inside an already governed SVG. It is the first bounded motion-authoring layer and is intentionally narrower than a general animation application.
+Vector Studio motion v1 creates deterministic, script-free CSS animation inside an already governed SVG. The same validated plan can also drive the governed path-based Lottie JSON exporter when the plan and source remain inside its smaller compatibility subset.
 
-The objective is editable, inspectable motion with explicit timing and accessibility behaviour. A generated file is still review-required.
+The objective is editable, inspectable motion with explicit timing and accessibility behaviour. Every generated output remains review-required.
 
 ## Current availability
 
@@ -14,7 +14,7 @@ Implemented now:
 - timing, delay, iteration, direction and fill-mode controls;
 - easing presets and cubic Bézier easing;
 - deterministic CSS `@keyframes` generation;
-- required `prefers-reduced-motion` fallback;
+- required `prefers-reduced-motion` fallback for animated SVG;
 - source and output SHA-256 evidence;
 - animated SVG inspection;
 - responsive browser Motion Director at `/motion`;
@@ -24,7 +24,8 @@ Implemented now:
 - API inline and uploaded plan files with JSON or direct animated SVG responses;
 - MCP inline and file-based plan validation;
 - MCP animated SVG creation with atomic output receipts;
-- MCP animated SVG inspection without returning SVG markup into model context.
+- MCP animated SVG inspection without returning SVG markup into model context;
+- governed path-based Lottie JSON export and structural inspection through the core package and CLI.
 
 Not implemented in motion v1:
 
@@ -34,10 +35,11 @@ Not implemented in motion v1:
 - separate X and Y scale;
 - spring or physics simulation;
 - graphical Bézier-curve handles or a drag-to-scrub timeline;
-- Lottie export;
+- Lottie HTTP API or MCP tools;
+- browser Lottie player preview or independent player-render comparison;
 - dotLottie packaging.
 
-These are not silently approximated.
+These features are not silently approximated.
 
 ## Source requirements
 
@@ -73,6 +75,8 @@ The runtime validator is authoritative for rules that JSON Schema cannot express
 - unknown properties are rejected rather than ignored.
 
 The optional root `$schema` annotation is accepted for editor integration. Other unknown properties are rejected.
+
+A normalized plan remains valid motion-v1 input. It does not serialize renderer-only fields, so it can be saved, reloaded, sent through API or MCP, and used by animated SVG or governed Lottie export without contract drift.
 
 ## Supported plan fields
 
@@ -114,13 +118,15 @@ Omitted values normalize to opacity `1`, translation `0`, scale `1` and rotation
 
 ## Reduced-motion behaviour
 
-Every generated file includes a `prefers-reduced-motion: reduce` rule. The plan chooses one strategy:
+Every generated animated SVG includes a `prefers-reduced-motion: reduce` rule. The plan chooses one strategy:
 
 - `source`: disable animation and preserve the original static SVG state;
 - `first-frame`: disable animation and apply the first normalized keyframe;
 - `last-frame`: disable animation and apply the final normalized keyframe.
 
 The fallback is mandatory and is checked by the browser Motion Director, CLI `motion:inspect`, the HTTP endpoint and MCP `vector_inspect_animated_svg`.
+
+Lottie JSON cannot embed this CSS media-query fallback. A Lottie delivery surface must provide pause controls or an intentional static alternative. That distinction is retained in Lottie evidence rather than hidden.
 
 ## Browser Motion Director workflow
 
@@ -176,6 +182,33 @@ pnpm vector:motion:inspect -- `
 ```
 
 Output commands use atomic new-file-only transactions. Existing destinations and path collisions are rejected. When both SVG and evidence are requested, either both commit or the transaction rolls back.
+
+## Governed Lottie JSON derivation
+
+A motion-v1 plan can drive Lottie JSON only when it is inside the initial Lottie subset:
+
+- exactly one iteration;
+- normal direction;
+- `forwards` or `both` fill mode;
+- opacity, translation, uniform scale and rotation only;
+- path-based SVG source with flattened transforms and supported solid paint.
+
+Export and inspect through the CLI:
+
+```powershell
+pnpm vector:lottie:export -- `
+  .\fixtures\motion\gentle-entrance.source.svg `
+  --motion .\fixtures\motion\gentle-entrance.motion.json `
+  --out .\outputs\gentle-entrance.lottie.json `
+  --evidence-out .\outputs\gentle-entrance.lottie.evidence.json
+
+pnpm vector:lottie:inspect -- `
+  .\outputs\gentle-entrance.lottie.json
+```
+
+Lottie JSON export is available through the core package and CLI. Independent player-render validation, the Lottie HTTP API, Lottie MCP tools, browser player preview and dotLottie remain unavailable. The exporter reports those compatibility states explicitly and remains `review-required`.
+
+See [`LOTTIE.md`](LOTTIE.md) for the smaller SVG subset, paint-order translation, structural inspector and compatibility boundary.
 
 ## HTTP API workflow
 
@@ -251,16 +284,8 @@ A motion plan may be provided inline or by `motionPath`. Exactly one source is r
       {
         "targetId": "mark",
         "keyframes": [
-          {
-            "offset": 0,
-            "opacity": 0,
-            "translateY": 8
-          },
-          {
-            "offset": 1,
-            "opacity": 1,
-            "translateY": 0
-          }
+          { "offset": 0, "opacity": 0, "translateY": 8 },
+          { "offset": 1, "opacity": 1, "translateY": 0 }
         ]
       }
     ]
@@ -284,11 +309,9 @@ A motion plan may be provided inline or by `motionPath`. Exactly one source is r
 
 The animated SVG and optional evidence JSON are committed atomically with new-file-only semantics. Existing destinations and path collisions are rejected.
 
-The tool response contains inspections, evidence and file receipts. It does not contain the generated SVG markup. The evidence JSON also avoids embedding a duplicate SVG body.
+The tool response contains inspections, evidence and file receipts. It does not contain generated SVG markup. See [`MCP.md`](MCP.md) for allowed-root configuration and the complete agent contract.
 
-See [`MCP.md`](MCP.md) for allowed-root configuration and the complete agent contract.
-
-## Generated output
+## Generated animated SVG output
 
 The engine injects:
 
@@ -302,7 +325,7 @@ The source `<title>` and `<desc>` remain ahead of the injected style element. Th
 
 ## Evidence
 
-The result records:
+Animated SVG results record:
 
 - source bytes, SHA-256 and governed SVG inspection;
 - normalized playback settings;
@@ -316,7 +339,7 @@ Optional CLI and MCP evidence files do not embed a second copy of the SVG. The A
 
 ## Approval boundary
 
-`review-required` remains mandatory. Deterministic and structurally valid motion can still be poorly directed.
+`review-required` remains mandatory. Deterministic and structurally valid motion can still be poorly directed, and structurally valid Lottie JSON can still render differently across players.
 
 Human review must assess:
 
@@ -324,8 +347,7 @@ Human review must assess:
 - transform origins;
 - overshoot and easing character;
 - interaction with existing CSS presentation;
+- Lottie source-versus-player fidelity when that format is used;
 - brand and illustration character;
 - reduced-motion experience;
-- browser and delivery-context compatibility.
-
-Lottie remains unavailable until a separate renderer-compatibility, schema-validation and feature-subset contract is implemented.
+- browser, player and delivery-context compatibility.
