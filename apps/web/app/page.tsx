@@ -43,7 +43,14 @@ export default function HomePage() {
       <section id="automation" className="section outputs">
         <div className="sectionIntro"><p className="eyebrow">ONE ENGINE, MULTIPLE SURFACES</p><h2>UI for judgement. API, CLI and MCP for repeatability.</h2></div>
         <div className="outputGrid">{outputCards.map(([title, status, copy]) => <article key={title}><span>{status}</span><h3>{title}</h3><p>{copy}</p></article>)}</div>
-        <pre><code>{`vector_animate_svg {
+        <pre><code>{`POST /api/v1/trace
+file=mark.png
+profile=auto
+includeDifference=true
+differenceMaxDimension=512
+format=json
+
+vector_animate_svg {
   "inputPath": "mark.svg",
   "motionPath": "mark.motion.json",
   "outputSvgPath": "mark.animated.svg",
