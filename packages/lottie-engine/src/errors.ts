@@ -8,7 +8,12 @@ export type LottieEngineErrorCode =
   | "LOTTIE_PATH_INVALID"
   | "LOTTIE_STYLE_UNSUPPORTED"
   | "LOTTIE_MOTION_UNSUPPORTED"
-  | "LOTTIE_OUTPUT_INVALID";
+  | "LOTTIE_OUTPUT_INVALID"
+  | "DOTLOTTIE_OPTIONS_INVALID"
+  | "DOTLOTTIE_SOURCE_INVALID"
+  | "DOTLOTTIE_ARCHIVE_INVALID"
+  | "DOTLOTTIE_OUTPUT_INVALID"
+  | "DOTLOTTIE_OUTPUT_TOO_LARGE";
 
 export class LottieEngineError extends Error {
   readonly code: LottieEngineErrorCode;
