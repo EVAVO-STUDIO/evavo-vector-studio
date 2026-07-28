@@ -161,7 +161,7 @@ requireTokens(files.docs, sources.docs, [
   "new-files-only",
   "summary",
   "full",
-  "human review",
+  "Human review",
 ]);
 requireTokens(files.environment, sources.environment, ["VECTOR_MCP_ALLOWED_ROOTS"]);
 
