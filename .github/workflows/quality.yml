@@ -149,12 +149,17 @@ jobs:
               const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
               const diagnostic = lines.find((line) => /error TS\d+|Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|AssertionError|Module not found|Type error|Cannot find|is not assignable|does not exist/i.test(line)) || lines.at(-1) || `${name} did not produce a diagnostic`;
               const state = outcome === "success" ? "success" : "failure";
+              const slug = diagnostic
+                .normalize("NFKD")
+                .replace(/[^A-Za-z0-9._-]+/g, "-")
+                .replace(/^-+|-+$/g, "")
+                .slice(0, 150) || "unknown-diagnostic";
               await github.rest.repos.createCommitStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 sha: context.sha,
                 state,
-                context: `vector/${name}`,
+                context: state === "success" ? `vector/${name}` : `vector/${name}/${slug}`,
                 description: state === "success" ? `${name} passed` : diagnostic.slice(0, 140),
                 target_url: targetUrl,
               });
