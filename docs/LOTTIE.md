@@ -131,7 +131,9 @@ A successful browser dotLottie archive-load validation proves that this player a
 
 ```ts
 import {
+  createDotLottiePackage,
   createLottieFromSvgMotion,
+  inspectDotLottie,
   inspectLottie,
 } from "@evavo/lottie-engine";
 
@@ -146,6 +148,14 @@ if (!result.inspection.valid) {
 }
 
 const independentInspection = inspectLottie(result.json);
+const packaged = createDotLottiePackage(result.json, {
+  animationId: "directed-mark",
+});
+const archiveInspection = inspectDotLottie(packaged.bytes);
+
+if (!archiveInspection.valid) {
+  throw new Error("Generated dotLottie failed archive inspection.");
+}
 ```
 
 ## SVG source requirements
