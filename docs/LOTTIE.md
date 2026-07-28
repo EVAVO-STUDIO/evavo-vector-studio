@@ -22,19 +22,20 @@ Implemented in `@evavo/lottie-engine`, the `evavo-vector` CLI, the authenticated
 - receipt-only MCP responses that keep generated Lottie bodies out of model context;
 - browser verification of exact JSON bytes, source/output SHA-256, parsed metadata and structural evidence;
 - browser Lottie player preview through `@lottiefiles/dotlottie-react` with reduced-motion autoplay suppression;
+- separate deterministic dotLottie packaging and inspection through `createDotLottiePackage`, `inspectDotLottie` and the `evavo-dotlottie` CLI;
 - explicit source-subset, motion-subset, compatibility, and approval boundaries.
 
 Not yet available:
 
 - independent player-render comparison against the source or a reference renderer;
-- dotLottie packaging;
+- dotLottie packaging through HTTP, MCP or browser surfaces;
 - graphical Lottie timeline controls beyond the shared motion-plan editor;
 - gradients, images, text, masks, filters, expressions, precompositions, path morphing, or motion paths;
 - repeated, reversed, or alternating playback encoded into the exported composition.
 
 These features are not silently approximated.
 
-## CLI workflow
+## Lottie JSON CLI workflow
 
 Create governed Lottie JSON and a separate evidence record:
 
@@ -59,6 +60,36 @@ pnpm vector:lottie:inspect -- `
 `--motion` is required. `--out` defaults to `<source>.lottie.json`. The frame rate must be an integer from 1 to 120 and precision must be an integer from 0 to 6.
 
 The CLI rejects source, plan, output, and evidence path collisions. It never replaces an existing output. Lottie JSON and optional evidence commit as one transaction or roll back together. The evidence file does not contain a duplicate copy of the Lottie JSON body.
+
+## Separate dotLottie packaging workflow
+
+A governed Lottie JSON result can be packaged as a deterministic dotLottie v2 archive:
+
+```powershell
+pnpm vector:dotlottie:package -- `
+  .\outputs\gentle-entrance.lottie.json `
+  --out .\outputs\gentle-entrance.lottie `
+  --animation-id gentle-entrance `
+  --evidence-out .\outputs\gentle-entrance.dotlottie.evidence.json
+```
+
+Inspect the archive:
+
+```powershell
+pnpm vector:dotlottie:inspect -- `
+  .\outputs\gentle-entrance.lottie
+```
+
+The package contains exactly:
+
+```text
+manifest.json
+a/<animation-id>.json
+```
+
+Archive creation uses DEFLATE compression, fixed entry order, fixed ZIP timestamps and new-file-only atomic output. The strict inspector rejects traversal, duplicate entries, ZIP64, encryption, extra semantics and oversized declared content before accepting the embedded Lottie JSON.
+
+See [`DOTLOTTIE.md`](DOTLOTTIE.md) for the complete manifest, archive, size, evidence and approval contract.
 
 ## HTTP API workflow
 
@@ -98,7 +129,9 @@ curl.exe -X POST "http://localhost:3000/api/v1/motion/lottie" `
   --output "outputs\gentle-entrance.lottie.json"
 ```
 
-The direct response uses `video/lottie+json` and retains job ID, contract, source/output SHA-256, structural-inspection state, layer and path counts, `player validation: not-performed`, `dotLottie: unavailable`, and review-required state in headers.
+The direct response uses `video/lottie+json` and retains job ID, contract, source/output SHA-256, structural-inspection state, layer and path counts, `player validation: not-performed`, operation-level `dotLottie: unavailable`, and review-required state in headers.
+
+The `dotLottie: unavailable` header means that this Lottie JSON endpoint does not package an archive in the same response. Separate core and CLI dotLottie packaging is available.
 
 The generated body is capped at 20 MiB. The endpoint is synchronous and does not persist files.
 
@@ -145,6 +178,8 @@ Frame rate          1 to 120
 Precision           0 to 6
 ```
 
+MCP dotLottie archive packaging remains a later surface. The available core and CLI archive package do not change the current MCP tool list.
+
 ## Browser Motion Director workflow
 
 The browser Motion Director uses the same selected SVG and normalized motion plan as animated-SVG production.
@@ -166,30 +201,38 @@ The browser Lottie player preview uses `@lottiefiles/dotlottie-react`. It is loa
 
 This is a delivery-context preview and not independent source-to-player validation. A player that loads successfully can still differ in paint order, fill rules, stroke treatment, transform origins or timing from the source or another player.
 
-The downloaded browser evidence records `playerRenderValidation: false` and `dotLottiePackaging: false`; it does not convert a preview into an approval claim.
+The downloaded browser evidence records `playerRenderValidation: false` and `dotLottiePackaging: false`; the latter is scoped to the browser Lottie JSON operation. Browser archive generation and archive-load validation are not yet implemented.
 
 ## Programmatic workflow
 
 ```ts
 import {
+  createDotLottiePackage,
   createLottieFromSvgMotion,
+  inspectDotLottie,
   inspectLottie,
 } from "@evavo/lottie-engine";
 
-const result = createLottieFromSvgMotion(svgSource, motionPlan, {
+const lottie = createLottieFromSvgMotion(svgSource, motionPlan, {
   frameRate: 60,
   precision: 4,
   name: "Directed mark",
 });
 
-if (!result.inspection.valid) {
+if (!lottie.inspection.valid) {
   throw new Error("Generated Lottie failed structural inspection.");
 }
 
-const independentInspection = inspectLottie(result.json);
+const independentInspection = inspectLottie(lottie.json);
+const packaged = createDotLottiePackage(lottie.json, {
+  animationId: "directed-mark",
+});
+const archiveInspection = inspectDotLottie(packaged.bytes);
 ```
 
-The result contains parsed animation data, deterministic formatted JSON, independent structural inspection, and source, motion, subset, output, compatibility, and approval evidence.
+The Lottie result contains parsed animation data, deterministic formatted JSON, independent structural inspection, and source, motion, subset, output, compatibility, and approval evidence.
+
+The dotLottie result contains deterministic archive bytes, exact manifest, archive inspection and source, embedded JSON, compression, compatibility and approval evidence.
 
 ## SVG source requirements
 
@@ -257,26 +300,15 @@ A delay is encoded as a held initial keyframe. The composition out point is the 
 
 ## Structural inspection
 
-`inspectLottie` checks:
+`inspectLottie` checks contract metadata, canvas and timing, shape-layer-only output, group transforms, path cardinality, paint properties, keyframes, assets, expressions and unsupported layer types.
 
-- contract metadata;
-- canvas, frame-rate, and time-range bounds;
-- shape-layer-only output;
-- layer time ranges;
-- group transforms placed last;
-- static path geometry and bezier-array cardinality;
-- fill, stroke, and transform properties;
-- ascending animated keyframes and easing arrays;
-- absence of expressions, assets, image layers, text layers, and precompositions;
-- presence of path geometry and at least one animated property.
+`inspectDotLottie` additionally checks ZIP structure, entry paths, duplicate names, compression, manifest v2, initial animation resolution, size limits and the embedded Lottie inspection.
 
 Structural validity is necessary but not sufficient for renderer compatibility.
 
 ## Evidence and compatibility boundary
 
-Each export records source bytes, SHA-256, viewBox, governed SVG inspection, normalized motion, static/animated layer counts, output dimensions and timing, supported subset, structural state, compatibility non-claims, warnings and approval.
-
-The current compatibility evidence deliberately reports:
+Lottie JSON export evidence deliberately reports operation-level archive state:
 
 ```text
 structuralInspection: passed
@@ -285,11 +317,21 @@ dotLottiePackaging: not-yet-available
 approval: review-required
 ```
 
-Lottie JSON cannot embed the animated SVG `prefers-reduced-motion` media rule. Delivery surfaces must provide pause controls or an intentional static alternative.
+That means the JSON export operation did not produce a `.lottie` archive. Separate deterministic dotLottie core and CLI packaging is available and records its own evidence:
+
+```text
+archiveInspection: passed
+embeddedLottieInspection: passed
+playerRenderValidation: not-yet-performed
+browserArchiveLoadValidation: not-yet-performed
+approval: review-required
+```
+
+Lottie JSON and dotLottie archives cannot embed the animated SVG `prefers-reduced-motion` media rule. Delivery surfaces must provide pause controls or an intentional static alternative.
 
 ## Approval boundary
 
-A generated file remains `review-required` even when structural inspection passes and the browser player loads it.
+A generated JSON file or dotLottie archive remains `review-required` even when structural inspection passes and a browser player loads the JSON.
 
 Human review must assess source-versus-player visual equivalence, fill and stroke rendering, paint order, transform origins, timing, easing, player compatibility, accessibility and brand fidelity.
 
