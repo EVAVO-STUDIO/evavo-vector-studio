@@ -53,6 +53,7 @@ const files = {
   transaction: "packages/mcp/src/file-transaction.ts",
   pathTests: "packages/mcp/src/path-policy.test.ts",
   transactionTests: "packages/mcp/src/file-transaction.test.ts",
+  serverTests: "packages/mcp/src/server.test.ts",
   docs: "docs/MCP.md",
   environment: ".env.example",
 };
@@ -154,6 +155,13 @@ requireTokens(files.pathTests, sources.pathTests, [
 requireTokens(files.transactionTests, sources.transactionTests, [
   "rolls back files already committed",
   "returns byte and SHA-256 receipts",
+]);
+requireTokens(files.serverTests, sources.serverTests, [
+  "InMemoryTransport.createLinkedPair()",
+  "await client.listTools()",
+  'name: "vector_capabilities"',
+  'name: "vector_inspect_svg"',
+  '"VECTOR_MCP_INPUT_NOT_FOUND"',
 ]);
 requireTokens(files.docs, sources.docs, [
   "vector_trace_raster",
