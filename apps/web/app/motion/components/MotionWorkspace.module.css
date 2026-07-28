@@ -63,7 +63,7 @@
 }
 
 .ready,
-.review,
+.reviewBadge,
 .contract,
 .staleBadge,
 .verifiedBadge {
@@ -83,7 +83,7 @@
   color: #82e7a8;
 }
 
-.review,
+.reviewBadge,
 .staleBadge {
   border-color: rgba(255, 36, 78, 0.45);
   color: #ff7a93;
