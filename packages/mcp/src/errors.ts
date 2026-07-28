@@ -1,3 +1,4 @@
+import { MotionEngineError } from "@evavo/motion-engine";
 import { RasterEngineError, RasterRuntimeGuardError } from "@evavo/raster-engine";
 import { VectorMcpFileCommitError } from "./file-transaction.js";
 import { VectorMcpPathError } from "./path-policy.js";
@@ -53,6 +54,9 @@ export function vectorMcpFailure(error: unknown): VectorMcpFailure {
     return failure(error.code, error.message, false, error.details);
   }
   if (error instanceof VectorMcpFileCommitError) {
+    return failure(error.code, error.message, false, error.details);
+  }
+  if (error instanceof MotionEngineError) {
     return failure(error.code, error.message, false, error.details);
   }
   if (error instanceof RasterRuntimeGuardError) {
