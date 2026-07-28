@@ -40,82 +40,59 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           runner = Path("packages/job-engine/src/runner.ts")
           source = runner.read_text(encoding="utf-8")
-          old = 'import { readBatchManifest } from "./manifest.js";\n'
-          new = old + 'import { canonicalBatchRoot } from "./path-policy.js";\n'
-          if source.count(old) != 1 or 'canonicalBatchRoot } from "./path-policy.js"' in source:
+          anchor = 'import { readBatchManifest } from "./manifest.js";\n'
+          if source.count(anchor) != 1 or 'canonicalBatchRoot } from "./path-policy.js"' in source:
               raise SystemExit("RUNNER_PATH_IMPORT_INVALID")
-          source = source.replace(old, new, 1)
-          old = '''  const rootPath = path.resolve(
-            options.rootPath ?? path.dirname(manifestFile.path),
-          );'''
-          new = '''  const rootPath = await canonicalBatchRoot(
-            options.rootPath ?? path.dirname(manifestFile.path),
-          );'''
+          source = source.replace(
+              anchor,
+              anchor + 'import { canonicalBatchRoot } from "./path-policy.js";\n',
+              1,
+          )
+          old = "const rootPath = path.resolve("
           if source.count(old) != 1:
               raise SystemExit("RUNNER_ROOT_REPLACEMENT_INVALID")
-          runner.write_text(source.replace(old, new, 1), encoding="utf-8")
+          source = source.replace(old, "const rootPath = await canonicalBatchRoot(", 1)
+          runner.write_text(source, encoding="utf-8")
 
           inspection = Path("packages/job-engine/src/inspection.ts")
           source = inspection.read_text(encoding="utf-8")
-          old = 'import { BatchEngineError } from "./errors.js";\n'
-          new = old + 'import { canonicalBatchRoot } from "./path-policy.js";\n'
-          if source.count(old) != 1 or 'canonicalBatchRoot } from "./path-policy.js"' in source:
+          anchor = 'import { BatchEngineError } from "./errors.js";\n'
+          if source.count(anchor) != 1 or 'canonicalBatchRoot } from "./path-policy.js"' in source:
               raise SystemExit("INSPECTION_PATH_IMPORT_INVALID")
-          source = source.replace(old, new, 1)
-          old = '''  const paths = batchJobPaths(
-            path.resolve(options.rootPath),
-            options.jobId,
-            options.stateRootPath,
-          );'''
-          new = '''  const rootPath = await canonicalBatchRoot(options.rootPath);
-          const paths = batchJobPaths(
-            rootPath,
-            options.jobId,
-            options.stateRootPath,
-          );'''
-          if source.count(old) != 1:
+          source = source.replace(
+              anchor,
+              anchor + 'import { canonicalBatchRoot } from "./path-policy.js";\n',
+              1,
+          )
+          pattern = re.compile(
+              r'  const paths = batchJobPaths\(\n\s*path\.resolve\(options\.rootPath\),\n',
+          )
+          source, count = pattern.subn(
+              '  const rootPath = await canonicalBatchRoot(options.rootPath);\n'
+              '  const paths = batchJobPaths(\n'
+              '    rootPath,\n',
+              source,
+              count=1,
+          )
+          if count != 1:
               raise SystemExit("INSPECTION_ROOT_REPLACEMENT_INVALID")
-          inspection.write_text(source.replace(old, new, 1), encoding="utf-8")
+          inspection.write_text(source, encoding="utf-8")
 
           operations = Path("packages/cli/src/batch-operations.ts")
           source = operations.read_text(encoding="utf-8")
-          old = '''  BatchEngineError,
-            type BatchOperationContext,'''
-          new = '''  BatchEngineError,
-            createBatchPathPolicy,
-            type BatchOperationContext,'''
-          if source.count(old) != 1 or "createBatchPathPolicy," in source:
+          anchor = '  BatchEngineError,\n'
+          if source.count(anchor) != 1 or "createBatchPathPolicy," in source:
               raise SystemExit("OPERATIONS_PATH_IMPORT_INVALID")
-          source = source.replace(old, new, 1)
-          old = '''async function descriptor(
-            context: BatchOperationContext,
-            inputPaths: readonly string[],
-            outputPaths: readonly string[],
-          ): Promise<BatchOperationDescriptor> {
-            const hash = createHash("sha256");
-            hash.update(context.item.operation, "utf8");
-            hash.update("\\0", "utf8");
-            hash.update(JSON.stringify(stableValue(context.item.spec)), "utf8");
-            let totalInputBytes = 0;
-            for (const inputPath of inputPaths) {
-              const bytes = await readFile(inputPath);
-              totalInputBytes += bytes.byteLength;
-              hash.update("\\0", "utf8");
-              hash.update(path.relative(context.rootPath, inputPath), "utf8");
-              hash.update("\\0", "utf8");
-              hash.update(bytes);
-            }
-            return Object.freeze({
-              revision: hash.digest("hex"),
-              inputPaths: Object.freeze([...inputPaths]),
-              outputPaths: Object.freeze([...outputPaths]),
-              summary: Object.freeze({ totalInputBytes }),
-            });
-          }'''
-          new = '''async function descriptor(
+          source = source.replace(
+              anchor,
+              anchor + '  createBatchPathPolicy,\n',
+              1,
+          )
+          replacement = '''async function descriptor(
             context: BatchOperationContext,
             inputPaths: readonly string[],
             outputPaths: readonly string[],
@@ -155,10 +132,22 @@ jobs:
               }),
             });
           }'''
-          if source.count(old) != 1:
+          pattern = re.compile(
+              r'async function descriptor\([\s\S]*?\n\}\n\nfunction jsonEvidence',
+          )
+          source, count = pattern.subn(
+              replacement + '\n\nfunction jsonEvidence',
+              source,
+              count=1,
+          )
+          if count != 1:
               raise SystemExit("OPERATIONS_DESCRIPTOR_REPLACEMENT_INVALID")
-          operations.write_text(source.replace(old, new, 1), encoding="utf-8")
+          operations.write_text(source, encoding="utf-8")
           PY
+          grep -Fq 'import { canonicalBatchRoot } from "./path-policy.js";' packages/job-engine/src/runner.ts
+          grep -Fq 'const rootPath = await canonicalBatchRoot(' packages/job-engine/src/runner.ts
+          grep -Fq 'const policy = await createBatchPathPolicy(context.rootPath);' packages/cli/src/batch-operations.ts
+          grep -Fq 'outputPaths.map((value) => policy.resolveOutputPath(value))' packages/cli/src/batch-operations.ts
           git diff --check
 
       - name: Install workspace dependencies
