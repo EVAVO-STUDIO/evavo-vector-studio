@@ -26,6 +26,11 @@ function secureEqual(expected: string, supplied: string): boolean {
     timingSafeEqual(expectedBytes, suppliedBytes);
 }
 
+function bearerToken(request: Request): string {
+  const header = request.headers.get("authorization") ?? "";
+  return header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+}
+
 export function apiAuthorisationFailure(request: Request): Response | null {
   const configuredToken = process.env.VECTOR_API_TOKEN?.trim();
   if (!configuredToken) {
@@ -39,11 +44,28 @@ export function apiAuthorisationFailure(request: Request): Response | null {
         )
       : null;
   }
-  const header = request.headers.get("authorization") ?? "";
-  const suppliedToken = header.startsWith("Bearer ")
-    ? header.slice(7).trim()
-    : "";
+  const suppliedToken = bearerToken(request);
   return suppliedToken && secureEqual(configuredToken, suppliedToken)
     ? null
     : apiJson({ error: "VECTOR_API_UNAUTHORISED" }, 401);
+}
+
+export function workerApiAuthorisationFailure(
+  request: Request,
+): Response | null {
+  const configuredToken = process.env.VECTOR_WORKER_API_TOKEN?.trim();
+  if (!configuredToken) {
+    return apiJson(
+      {
+        error: "VECTOR_WORKER_API_NOT_CONFIGURED",
+        message:
+          "VECTOR_WORKER_API_TOKEN is required before worker control endpoints can be used.",
+      },
+      503,
+    );
+  }
+  const suppliedToken = bearerToken(request);
+  return suppliedToken && secureEqual(configuredToken, suppliedToken)
+    ? null
+    : apiJson({ error: "VECTOR_WORKER_API_UNAUTHORISED" }, 401);
 }
