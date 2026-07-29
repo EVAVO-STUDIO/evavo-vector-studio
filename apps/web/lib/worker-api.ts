@@ -15,6 +15,7 @@ import {
   getHostedJobRuntime,
   type HostedJobRuntime,
 } from "./hosted-job-control";
+import type { WorkerObjectStoreRuntime } from "./worker-object-store";
 
 export const runtime = "nodejs";
 
@@ -95,7 +96,7 @@ export function workerRecordView(
     ...workerProtocolRecord(record),
     protocolVersion: VECTOR_WORKER_PROTOCOL_VERSION,
     remoteExecutionAvailable: false,
-    objectTransferAvailable: false,
+    objectTransferAvailable: "service-discovery-required",
     approval: record.status === "succeeded"
       ? "human-review-required"
       : "not-yet-applicable",
@@ -104,7 +105,9 @@ export function workerRecordView(
 
 export function workerRuntimeView(
   runtimeValue: HostedJobRuntime,
+  objectRuntime?: WorkerObjectStoreRuntime,
 ): Readonly<Record<string, unknown>> {
+  const objectTransferAvailable = objectRuntime?.objectTransferAvailable ?? false;
   return Object.freeze({
     protocolVersion: VECTOR_WORKER_PROTOCOL_VERSION,
     hostedJobContractVersion: HOSTED_JOB_CONTRACT_VERSION,
@@ -113,12 +116,20 @@ export function workerRuntimeView(
     storeMode: runtimeValue.mode,
     workerAuthentication: "Bearer VECTOR_WORKER_API_TOKEN",
     supportedOperations: VECTOR_WORKER_PROTOCOL_OPERATIONS,
-    objectTransferAvailable: false,
+    objectTransferAvailable,
+    persistentObjects: objectRuntime?.persistentObjects ?? false,
+    objectStoreMode: objectRuntime?.mode ?? "disabled",
+    objectStorePathConfigured: objectRuntime?.storePath !== null &&
+      objectRuntime?.storePath !== undefined,
+    objectStoreReason: objectRuntime?.reason ??
+      "Object-store capability was not loaded for this response.",
     queueDeliveryAvailable: false,
     remoteExecutionAvailable: false,
     endpoints: Object.freeze({
       capabilities: "/api/v1/worker",
       lease: "/api/v1/worker/lease",
+      objects: "/api/v1/worker/objects",
+      objectDownload: "/api/v1/worker/objects?key={objectKey}",
       start: "/api/v1/worker/jobs/{jobId}/start",
       heartbeat: "/api/v1/worker/jobs/{jobId}/heartbeat",
       complete: "/api/v1/worker/jobs/{jobId}/complete",
@@ -129,7 +140,9 @@ export function workerRuntimeView(
     productionPolicy: Object.freeze({
       separateWorkerTokenRequired: true,
       failClosedWithoutJobStore: true,
-      generatedBodiesInResponses: false,
+      failClosedWithoutObjectStore: true,
+      generatedBodiesInControlResponses: false,
+      objectBodiesUseDedicatedBinaryRoutes: true,
       leaseTokensReturnedOnlyByAcquisition: true,
       humanReviewRequired: true,
     }),
