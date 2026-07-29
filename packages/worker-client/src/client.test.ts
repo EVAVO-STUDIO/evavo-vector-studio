@@ -14,13 +14,14 @@ function response(
   status = 200,
   headers: HeadersInit = {},
 ): Response {
+  const resolvedHeaders = new Headers(headers);
+  resolvedHeaders.set("content-type", "application/json");
+  if (!resolvedHeaders.has("x-vector-worker-protocol")) {
+    resolvedHeaders.set("x-vector-worker-protocol", "1.0");
+  }
   return new Response(body === null ? null : JSON.stringify(body), {
     status,
-    headers: {
-      "content-type": "application/json",
-      "x-vector-worker-protocol": "1.0",
-      ...headers,
-    },
+    headers: resolvedHeaders,
   });
 }
 
@@ -235,7 +236,7 @@ test("rejects oversized and wrong-version success responses", async () => {
 
 test("distinguishes caller cancellation from request timeout", async () => {
   const hangingFetch: typeof fetch = async (_input, init) =>
-    new Promise((_resolve, reject) => {
+    new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener(
         "abort",
         () => reject(init.signal?.reason ?? new Error("aborted")),
