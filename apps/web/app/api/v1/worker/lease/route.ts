@@ -4,6 +4,9 @@ import {
   workerLeaseResponse,
 } from "@evavo/worker-protocol";
 import {
+  getWorkerObjectStoreRuntime,
+} from "../../../../../lib/worker-object-store";
+import {
   parseWorkerJson,
   requireWorkerRuntime,
   workerErrorResponse,
@@ -32,9 +35,11 @@ export async function POST(request: Request): Promise<Response> {
         },
       });
     }
+    const objectRuntime = await getWorkerObjectStoreRuntime();
     return workerJson({
       ...workerLeaseResponse(leased),
-      objectTransferAvailable: false,
+      objectTransferAvailable: objectRuntime.objectTransferAvailable,
+      objectTransferEndpoint: "/api/v1/worker/objects",
       remoteExecutionAvailable: false,
     });
   } catch (error) {
