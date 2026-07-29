@@ -20,6 +20,12 @@ Local execution bridge available
   governed raster, SVG, Lottie and archive execution
   receipt-only completion records
 
+Worker control API available when configured
+  separately authenticated lease acquisition
+  start and heartbeat transitions
+  receipt-backed completion and failure reporting
+  cancellation acknowledgement
+
 Distributed execution not deployed
   hosted queue dispatch
   shared remote object storage
@@ -35,7 +41,7 @@ executionScheduled: false
 remoteExecutionAvailable: false
 ```
 
-A separately started local worker can lease and execute a record from the same persistent job store.
+A separately started local worker can lease and execute a record from the same persistent job store. A trusted worker can also coordinate state through the worker control API when it already has separate access to the immutable object store.
 
 ## Package
 
@@ -70,7 +76,7 @@ package-dotlottie
 run-batch
 ```
 
-The hosted record contract can describe all six operations. The local worker executes the first five. `run-batch` remains available through the durable batch CLI and MCP batch tools rather than the hosted worker engine.
+The hosted record contract can describe all six operations. The local worker and worker control API execute or coordinate the first five. `run-batch` remains available through the durable batch CLI and MCP batch tools rather than the hosted worker engine.
 
 The payload is a bounded JSON object describing references and options. It is not a transport for raw raster, SVG, Lottie or archive bodies.
 
@@ -213,11 +219,41 @@ Generated bodies are stored as immutable objects. Job records and process output
 
 See [`LOCAL-WORKER.md`](LOCAL-WORKER.md).
 
+## Worker control API
+
+Worker control protocol `1.0` exposes authenticated lease transitions over HTTP when a safe job store is configured.
+
+```text
+GET  /api/v1/worker
+POST /api/v1/worker/lease
+POST /api/v1/worker/jobs/{jobId}/start
+POST /api/v1/worker/jobs/{jobId}/heartbeat
+POST /api/v1/worker/jobs/{jobId}/complete
+POST /api/v1/worker/jobs/{jobId}/fail
+POST /api/v1/worker/jobs/{jobId}/acknowledge-cancellation
+```
+
+Every request requires the separate server-only `VECTOR_WORKER_API_TOKEN`. This token is not interchangeable with the normal API token and worker routes never fall open in development.
+
+Lease acquisition is the only response that returns the opaque lease token. Later records expose timing and worker identity with `tokenPresent: true` instead.
+
+The worker control API accepts bounded JSON state transitions and receipt-backed completion only. It does not accept or return generated object bodies.
+
+```text
+objectTransferAvailable: false
+queueDeliveryAvailable: false
+remoteExecutionAvailable: false
+```
+
+A worker using this API must already have trusted access to the immutable object store through a separate shared-volume or future provider adapter. The API validates receipt structure but cannot independently prove that a remote object exists.
+
+See [`WORKER-API.md`](WORKER-API.md).
+
 ## Worker boundary
 
-The local process authenticates through operating-system and filesystem access rather than a released public worker HTTP endpoint.
+Local execution authenticates through operating-system and filesystem access. HTTP worker coordination authenticates with `VECTOR_WORKER_API_TOKEN`.
 
-Any remote worker integration must:
+Any distributed worker integration must:
 
 1. authenticate independently from browser/API clients;
 2. acquire only supported operation kinds;
@@ -252,6 +288,12 @@ VECTOR_OBJECT_STORE_PATH=/persistent/vector-objects
 VECTOR_WORKER_ID=worker-01
 ```
 
+Worker control authentication:
+
+```text
+VECTOR_WORKER_API_TOKEN=replace-with-a-long-random-secret
+```
+
 Production API file mode additionally requires:
 
 ```text
@@ -266,6 +308,8 @@ When the store is absent or unsafe, API creation and inspection fail closed with
 HOSTED_JOB_STORE_NOT_CONFIGURED
 HTTP 503
 ```
+
+Worker control routes also fail closed when the dedicated worker token or job store is unavailable.
 
 ## File-store safety
 
@@ -306,4 +350,4 @@ A real distributed hosted worker release still needs:
 - deployment, cold-start and native-binary smoke evidence;
 - operational metrics and incident diagnostics.
 
-The local worker is available, but it does not claim remote execution. Until the distributed controls exist, Vector Studio remains a local/self-hosted execution system and a signed federated candidate rather than a released EVAVO hub worker service.
+The local worker and authenticated control API are available, but neither claims distributed remote execution. Until the distributed controls exist, Vector Studio remains a local/self-hosted execution system and a signed federated candidate rather than a released EVAVO hub worker service.
