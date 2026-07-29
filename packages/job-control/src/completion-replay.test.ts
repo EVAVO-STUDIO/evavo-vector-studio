@@ -1,17 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { completeHostedJobIdempotently } from "./completion-replay.js";
 import { HostedJobController } from "./controller.js";
 import { HostedJobError } from "./errors.js";
 import { MemoryHostedJobStore } from "./memory-store.js";
 
 function fixture() {
   let sequence = 0;
-  const controller = new HostedJobController(new MemoryHostedJobStore(), {
+  const store = new MemoryHostedJobStore();
+  const controller = new HostedJobController(store, {
     now: () => new Date("2026-07-29T04:00:00.000Z"),
     createId: () => `vjob_completion_${++sequence}`,
     createLeaseToken: () => "lease-completion-replay-0001",
   });
-  return controller;
+  return Object.freeze({ store, controller });
 }
 
 function request(key: string) {
@@ -47,7 +49,7 @@ const completion = Object.freeze({
 });
 
 test("replays an exact receipt-backed completion without mutating the terminal record", async () => {
-  const controller = fixture();
+  const { store, controller } = fixture();
   const created = await controller.create(request("exact-replay"));
   await controller.acquireLease({
     workerId: "remote-worker-01",
@@ -56,26 +58,32 @@ test("replays an exact receipt-backed completion without mutating the terminal r
   });
   await controller.start(created.record.id, "lease-completion-replay-0001");
 
-  const completed = await controller.succeed(
+  const completed = await completeHostedJobIdempotently(
+    controller,
+    store,
     created.record.id,
     "lease-completion-replay-0001",
     completion,
   );
-  const replayed = await controller.succeed(
+  const replayed = await completeHostedJobIdempotently(
+    controller,
+    store,
     created.record.id,
     "lease-completion-replay-0001",
     completion,
   );
 
-  assert.equal(completed.status, "succeeded");
-  assert.equal(replayed.status, "succeeded");
-  assert.equal(replayed.version, completed.version);
-  assert.equal(replayed.updatedAt, completed.updatedAt);
-  assert.deepEqual(replayed.result, completed.result);
+  assert.equal(completed.replayed, false);
+  assert.equal(replayed.replayed, true);
+  assert.equal(completed.record.status, "succeeded");
+  assert.equal(replayed.record.status, "succeeded");
+  assert.equal(replayed.record.version, completed.record.version);
+  assert.equal(replayed.record.updatedAt, completed.record.updatedAt);
+  assert.deepEqual(replayed.record.result, completed.record.result);
 });
 
 test("rejects a changed completion replay after immutable success", async () => {
-  const controller = fixture();
+  const { store, controller } = fixture();
   const created = await controller.create(request("changed-replay"));
   await controller.acquireLease({
     workerId: "remote-worker-01",
@@ -83,14 +91,18 @@ test("rejects a changed completion replay after immutable success", async () => 
     operations: ["optimise-svg"],
   });
   await controller.start(created.record.id, "lease-completion-replay-0001");
-  await controller.succeed(
+  await completeHostedJobIdempotently(
+    controller,
+    store,
     created.record.id,
     "lease-completion-replay-0001",
     completion,
   );
 
   await assert.rejects(
-    controller.succeed(
+    completeHostedJobIdempotently(
+      controller,
+      store,
       created.record.id,
       "lease-completion-replay-0001",
       {
@@ -112,7 +124,7 @@ test("rejects a changed completion replay after immutable success", async () => 
 });
 
 test("replays the same cancellation-raced completion despite retained race evidence", async () => {
-  const controller = fixture();
+  const { store, controller } = fixture();
   const created = await controller.create(request("cancellation-replay"));
   await controller.acquireLease({
     workerId: "remote-worker-01",
@@ -125,18 +137,26 @@ test("replays the same cancellation-raced completion despite retained race evide
     reason: "Arrived after immutable object commit",
   });
 
-  const completed = await controller.succeed(
+  const completed = await completeHostedJobIdempotently(
+    controller,
+    store,
     created.record.id,
     "lease-completion-replay-0001",
     completion,
   );
-  const replayed = await controller.succeed(
+  const replayed = await completeHostedJobIdempotently(
+    controller,
+    store,
     created.record.id,
     "lease-completion-replay-0001",
     completion,
   );
 
-  assert.equal(completed.result?.evidence.cancellationRaceResolution, "committed-success-retained");
-  assert.equal(replayed.version, completed.version);
-  assert.deepEqual(replayed.result, completed.result);
+  assert.equal(
+    completed.record.result?.evidence.cancellationRaceResolution,
+    "committed-success-retained",
+  );
+  assert.equal(replayed.replayed, true);
+  assert.equal(replayed.record.version, completed.record.version);
+  assert.deepEqual(replayed.record.result, completed.record.result);
 });
