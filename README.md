@@ -274,9 +274,21 @@ GET  /api/v1/jobs/{jobId}
 DELETE /api/v1/jobs/{jobId}
 ```
 
-The production endpoints are bounded synchronous surfaces with `Cache-Control: no-store`. Hosted job routes are a separately configured record control plane. They fail closed without a safe record store and do not schedule execution.
+The production endpoints are bounded synchronous surfaces with `Cache-Control: no-store`. Hosted job routes are a separately configured record control plane. They fail closed without a safe record store and do not automatically schedule execution.
 
-A future hosted worker still requires database-backed jobs, object storage, queue delivery, distributed leases, heartbeats, retries, cancellation and workspace authorisation.
+## Worker control API
+
+Worker control protocol `1.0` provides separately authenticated HTTP lease coordination through `/api/v1/worker` and `/api/v1/worker/lease`, with start, heartbeat, completion, failure and cancellation-acknowledgement routes for individual jobs.
+
+`VECTOR_WORKER_API_TOKEN` is mandatory and distinct from the ordinary API token. Lease tokens are returned only on acquisition. Generated bodies are not accepted or returned.
+
+```text
+objectTransferAvailable: false
+queueDeliveryAvailable: false
+remoteExecutionAvailable: false
+```
+
+See [`docs/WORKER-API.md`](docs/WORKER-API.md).
 
 ## Quality and approval
 
@@ -297,6 +309,7 @@ packages/lottie-engine    Lottie JSON and deterministic dotLottie
 packages/job-engine       persistent resumable batch state and runner
 packages/job-control      hosted job records, leases, cancellation and receipts
 packages/worker-engine    immutable object-backed governed job execution
+packages/worker-protocol  authenticated remote worker control contract
 workers/local-worker      local lease processor and machine-readable CLI
 packages/cli              single-file and durable batch automation
 packages/mcp              local stdio agent tools
@@ -321,6 +334,7 @@ docs                      architecture, API, CLI, MCP, motion, archive and job c
 - [`docs/HOSTED-JOBS.md`](docs/HOSTED-JOBS.md)
 - [`docs/WORKER.md`](docs/WORKER.md)
 - [`docs/LOCAL-WORKER.md`](docs/LOCAL-WORKER.md)
+- [`docs/WORKER-API.md`](docs/WORKER-API.md)
 
 ## Deployment boundary
 
