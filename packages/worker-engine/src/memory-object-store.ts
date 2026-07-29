@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import {
   VectorWorkerError,
   throwIfWorkerAborted,
-} from "./errors.js";
+} from "./base-errors.js";
 import {
   VECTOR_WORKER_MAX_OUTPUT_BYTES,
   VECTOR_WORKER_MAX_SOURCE_BYTES,
