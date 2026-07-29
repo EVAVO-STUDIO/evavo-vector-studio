@@ -46,6 +46,7 @@ const rootPackage = await readJson("package.json");
 const webPackage = await readJson("apps/web/package.json");
 const files = {
   route: "apps/web/app/api/v1/motion/svg/route.ts",
+  apiSecurity: "apps/web/lib/api-security.ts",
   workspace: "apps/web/app/motion/components/MotionWorkspace.tsx",
   apiDocs: "docs/API.md",
   motionDocs: "docs/MOTION.md",
@@ -66,11 +67,23 @@ if (!String(rootPackage?.scripts?.check ?? "").includes("pnpm motion-api:check")
   fail("package.json check must include motion-api:check before dependency-backed gates.");
 }
 
+requireTokens(files.apiSecurity, sources.apiSecurity, [
+  "export function apiAuthorisationFailure(",
+  "allowWorkspaceSession?: boolean",
+  "configuredToken = process.env.VECTOR_API_TOKEN?.trim()",
+  "vectorWorkspaceContextFromRequest(request)",
+  "vectorWorkspaceSessionMutationAllowed(request)",
+  'error: "VECTOR_WORKSPACE_ORIGIN_REJECTED"',
+  'error: "VECTOR_API_UNAUTHORISED"',
+]);
 requireTokens(files.route, sources.route, [
+  'import { apiAuthorisationFailure } from "../../../../../lib/api-security"',
   'endpoint: "/api/v1/motion/svg"',
   "MAX_SVG_INPUT_BYTES = 5 * 1024 * 1024",
   "MAX_MOTION_PLAN_BYTES = 256 * 1024",
-  'configuredToken = process.env.VECTOR_API_TOKEN?.trim()',
+  'apiAuthorisationFailure(request, { allowWorkspaceSession: true })',
+  'authentication: "same-origin Vector workspace session or Bearer VECTOR_API_TOKEN"',
+  'headers.set("vary", "authorization, cookie, origin")',
   'contentType.startsWith("multipart/form-data")',
   'Provide exactly one of motion or motionFile.',
   'stringField(form, "format") ?? "json"',
@@ -87,6 +100,8 @@ requireTokens(files.route, sources.route, [
   'headers.set("cache-control", "no-store, max-age=0")',
 ]);
 forbidTokens(files.route, sources.route, [
+  'configuredToken = process.env.VECTOR_API_TOKEN?.trim()',
+  "function authorisationFailure(",
   'lottiePlayerRenderValidationAvailable: true',
   'dotLottieAvailable: true',
   "eval(",
@@ -130,7 +145,7 @@ if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-studio-motion-api-contract",
     ok: false,
-    motionContractVersion: "1.0",
+    motionContractVersion: "1.1",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -139,8 +154,9 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-motion-api-contract",
   ok: true,
-  motionContractVersion: "1.0",
+  motionContractVersion: "1.1",
   endpoint: "/api/v1/motion/svg",
+  authentication: "workspace-session-or-bearer",
   lottieEndpoint: "/api/v1/motion/lottie",
   browserConsumer: "/motion",
   checkedFiles: [...checkedFiles].sort(),
