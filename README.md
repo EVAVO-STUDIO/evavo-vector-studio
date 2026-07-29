@@ -97,6 +97,22 @@ Hosted job control contract `1.0` can create idempotent persistent records, insp
 
 The current API records intent only. It does not claim hosted execution. See [`docs/HOSTED-JOBS.md`](docs/HOSTED-JOBS.md).
 
+### Local worker execution
+
+The `evavo-vector-worker` process executes supported hosted records against persistent local job and immutable object stores.
+
+- immutable object import with SHA-256 receipts;
+- idempotent submit, inspect, list and cancel commands;
+- one-shot `worker:run-once` and polling `worker:run` modes;
+- lease heartbeats, retryable requeue and cancellation acknowledgement;
+- atomic no-overwrite output transactions;
+- receipt-only job records and JSON/NDJSON process output;
+- committed-output cancellation-race protection;
+- generated bodies kept out of job records and console output;
+- `remoteExecutionAvailable: false` and `hostedBackgroundQueue: false`.
+
+The Local worker is available for workstation and self-hosted execution. Distributed remote execution remains unavailable. See [`docs/LOCAL-WORKER.md`](docs/LOCAL-WORKER.md).
+
 ## Quick start on Windows PowerShell
 
 ```powershell
@@ -280,6 +296,8 @@ packages/motion-engine    governed animated SVG
 packages/lottie-engine    Lottie JSON and deterministic dotLottie
 packages/job-engine       persistent resumable batch state and runner
 packages/job-control      hosted job records, leases, cancellation and receipts
+packages/worker-engine    immutable object-backed governed job execution
+workers/local-worker      local lease processor and machine-readable CLI
 packages/cli              single-file and durable batch automation
 packages/mcp              local stdio agent tools
 schemas                   motion and batch contracts
@@ -301,6 +319,8 @@ docs                      architecture, API, CLI, MCP, motion, archive and job c
 - [`docs/MCP.md`](docs/MCP.md)
 - [`docs/BATCH.md`](docs/BATCH.md)
 - [`docs/HOSTED-JOBS.md`](docs/HOSTED-JOBS.md)
+- [`docs/WORKER.md`](docs/WORKER.md)
+- [`docs/LOCAL-WORKER.md`](docs/LOCAL-WORKER.md)
 
 ## Deployment boundary
 
