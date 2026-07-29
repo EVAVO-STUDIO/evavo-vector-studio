@@ -114,7 +114,7 @@ requireTokens(files.runner, sources.runner, [
   "class LocalVectorWorker",
   "acquireLease({",
   "this.#controller.start(",
-  "this.#controller.heartbeat(",
+  "controller.heartbeat(",
   "this.#controller.succeed(",
   "this.#controller.acknowledgeCancellation(",
   "this.#controller.fail(",
