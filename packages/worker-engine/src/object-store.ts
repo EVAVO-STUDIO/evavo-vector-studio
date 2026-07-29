@@ -1,6 +1,7 @@
 export * from "./base-errors.js";
 export * from "./file-object-store.js";
 export * from "./memory-object-store.js";
+export * from "./object-transaction-store.js";
 export type {
   ObjectReceipt,
   ObjectWrite,
