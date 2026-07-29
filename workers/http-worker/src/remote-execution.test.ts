@@ -346,12 +346,12 @@ test("optimises one SVG using only HTTP control and object transfer", async () =
       ),
       /<svg\b/i,
     );
-    assert.match(
+    const evidence = JSON.parse(
       new TextDecoder().decode(
         (await objects.get("output/mark.evidence.json")).bytes,
       ),
-      /"approval":"human-review-required"/,
-    );
+    ) as { approval?: string };
+    assert.equal(evidence.approval, "human-review-required");
     assert.equal(calls.discovery, 1);
     assert.equal(calls.lease, 1);
     assert.equal(calls.start, 1);
