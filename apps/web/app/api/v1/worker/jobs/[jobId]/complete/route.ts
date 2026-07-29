@@ -1,4 +1,7 @@
 import { workerApiAuthorisationFailure } from "../../../../../../../lib/api-security";
+import {
+  completeHostedJobIdempotently,
+} from "@evavo/job-control";
 import { validateWorkerCompleteRequest } from "@evavo/worker-protocol";
 import {
   parseWorkerJson,
@@ -23,13 +26,16 @@ export async function POST(
     const input = validateWorkerCompleteRequest(await parseWorkerJson(request));
     const required = await requireWorkerRuntime();
     if (required.response) return required.response;
-    const record = await required.runtime.controller!.succeed(
+    const completed = await completeHostedJobIdempotently(
+      required.runtime.controller!,
+      required.runtime.store!,
       context.params.jobId,
       input.leaseToken,
       { outputs: input.outputs, evidence: input.evidence },
     );
     return workerJson({
-      record: workerRecordView(record),
+      record: workerRecordView(completed.record),
+      idempotentReplay: completed.replayed,
       generatedBodiesAccepted: false,
       approval: "human-review-required",
     });
