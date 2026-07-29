@@ -60,13 +60,15 @@ function replayMatch(
   completion: NormalisedCompletion,
 ): boolean {
   if (record.status !== "succeeded" || !record.result) return false;
-  return completionIdentity(
+  const retainedIdentity = completionIdentity(
     record.result.outputs,
     record.result.evidence,
-  ) === completionIdentity(
+  );
+  const requestedIdentity = completionIdentity(
     completion.outputs,
     expectedRetainedEvidence(record, completion.evidence),
   );
+  return retainedIdentity === requestedIdentity;
 }
 
 function completionConflict(record: HostedJobRecord): HostedJobError {
