@@ -1,0 +1,27 @@
+{
+  "$schema": "https://evavo.com.au/schemas/vector-studio/batch-v1.schema.json",
+  "version": "1.0",
+  "id": "mcp-optimise-pagination-fixture",
+  "name": "MCP optimise pagination fixture",
+  "failureMode": "continue",
+  "items": [
+    {
+      "id": "gentle-entrance-primary",
+      "operation": "optimise-svg",
+      "spec": {
+        "inputPath": "fixtures/motion/gentle-entrance.source.svg",
+        "outputPath": "outputs/batch/mcp-gentle-entrance-primary.optimised.svg",
+        "evidenceOutputPath": "outputs/batch/mcp-gentle-entrance-primary.optimised.evidence.json"
+      }
+    },
+    {
+      "id": "gentle-entrance-secondary",
+      "operation": "optimise-svg",
+      "spec": {
+        "inputPath": "fixtures/motion/gentle-entrance.source.svg",
+        "outputPath": "outputs/batch/mcp-gentle-entrance-secondary.optimised.svg",
+        "evidenceOutputPath": "outputs/batch/mcp-gentle-entrance-secondary.optimised.evidence.json"
+      }
+    }
+  ]
+}
