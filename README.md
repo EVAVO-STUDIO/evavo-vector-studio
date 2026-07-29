@@ -113,6 +113,21 @@ The `evavo-vector-worker` process executes supported hosted records against pers
 
 The Local worker is available for workstation and self-hosted execution. Distributed remote execution remains unavailable. See [`docs/LOCAL-WORKER.md`](docs/LOCAL-WORKER.md).
 
+### Worker object transfer
+
+Worker object-transfer contract `1.0` provides separately authenticated immutable binary upload and download when a persistent object-store runtime is explicitly configured.
+
+- `POST /api/v1/worker/objects` accepts deterministic `EVAVOOB1` transactions;
+- `GET /api/v1/worker/objects?key={objectKey}` returns raw bytes with key, byte-count and SHA-256 headers;
+- up to 16 objects, 32 MiB per object and 64 MiB per transaction;
+- atomic new-file-only commits;
+- complete content replay and concurrent exact-commit reconciliation;
+- changed or partial immutable overlap rejection;
+- no filesystem paths or generated bodies in JSON;
+- production file mode fails closed without `VECTOR_OBJECT_FILE_STORE_PERSISTENT=true`.
+
+The current file adapter reports `mimeTypeVerification: content-only` on retained replay because original MIME metadata is not stored beside raw bytes. Provider-backed cloud object storage, queue delivery and managed remote execution remain unavailable. See [`docs/OBJECT-TRANSFER.md`](docs/OBJECT-TRANSFER.md).
+
 ## Quick start on Windows PowerShell
 
 ```powershell
@@ -309,8 +324,10 @@ packages/lottie-engine    Lottie JSON and deterministic dotLottie
 packages/job-engine       persistent resumable batch state and runner
 packages/job-control      hosted job records, leases, cancellation and receipts
 packages/worker-engine    immutable object-backed governed job execution
-packages/worker-protocol  authenticated remote worker control contract
+packages/worker-protocol  authenticated worker control and binary transfer contracts
+packages/worker-client    secret-safe worker HTTP control client
 workers/local-worker      local lease processor and machine-readable CLI
+workers/http-worker       HTTP-coordinated shared-store worker
 packages/cli              single-file and durable batch automation
 packages/mcp              local stdio agent tools
 schemas                   motion and batch contracts
@@ -335,6 +352,7 @@ docs                      architecture, API, CLI, MCP, motion, archive and job c
 - [`docs/WORKER.md`](docs/WORKER.md)
 - [`docs/LOCAL-WORKER.md`](docs/LOCAL-WORKER.md)
 - [`docs/WORKER-API.md`](docs/WORKER-API.md)
+- [`docs/OBJECT-TRANSFER.md`](docs/OBJECT-TRANSFER.md)
 
 ## Deployment boundary
 

@@ -170,6 +170,25 @@ A late cancellation that arrives after immutable outputs commit is recorded as r
 
 Local worker execution is available. Distributed queue delivery, shared remote storage and autoscaled remote workers remain unavailable.
 
+### Worker object transfer
+
+The worker object-transfer API separates binary object movement from JSON job control:
+
+1. require the independent worker bearer token;
+2. fail closed unless `VECTOR_OBJECT_STORE_MODE=file` is deliberately configured;
+3. require a production persistent-volume acknowledgement for file mode;
+4. decode one bounded canonical `EVAVOOB1` transaction;
+5. verify transaction and per-object SHA-256 before storage;
+6. inspect retained immutable keys before writing;
+7. atomically commit all new objects or none;
+8. return complete content replay without overwriting;
+9. reject partial or changed immutable revisions;
+10. return raw downloads with key, byte-count and SHA-256 headers.
+
+The current file adapter retains raw bytes but not authoritative original MIME metadata. File-backed replays can therefore prove content identity while reporting `mimeTypeVerification: content-only`.
+
+This object transfer enables a future HTTP worker to fetch sources and publish outputs without a shared volume. The current HTTP worker still uses shared-store execution until its client adopts and verifies the binary transfer protocol end to end.
+
 ## Evidence and approval
 
 Machine completion, structural validity, measured render quality, archive loading and professional approval are separate states.
@@ -215,6 +234,8 @@ Production auto-approval is unavailable. Outputs remain `review-required` or `hu
 - hosted file records use exclusive locks and atomic replacement;
 - local worker inputs use immutable object keys and SHA-256 revisions;
 - local worker outputs commit atomically with no-overwrite semantics;
+- object transfer verifies canonical manifests, transaction hashes and object hashes;
+- object-transfer replays reject partial and changed immutable revisions;
 - related files commit atomically;
 - archive entry names, counts and sizes are checked before decompression;
 - durable manifest drift and completed output drift are rejected.
