@@ -2,7 +2,7 @@
 
 Hosted job control contract `1.0` records production intent, idempotency, status, leases, cancellation, attempts, output receipts and terminal evidence without claiming that a remote worker exists.
 
-The control plane and execution plane are separate:
+The control plane and execution plane are separate. This is not a hosted background queue.
 
 ```text
 Control plane now available
