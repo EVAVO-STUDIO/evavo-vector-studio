@@ -144,7 +144,7 @@ requireTokens(files.executor, sources.executor, [
   "createAnimatedSvg",
   "createLottieFromSvgMotion",
   "createDotLottiePackage",
-  "generatedBodies",
+  "outputObjects: compactOutputs",
   'approval: "human-review-required"',
 ]);
 requireTokens(files.index, sources.index, [
@@ -184,7 +184,7 @@ requireTokens(files.architecture, sources.architecture, [
   "worker",
 ]);
 requireTokens(files.readme, sources.readme, [
-  "Worker",
+  "worker",
 ]);
 requireTokens(files.workflow, sources.workflow, [
   "Verify worker execution contract",
