@@ -242,7 +242,7 @@ export function workerObjectErrorResponse(error: unknown): Response {
   return workerJson(
     {
       error: "VECTOR_WORKER_OBJECT_TRANSFER_FAILED",
-      message: error instanceof Error ? error.message : String(error),
+      message: "The worker object-transfer operation failed.",
       retryable: false,
     },
     500,
