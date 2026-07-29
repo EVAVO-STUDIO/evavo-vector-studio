@@ -1,0 +1,144 @@
+name: One-time remote object execution documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/remote-object-docs.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Publish remote object execution state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str, code: str) -> None:
+              target = Path(path)
+              source = target.read_text(encoding="utf-8")
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{code}:{count}")
+              target.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "docs/OBJECT-TRANSFER.md",
+              "The HTTP-coordinated worker can adopt this transport only after its client verifies upload and download headers and receipts end to end. Until then, shared-volume execution remains the active worker mode.",
+              "The HTTP-coordinated worker now supports `worker-api` object mode through the verified object client and replay-safe `HttpVectorObjectStore` adapter. Shared-volume `file` mode remains the default, while HTTP mode removes the shared-filesystem requirement when service discovery reports `objectTransferAvailable: true`.",
+              "OBJECT_DOC_STATE_INVALID",
+          )
+
+          readme_anchor = '''The current file adapter reports `mimeTypeVerification: content-only` on retained replay because original MIME metadata is not stored beside raw bytes. Provider-backed cloud object storage, queue delivery and managed remote execution remain unavailable. See [`docs/OBJECT-TRANSFER.md`](docs/OBJECT-TRANSFER.md).
+
+          ## Quick start on Windows PowerShell
+          '''
+          readme_section = '''The current file adapter reports `mimeTypeVerification: content-only` on retained replay because original MIME metadata is not stored beside raw bytes. Provider-backed cloud object storage, queue delivery and managed remote execution remain unavailable. See [`docs/OBJECT-TRANSFER.md`](docs/OBJECT-TRANSFER.md).
+
+          ### HTTP-coordinated worker execution
+
+          `evavo-vector-http-worker` can execute through either a trusted shared file store or the verified worker object-transfer API.
+
+          ```powershell
+          # Existing shared-volume mode
+          $env:VECTOR_HTTP_WORKER_OBJECT_STORE_MODE = "file"
+          $env:VECTOR_OBJECT_STORE_PATH = "C:\EVAVO\VectorWorker\objects"
+
+          # Verified remote object mode
+          $env:VECTOR_HTTP_WORKER_OBJECT_STORE_MODE = "http"
+          $env:VECTOR_WORKER_CONTROL_URL = "https://vector.evavo.com.au"
+          $env:VECTOR_WORKER_API_TOKEN = "replace-with-a-worker-only-secret"
+
+          pnpm http-worker:run
+          ```
+
+          HTTP mode verifies service discovery before acquiring a lease, validates downloaded object key, byte count and SHA-256, and retries only safe exact transaction uncertainty. Queue delivery and managed remote execution remain unavailable. See [`docs/HTTP-WORKER.md`](docs/HTTP-WORKER.md).
+
+          ## Quick start on Windows PowerShell
+          '''
+          replace_once("README.md", readme_anchor, readme_section, "README_HTTP_MODE_ANCHOR_INVALID")
+
+          replace_once(
+              "README.md",
+              '''```text
+          objectTransferAvailable: false
+          queueDeliveryAvailable: false
+          remoteExecutionAvailable: false
+          ```''',
+              '''```text
+          objectTransferAvailable: configured-runtime-dependent
+          queueDeliveryAvailable: false
+          remoteExecutionAvailable: false
+          ```''',
+              "README_CONTROL_CAPABILITY_INVALID",
+          )
+          replace_once(
+              "README.md",
+              "packages/worker-client    secret-safe worker HTTP control client",
+              "packages/worker-client    verified worker control and object clients",
+              "README_CLIENT_LAYOUT_INVALID",
+          )
+          replace_once(
+              "README.md",
+              "workers/http-worker       HTTP-coordinated shared-store worker",
+              "workers/http-worker       HTTP-coordinated file or object-API worker",
+              "README_HTTP_LAYOUT_INVALID",
+          )
+          replace_once(
+              "README.md",
+              "- [`docs/OBJECT-TRANSFER.md`](docs/OBJECT-TRANSFER.md)\n",
+              "- [`docs/OBJECT-TRANSFER.md`](docs/OBJECT-TRANSFER.md)\n- [`docs/WORKER-CLIENT.md`](docs/WORKER-CLIENT.md)\n- [`docs/HTTP-WORKER.md`](docs/HTTP-WORKER.md)\n",
+              "README_DOC_LINK_INVALID",
+          )
+
+          replace_once(
+              "docs/ARCHITECTURE.md",
+              "This object transfer enables a future HTTP worker to fetch sources and publish outputs without a shared volume. The current HTTP worker still uses shared-store execution until its client adopts and verifies the binary transfer protocol end to end.",
+              "The HTTP worker now supports `worker-api` object transport. It verifies service discovery before leasing work, downloads sources through key/length/SHA-256 evidence, and uploads exact deterministic transactions through bounded replay-safe retries. Shared-file mode remains available and remains the default.",
+              "ARCHITECTURE_HTTP_STATE_INVALID",
+          )
+          replace_once(
+              "docs/ARCHITECTURE.md",
+              "- a local worker retained exact input and output receipts under a valid lease.",
+              "- a local worker retained exact input and output receipts under a valid lease;\n- an HTTP worker verified transferred source and output object identities without requiring a shared filesystem.",
+              "ARCHITECTURE_EVIDENCE_INVALID",
+          )
+          replace_once(
+              "docs/ARCHITECTURE.md",
+              "- local execution proves distributed deployment readiness.",
+              "- local or HTTP-coordinated execution proves managed queue or autoscaling readiness.",
+              "ARCHITECTURE_NONCLAIM_INVALID",
+          )
+          PY
+          grep -Fq 'VECTOR_HTTP_WORKER_OBJECT_STORE_MODE = "http"' README.md
+          grep -Fq 'docs/HTTP-WORKER.md' README.md
+          grep -Fq '`worker-api` object transport' docs/ARCHITECTURE.md
+          grep -Fq '`worker-api` object mode' docs/OBJECT-TRANSFER.md
+          git diff --check
+
+      - name: Commit documentation and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-remote-object-docs.yml \
+            .github/remote-object-docs.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "docs(http-worker): publish remote object execution"
+          git pull --rebase origin main
+          git push origin HEAD:main
