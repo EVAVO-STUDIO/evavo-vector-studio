@@ -10,6 +10,11 @@
       "types": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./object-store": {
+      "types": "./src/object-store.ts",
+      "import": "./dist/object-store.js",
+      "default": "./dist/object-store.js"
     }
   },
   "sideEffects": false,
