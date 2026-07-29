@@ -1,0 +1,27 @@
+{
+  "fixtureVersion": 1,
+  "producer": "EVAVO-STUDIO/next-website createClientApplicationLaunchToken",
+  "producerContract": "evavo-client-app-launch-v1",
+  "consumer": "EVAVO-STUDIO/evavo-vector-studio @evavo/hub-auth",
+  "testOnlySecret": "next-website-fixture-launch-secret-0123456789-abcdefghijklmnopqrstuvwxyz",
+  "evaluationTime": 1785286420,
+  "canonicalPayloadJson": "{\"version\":\"evavo-client-app-launch-v1\",\"issuer\":\"evavo-client-hub\",\"audience\":\"vector.evavo.com.au\",\"subject\":\"b86f66cd-14c1-4f66-8d95-5b7adb17a791\",\"email\":\"client@example.com\",\"organisationId\":\"67fd5804-5df2-4d88-b8c0-e09d54aa44a3\",\"organisationName\":\"Example Organisation\",\"workspaceId\":\"c4713368-c9ec-4a6a-9b91-6a40f3c451df\",\"workspaceName\":\"Brand Workspace\",\"applicationKey\":\"vector-studio\",\"applicationLabel\":\"EVAVO Vector Studio\",\"targetHost\":\"vector.evavo.com.au\",\"issuedAt\":1785286400,\"expiresAt\":1785286520,\"nonce\":\"nextwebsitefixture0123456789abcd\"}",
+  "token": "eyJ2ZXJzaW9uIjoiZXZhdm8tY2xpZW50LWFwcC1sYXVuY2gtdjEiLCJpc3N1ZXIiOiJldmF2by1jbGllbnQtaHViIiwiYXVkaWVuY2UiOiJ2ZWN0b3IuZXZhdm8uY29tLmF1Iiwic3ViamVjdCI6ImI4NmY2NmNkLTE0YzEtNGY2Ni04ZDk1LTViN2FkYjE3YTc5MSIsImVtYWlsIjoiY2xpZW50QGV4YW1wbGUuY29tIiwib3JnYW5pc2F0aW9uSWQiOiI2N2ZkNTgwNC01ZGYyLTRkODgtYjhjMC1lMDlkNTRhYTQ0YTMiLCJvcmdhbmlzYXRpb25OYW1lIjoiRXhhbXBsZSBPcmdhbmlzYXRpb24iLCJ3b3Jrc3BhY2VJZCI6ImM0NzEzMzY4LWM5ZWMtNGE2YS05YjkxLTZhNDBmM2M0NTFkZiIsIndvcmtzcGFjZU5hbWUiOiJCcmFuZCBXb3Jrc3BhY2UiLCJhcHBsaWNhdGlvbktleSI6InZlY3Rvci1zdHVkaW8iLCJhcHBsaWNhdGlvbkxhYmVsIjoiRVZBVk8gVmVjdG9yIFN0dWRpbyIsInRhcmdldEhvc3QiOiJ2ZWN0b3IuZXZhdm8uY29tLmF1IiwiaXNzdWVkQXQiOjE3ODUyODY0MDAsImV4cGlyZXNBdCI6MTc4NTI4NjUyMCwibm9uY2UiOiJuZXh0d2Vic2l0ZWZpeHR1cmUwMTIzNDU2Nzg5YWJjZCJ9.K7nmy2OPmGRSLTXpVv8Mq_a1PI1Pg5B4mPsyQ0Eai4U",
+  "claims": {
+    "version": "evavo-client-app-launch-v1",
+    "issuer": "evavo-client-hub",
+    "audience": "vector.evavo.com.au",
+    "subject": "b86f66cd-14c1-4f66-8d95-5b7adb17a791",
+    "email": "client@example.com",
+    "organisationId": "67fd5804-5df2-4d88-b8c0-e09d54aa44a3",
+    "organisationName": "Example Organisation",
+    "workspaceId": "c4713368-c9ec-4a6a-9b91-6a40f3c451df",
+    "workspaceName": "Brand Workspace",
+    "applicationKey": "vector-studio",
+    "applicationLabel": "EVAVO Vector Studio",
+    "targetHost": "vector.evavo.com.au",
+    "issuedAt": 1785286400,
+    "expiresAt": 1785286520,
+    "nonce": "nextwebsitefixture0123456789abcd"
+  }
+}
