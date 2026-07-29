@@ -47,6 +47,8 @@ const files = {
   webPackage: "apps/web/package.json",
   workerPackage: "packages/worker-engine/package.json",
   protocol: "packages/worker-protocol/src/object-transfer.ts",
+  protocolHttp: "packages/worker-protocol/src/object-transfer-http.ts",
+  protocolHttpTests: "packages/worker-protocol/src/object-transfer-http.test.ts",
   protocolIndex: "packages/worker-protocol/src/index.ts",
   workerErrors: "packages/worker-engine/src/base-errors.ts",
   objectStoreIndex: "packages/worker-engine/src/object-store.ts",
@@ -110,7 +112,28 @@ requireTokens(files.protocol, sources.protocol, [
   'createHash("sha256")',
   "canonicalHostedJobJson(manifest)",
 ]);
+requireTokens(files.protocolHttp, sources.protocolHttp, [
+  "readVectorObjectTransactionRequestBody",
+  "request.body.getReader()",
+  "total > maximumBytes",
+  'reader.cancel("object-transaction-too-large")',
+  "request.signal.addEventListener",
+  "VECTOR_WORKER_OBJECT_TRANSACTION_TOO_LARGE",
+  'status: 408',
+]);
+forbidTokens(files.protocolHttp, sources.protocolHttp, [
+  "request.arrayBuffer()",
+  "request.blob()",
+  "request.text()",
+]);
+requireTokens(files.protocolHttpTests, sources.protocolHttpTests, [
+  "reads a bounded request body without changing its bytes",
+  "rejects a body as soon as it exceeds",
+  "already-cancelled requests",
+  "invalid local maximum",
+]);
 requireTokens(files.protocolIndex, sources.protocolIndex, [
+  'export * from "./object-transfer-http.js"',
   'export * from "./object-transfer.js"',
 ]);
 requireTokens(files.workerErrors, sources.workerErrors, [
@@ -163,16 +186,20 @@ requireTokens(files.helpers, sources.helpers, [
   "workerObjectDownloadResponse",
   "workerObjectErrorResponse",
   "VECTOR_OBJECT_TRANSACTION_CONTENT_TYPE",
-  "request.arrayBuffer()",
+  "readVectorObjectTransactionRequestBody(request)",
+  "boundedStreamingRequestRead: true",
   '"content-type": "application/octet-stream"',
   '"x-vector-object-sha256"',
   '"VECTOR_WORKER_OBJECT_STORE_NOT_CONFIGURED"',
+  'message: "The worker object-transfer operation failed."',
   "PUBLIC_DETAIL_FIELDS",
 ]);
 forbidTokens(files.helpers, sources.helpers, [
+  "request.arrayBuffer()",
   "rootPath",
   "temporaryPath",
   '"content-type": object.mimeType',
+  "error instanceof Error ? error.message",
 ]);
 requireTokens(files.route, sources.route, [
   "workerApiAuthorisationFailure(request)",
@@ -260,6 +287,7 @@ process.stdout.write(`${JSON.stringify({
     "/api/v1/worker/objects",
     "/api/v1/worker/objects?key={objectKey}",
   ],
+  boundedStreamingRequestRead: true,
   exactContentReplay: true,
   partialReplayRejected: true,
   existingObjectsOverwritten: false,
