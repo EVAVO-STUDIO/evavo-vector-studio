@@ -1,0 +1,60 @@
+name: One-time API browser documentation alignment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/api-browser-tokens.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Align browser delivery tokens
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          target = Path("docs/API.md")
+          source = target.read_text(encoding="utf-8")
+          first = "## Lottie request\n\n`POST /api/v1/motion/lottie` requires"
+          first_new = "## Lottie request\n\nThe browser Motion Director uses wrapper JSON mode for exact verification before opening the official player preview.\n\n`POST /api/v1/motion/lottie` requires"
+          if source.count(first) != 1:
+              raise SystemExit("LOTTIE_BROWSER_TOKEN_ANCHOR_INVALID")
+          source = source.replace(first, first_new, 1)
+          second = "`POST /api/v1/motion/dotlottie` accepts the same governed SVG and motion sources, then creates and inspects deterministic manifest-v2 packaging."
+          second_new = second + " Use `format=dotlottie` for direct archive delivery."
+          if source.count(second) != 1:
+              raise SystemExit("DOTLOTTIE_FORMAT_TOKEN_ANCHOR_INVALID")
+          source = source.replace(second, second_new, 1)
+          target.write_text(source, encoding="utf-8")
+          PY
+          grep -Fq 'browser Motion Director' docs/API.md
+          grep -Fq 'player preview' docs/API.md
+          grep -Fq 'format=dotlottie' docs/API.md
+          git diff --check
+
+      - name: Commit and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-api-browser-tokens.yml \
+            .github/api-browser-tokens.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "docs(api): restore browser delivery contract tokens"
+          git pull --rebase origin main
+          git push origin HEAD:main
