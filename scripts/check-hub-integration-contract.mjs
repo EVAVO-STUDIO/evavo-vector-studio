@@ -48,6 +48,8 @@ const files = {
   launchTests: "packages/hub-auth/src/launch.test.ts",
   sessionTests: "packages/hub-auth/src/session.test.ts",
   replayTests: "packages/hub-auth/src/replay.test.ts",
+  compatibilityFixture: "packages/hub-auth/fixtures/next-website-vector-studio-launch-v1.json",
+  compatibilityTests: "packages/hub-auth/src/next-website-compatibility.test.ts",
   runtime: "apps/web/lib/hub-runtime.ts",
   sessionAdapter: "apps/web/lib/hub-session.ts",
   workspaceAccess: "apps/web/lib/workspace-access.ts",
@@ -72,6 +74,7 @@ const sources = Object.fromEntries(
 const rootPackage = await json(files.rootPackage);
 const webPackage = await json(files.webPackage);
 const hubPackage = await json(files.hubPackage);
+const compatibilityFixture = await json(files.compatibilityFixture);
 const card = await json(files.card);
 const entry = await json(files.entry);
 const deployment = await json(files.deployment);
@@ -117,6 +120,35 @@ forbidTokens(files.replay, sources.replay, ["_token=", "console.log(", "rawLaunc
 requireTokens(files.launchTests, sources.launchTests, ["verifies the exact generic EVAVO hub handoff", "requires separate hub and Vector Studio private signing authorities"]);
 requireTokens(files.sessionTests, sources.sessionTests, ["app-private eight-hour session", "cannot forge an app-private session"]);
 requireTokens(files.replayTests, sources.replayTests, ["exactly one concurrent memory replay consume", "doesNotMatch(requests[0]?.url"]);
+
+if (compatibilityFixture?.fixtureVersion !== 1) errors.push("The next-website compatibility fixture must use fixture version 1.");
+if (compatibilityFixture?.producer !== "EVAVO-STUDIO/next-website createClientApplicationLaunchToken") errors.push("The compatibility fixture must identify the central issuer.");
+if (compatibilityFixture?.producerContract !== "evavo-client-app-launch-v1") errors.push("The compatibility fixture must identify the shared launch contract.");
+if (compatibilityFixture?.claims?.applicationKey !== "vector-studio") errors.push("The compatibility fixture must target Vector Studio.");
+if (compatibilityFixture?.claims?.applicationLabel !== "EVAVO Vector Studio") errors.push("The compatibility fixture label must match the central registry.");
+if (compatibilityFixture?.claims?.targetHost !== "vector.evavo.com.au" || compatibilityFixture?.claims?.audience !== "vector.evavo.com.au") errors.push("The compatibility fixture must be bound to the canonical Vector Studio host.");
+requireTokens(files.compatibilityFixture, sources.compatibilityFixture, [
+  '"canonicalPayloadJson"',
+  '"token"',
+  '"testOnlySecret"',
+  '"evavo-client-app-launch-v1"',
+  '"vector-studio"',
+  '"vector.evavo.com.au"',
+]);
+forbidTokens(files.compatibilityFixture, sources.compatibilityFixture, [
+  "EVAVO_CLIENT_APP_LAUNCH_SECRET",
+  "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
+  "UPSTASH_REDIS_REST_TOKEN",
+  "C:\\",
+]);
+requireTokens(files.compatibilityTests, sources.compatibilityTests, [
+  "accepts the exact independent next-website Vector Studio handoff fixture",
+  "createHmac",
+  "canonicalPayloadJson",
+  "verifyVectorHubLaunchToken",
+  "assert.deepEqual(verified.claims, value.claims)",
+  "keeps the compatibility fixture explicitly test-only and non-authoritative",
+]);
 
 requireTokens(files.runtime, sources.runtime, [
   "VECTOR_PUBLIC_ORIGIN",
@@ -175,6 +207,7 @@ requireTokens(files.docs, sources.docs, [
   "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
   "SET <derived-key> 1 EX <ttl> NX",
   "__Host-evavo-vector-session",
+  "next-website compatibility fixture",
   "clientReleaseEligible",
   "pnpm hub:check",
 ]);
@@ -186,20 +219,20 @@ requireTokens(files.environment, sources.environment, [
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
 ]);
-requireTokens(files.workflow, sources.workflow, ["EVAVO hub integration contract", "node scripts/check-hub-integration-contract.mjs"]);
-forbidTokens(files.card, sources.card, ["C:\\\\", "tokenValue"]);
-forbidTokens(files.entry, sources.entry, ["C:\\\\", "tokenValue"]);
-forbidTokens(files.deployment, sources.deployment, ["C:\\\\", "replace-with", "tokenValue"]);
+requireTokens(files.workflow, sources.workflow, ["EVAVO hub integration contract", "node scripts/check-hub-integration-contract.mjs", "pnpm --filter @evavo/hub-auth test"]);
+forbidTokens(files.card, sources.card, ["C:\\", "tokenValue"]);
+forbidTokens(files.entry, sources.entry, ["C:\\", "tokenValue"]);
+forbidTokens(files.deployment, sources.deployment, ["C:\\", "replace-with", "tokenValue"]);
 
 if (errors.length > 0) {
-  process.stderr.write(`${JSON.stringify({ check: "evavo-vector-studio-hub-integration", ok: false, hubContractVersion: "1.0", errors }, null, 2)}\n`);
+  process.stderr.write(`${JSON.stringify({ check: "evavo-vector-studio-hub-integration", ok: false, hubContractVersion: "1.1", errors }, null, 2)}\n`);
   process.exit(1);
 }
 
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-hub-integration",
   ok: true,
-  hubContractVersion: "1.0",
+  hubContractVersion: "1.1",
   applicationKey: "vector-studio",
   targetHost: "vector.evavo.com.au",
   promotionStatus: "staged",
@@ -207,5 +240,6 @@ process.stdout.write(`${JSON.stringify({
   signedLaunchReceiver: true,
   appPrivateSession: true,
   durableReplayAdapter: true,
+  centralIssuerFixture: true,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
