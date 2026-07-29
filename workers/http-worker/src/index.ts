@@ -5,18 +5,29 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   createVectorWorkerClient,
-  VectorWorkerClientError,
+  createVectorWorkerObjectClient,
+  type VectorWorkerCapabilitiesResponse,
+  type VectorWorkerObjectClient,
 } from "@evavo/worker-client";
 import {
-  FileVectorObjectStore,
   VECTOR_WORKER_SUPPORTED_OPERATIONS,
   createVectorWorkerExecutor,
 } from "@evavo/worker-engine";
+import {
+  FileVectorObjectStore,
+  type VectorObjectStore,
+} from "@evavo/worker-engine/object-store";
 import type { VectorWorkerProtocolOperation } from "@evavo/worker-protocol";
 import {
   HttpWorkerError,
   httpWorkerFailure,
 } from "./errors.js";
+import {
+  DEFAULT_HTTP_OBJECT_DOWNLOAD_ATTEMPTS,
+  DEFAULT_HTTP_OBJECT_RETRY_MS,
+  DEFAULT_HTTP_OBJECT_UPLOAD_ATTEMPTS,
+  HttpVectorObjectStore,
+} from "./http-object-store.js";
 import {
   DEFAULT_HTTP_WORKER_COMPLETION_ATTEMPTS,
   DEFAULT_HTTP_WORKER_COMPLETION_RETRY_MS,
@@ -26,18 +37,29 @@ import {
   HTTP_WORKER_CONTRACT_VERSION,
   HttpVectorWorker,
   type HttpWorkResult,
+  type HttpWorkerObjectTransport,
 } from "./runner.js";
 
 export * from "./errors.js";
+export * from "./http-object-store.js";
 export * from "./runner.js";
 
 const COMMANDS = Object.freeze(["capabilities", "run-once", "run"] as const);
 type Command = typeof COMMANDS[number];
+type ObjectStoreMode = "file" | "http";
 
 type ParsedArguments = Readonly<{
   command: string | null;
   positionals: readonly string[];
   flags: ReadonlyMap<string, string | true>;
+}>;
+
+type OpenedObjectStore = Readonly<{
+  mode: ObjectStoreMode;
+  transport: HttpWorkerObjectTransport;
+  store: VectorObjectStore;
+  client: VectorWorkerObjectClient | null;
+  view: Readonly<Record<string, unknown>>;
 }>;
 
 function parseArguments(argv: readonly string[]): ParsedArguments {
@@ -147,6 +169,22 @@ function controlToken(): string {
   return requiredEnvironment("VECTOR_WORKER_API_TOKEN");
 }
 
+function objectStoreMode(parsed: ParsedArguments): ObjectStoreMode {
+  const value = (
+    flag(parsed, "object-store-mode") ??
+    process.env.VECTOR_HTTP_WORKER_OBJECT_STORE_MODE?.trim() ??
+    "file"
+  ).toLowerCase();
+  if (value !== "file" && value !== "http") {
+    throw new HttpWorkerError(
+      "HTTP_WORKER_CONFIG_INVALID",
+      "object-store-mode must be file or http.",
+      { details: { objectStoreMode: value } },
+    );
+  }
+  return value;
+}
+
 function objectStorePath(parsed: ParsedArguments): string {
   return path.resolve(
     flag(parsed, "object-store") ??
@@ -190,17 +228,108 @@ function writeNdjson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value)}\n`);
 }
 
+function requireObjectTransfer(
+  server: VectorWorkerCapabilitiesResponse,
+): void {
+  if (server.contract.objectTransferAvailable !== true) {
+    throw new HttpWorkerError(
+      "HTTP_WORKER_OBJECT_TRANSFER_UNAVAILABLE",
+      "HTTP object-store mode requires the worker object-transfer API to be configured and available.",
+      {
+        retryable: true,
+        details: {
+          objectTransferAvailable:
+            server.contract.objectTransferAvailable ?? false,
+        },
+      },
+    );
+  }
+}
+
+async function openObjectStore(
+  parsed: ParsedArguments,
+  mode: ObjectStoreMode,
+  baseUrl: string,
+  token: string,
+  allowInsecureHttp: boolean,
+): Promise<OpenedObjectStore> {
+  if (mode === "file") {
+    const store = await FileVectorObjectStore.open(objectStorePath(parsed));
+    return Object.freeze({
+      mode,
+      transport: "shared-file" as const,
+      store,
+      client: null,
+      view: Object.freeze({
+        mode,
+        transport: "shared-file",
+        path: store.rootPath,
+        sharedFilesystemRequired: true,
+        objectTransferApiUsed: false,
+        existingObjectsOverwritten: false,
+      }),
+    });
+  }
+
+  const client = createVectorWorkerObjectClient({
+    baseUrl,
+    token,
+    timeoutMs: integerFlag(parsed, "object-timeout-ms") ?? 60_000,
+    maximumJsonBytes:
+      integerFlag(parsed, "object-maximum-json-bytes") ?? 512 * 1024,
+    allowInsecureHttp,
+  });
+  const store = new HttpVectorObjectStore({
+    client,
+    downloadAttempts:
+      integerFlag(parsed, "object-download-attempts") ??
+      DEFAULT_HTTP_OBJECT_DOWNLOAD_ATTEMPTS,
+    uploadAttempts:
+      integerFlag(parsed, "object-upload-attempts") ??
+      DEFAULT_HTTP_OBJECT_UPLOAD_ATTEMPTS,
+    retryMs:
+      integerFlag(parsed, "object-retry-ms") ??
+      DEFAULT_HTTP_OBJECT_RETRY_MS,
+  });
+  return Object.freeze({
+    mode,
+    transport: "worker-api" as const,
+    store,
+    client,
+    view: Object.freeze({
+      mode,
+      transport: "worker-object-transfer-api",
+      endpoint: new URL("api/v1/worker/objects", client.baseUrl).href,
+      sharedFilesystemRequired: false,
+      objectTransferApiUsed: true,
+      capabilities: store.capabilities,
+    }),
+  });
+}
+
 async function runtime(parsed: ParsedArguments) {
-  const objects = await FileVectorObjectStore.open(objectStorePath(parsed));
+  const baseUrl = controlUrl(parsed);
+  const token = controlToken();
+  const allowInsecureHttp = booleanFlag(parsed, "allow-insecure-http");
   const client = createVectorWorkerClient({
-    baseUrl: controlUrl(parsed),
-    token: controlToken(),
+    baseUrl,
+    token,
     timeoutMs: integerFlag(parsed, "control-timeout-ms") ?? 10_000,
     maximumResponseBytes:
       integerFlag(parsed, "maximum-response-bytes") ?? 512 * 1024,
-    allowInsecureHttp: booleanFlag(parsed, "allow-insecure-http"),
+    allowInsecureHttp,
   });
-  const executor = createVectorWorkerExecutor(objects);
+  const mode = objectStoreMode(parsed);
+  const server = mode === "http" ? await client.capabilities() : null;
+  if (server) requireObjectTransfer(server);
+  const objects = await openObjectStore(
+    parsed,
+    mode,
+    baseUrl,
+    token,
+    allowInsecureHttp,
+  );
+  const executor = createVectorWorkerExecutor(objects.store);
   const worker = new HttpVectorWorker(client, executor, {
     workerId: workerId(parsed),
     leaseMs: integerFlag(parsed, "lease-ms") ?? DEFAULT_HTTP_WORKER_LEASE_MS,
@@ -215,8 +344,9 @@ async function runtime(parsed: ParsedArguments) {
     completionRetryMs:
       integerFlag(parsed, "completion-retry-ms") ??
       DEFAULT_HTTP_WORKER_COMPLETION_RETRY_MS,
+    objectTransport: objects.transport,
   });
-  return Object.freeze({ objects, client, executor, worker });
+  return Object.freeze({ objects, client, executor, worker, server });
 }
 
 function publicResult(work: HttpWorkResult) {
@@ -230,12 +360,12 @@ function publicResult(work: HttpWorkResult) {
 async function commandCapabilities(parsed: ParsedArguments): Promise<void> {
   ensureNoPositionals(parsed);
   const opened = await runtime(parsed);
-  const server = await opened.client.capabilities();
+  const server = opened.server ?? await opened.client.capabilities();
   writeJson({
     command: "capabilities",
     httpWorkerContractVersion: HTTP_WORKER_CONTRACT_VERSION,
     commands: COMMANDS,
-    objectStore: opened.objects.rootPath,
+    objectStore: opened.objects.view,
     worker: opened.worker.capabilities,
     server,
     security: {
@@ -269,7 +399,7 @@ async function commandRun(parsed: ParsedArguments): Promise<void> {
       type: "http-worker-started",
       contractVersion: HTTP_WORKER_CONTRACT_VERSION,
       worker: opened.worker.capabilities,
-      objectStore: opened.objects.rootPath,
+      objectStore: opened.objects.view,
       controlBaseUrl: opened.client.baseUrl,
       tokenPresent: true,
       tokenReturned: false,
