@@ -1,6 +1,6 @@
 # EVAVO Vector Studio Durable Batch Contract
 
-Vector Studio batch v1 runs a fixed manifest of governed production operations with persistent state, append-only events, exclusive locking, input revisions and output receipts.
+Vector Studio batch v1 runs a fixed manifest of governed production operations with persistent state, append-only events, exclusive locking, canonical paths, input revisions and output receipts.
 
 The objective is reliable local and agent-driven production. A terminal can stop, a machine can restart, or one item can fail without losing the retained state of unrelated completed work.
 
@@ -8,7 +8,7 @@ This is a crash-resumable local runner. It is not yet a hosted background queue,
 
 ## Current operations
 
-The `evavo-vector-batch` CLI exposes:
+The same operation registry is used by the local batch CLI and MCP:
 
 - `trace-raster`;
 - `optimise-svg`;
@@ -16,9 +16,9 @@ The `evavo-vector-batch` CLI exposes:
 - `export-lottie`;
 - `package-dotlottie`.
 
-Every operation uses the same governed engine as the existing CLI, API, browser and MCP surfaces. Every operation requires an explicit evidence JSON output.
+Every operation uses the same governed raster, SVG, motion, Lottie or dotLottie engine as the single-file surfaces. Every operation requires an explicit evidence JSON output.
 
-## Commands
+## Local CLI
 
 ```powershell
 pnpm vector:batch:capabilities
@@ -33,21 +33,50 @@ pnpm vector:batch:inspect -- `
   --event-limit 50
 ```
 
-The installed binary is:
-
-```text
-evavo-vector-batch
-```
-
-Commands:
+The installed binary is `evavo-vector-batch`.
 
 ```text
 evavo-vector-batch run <manifest.json>
+evavo-vector-batch resume <manifest.json>
 evavo-vector-batch inspect <manifest.json>
+evavo-vector-batch status <manifest.json>
 evavo-vector-batch capabilities
 ```
 
 `run` and `resume` are aliases. `inspect` and `status` are aliases.
+
+## MCP workflow
+
+MCP contract `1.4` exposes:
+
+- `vector_run_batch`;
+- `vector_inspect_batch`.
+
+Both tools use the same batch-v1 manifest, persistent state, canonical path policy, revision checks and output receipts as the local CLI.
+
+MCP execution accepts at most 100 items per manifest. The local CLI accepts up to 1,000. MCP results are paginated with:
+
+```text
+itemOffset  0 to 100
+itemLimit   1 to 100
+eventLimit  0 to 100
+```
+
+Example:
+
+```json
+{
+  "manifestPath": "C:\\EVAVO\\VectorAssets\\batches\\brand-assets.batch.json",
+  "rootPath": "C:\\EVAVO\\VectorAssets",
+  "itemOffset": 0,
+  "itemLimit": 25,
+  "eventLimit": 25
+}
+```
+
+`vector_run_batch` forwards request cancellation and can resume retained state when called again. `vector_inspect_batch` reads progress without executing production work.
+
+Neither tool places generated SVG, PNG, Lottie JSON or archive bodies in model context. This is still a local synchronous MCP surface. It is not a hosted background queue and does not continue after the MCP server process stops.
 
 ## Manifest schema
 
@@ -121,7 +150,9 @@ Example:
 }
 ```
 
-Manifest root and item fields are strict. Item IDs must be unique. A manifest supports 1 to 1,000 items.
+Manifest root and item fields are strict. Item IDs must be unique. A manifest supports 1 to 1,000 items through the local CLI and up to 100 items through MCP.
+
+The optional `$schema` editor annotation is accepted but excluded from the canonical production identity.
 
 A job ID permanently binds to the canonical manifest SHA-256 once state exists. Changing item order, operation, spec, name or failure mode under the same job ID is rejected as `BATCH_MANIFEST_CHANGED`. Create a new revisioned job ID for a changed manifest.
 
@@ -190,11 +221,27 @@ Optional:
 
 - `animationId`: portable 1 to 64 character ID.
 
-All manifest paths resolve beneath `--root`. Attempts to escape that root are rejected. Inputs and outputs must be distinct.
+## Canonical path policy
+
+The execution root is resolved through `realpath` before state is opened.
+
+For every item:
+
+- existing inputs resolve through `realpath`;
+- input symlinks escaping the root are rejected;
+- output parents are checked from the nearest existing canonical directory;
+- output-directory symlinks escaping the root are rejected;
+- an output path that is itself a symlink is rejected;
+- canonical input/output and output/output collisions are rejected;
+- ordinary Windows path comparisons are case-insensitive.
+
+Existing regular output files are accepted only when verifying a retained completed item. New operations never overwrite them.
+
+This protects ordinary local workflows. It is not a hostile-filesystem sandbox against an account replacing directories during an active call.
 
 ## Durable state layout
 
-By default, state is retained beneath the execution root:
+By default, state is retained under the execution root:
 
 ```text
 .evavo-vector-jobs/<job-id>/
@@ -203,9 +250,9 @@ By default, state is retained beneath the execution root:
   runner.lock
 ```
 
-A separate state root can be selected with `--state-root`.
+A separate state root can be selected by the local CLI.
 
-`state.json` is replaced atomically through a staged file and rename. `events.ndjson` is append-only. `runner.lock` is created with exclusive new-file semantics.
+`state.json` is replaced atomically through a staged file and rename. `events.ndjson` is append-only. `runner.lock` uses exclusive new-file creation.
 
 ## Revision and reuse policy
 
@@ -213,49 +260,51 @@ Before executing an item, its handler computes a lowercase SHA-256 revision from
 
 - operation name;
 - canonical operation spec;
-- relative input paths;
+- canonical relative input paths;
 - exact input bytes.
 
 A completed item is reused only when:
 
 1. its current revision matches the retained revision;
-2. every output path still exists as a regular file;
-3. every output byte count matches;
+2. every output still exists as a regular file;
+3. every byte count matches;
 4. every output SHA-256 matches.
 
-If the source changes, reuse fails with `BATCH_ITEM_REVISION_MISMATCH`. If an output is missing or modified, reuse fails with `BATCH_COMPLETED_OUTPUT_INVALID`.
+A changed source fails with `BATCH_ITEM_REVISION_MISMATCH`. A missing or modified completed output fails with `BATCH_COMPLETED_OUTPUT_INVALID`.
 
 The runner never silently regenerates a completed revision over existing output files.
 
 ## Interrupted execution
 
-An item retained as `running` means the previous process stopped before a terminal state was committed. On the next run it is reset to `pending`, an interruption event is recorded, and its next execution increments the attempt number.
+An item retained as `running` means the prior process stopped before a terminal state was committed. On the next run it returns to `pending`, an interruption event is recorded and the next execution increments the attempt count.
 
-Operation outputs use the existing atomic new-file transaction. A handler either commits its declared output set or reports failure. Existing outputs are never overwritten.
+Operation outputs use atomic new-file transactions. A handler commits its complete declared output set or reports failure.
+
+Request cancellation stops the current MCP or CLI invocation. Retained state remains available for later inspection and resume.
 
 ## Failure modes
 
 `continue`:
 
-- retain the failed item;
-- continue with later independent items;
-- finish the job as `failed` when any item failed.
+- retains the failed item;
+- continues later independent items;
+- ends the job as failed when any item failed.
 
 `fail-fast`:
 
-- retain the failed item;
-- stop before later pending items;
-- leave those items pending for inspection or a future corrected job revision.
+- retains the failed item;
+- stops before later pending items;
+- leaves later items pending for inspection or a corrected future invocation.
 
-Failures are represented with stable codes, messages and optional details.
+Failures use stable codes, messages, retryability and optional details.
 
 ## Lock and recovery policy
 
-Only one runner may own a job at once. A second runner receives `BATCH_JOB_LOCKED` with `retryable: true`.
+Only one runner may own a job. A second runner receives `BATCH_JOB_LOCKED` with `retryable: true`.
 
 The default stale-lock threshold is six hours. A stale lock is renamed aside before a new lock is created. The lock token is checked before release so one process cannot remove another process's active lock.
 
-This protects ordinary local workflows. It is not a distributed lease or hostile-filesystem sandbox.
+This is a single-process local lock, not a distributed lease.
 
 ## Evidence and approval
 
@@ -268,21 +317,21 @@ bytes
 sha256
 ```
 
-Full engine evidence is written to the explicit evidence JSON output. Durable state keeps compact operation evidence so a large batch does not duplicate every generated body.
+Full engine evidence is written to the explicit evidence JSON output. Durable state keeps compact evidence so large batches do not duplicate generated bodies.
 
-Successful batch completion proves that requested handlers executed, revisions matched and output receipts verified. It does not grant artistic, brand, accessibility, geometry, motion or player-equivalence approval.
+Successful completion proves that handlers executed, revisions matched and receipts verified. It does not grant artistic, brand, accessibility, geometry, motion or player-equivalence approval.
 
 Every production output remains `human-review-required` or `review-required` according to its underlying engine contract.
 
 ## Deployment boundary
 
-The current runner resumes when invoked again. It does not continue executing after its process or machine is stopped.
+The current runner resumes when invoked again. It does not continue after its process or machine stops.
 
 A hosted worker phase still needs:
 
-- persistent database-backed job records;
+- database-backed job records;
 - object storage;
-- queue visibility and leases;
+- queue visibility and distributed leases;
 - worker heartbeats;
 - remote cancellation;
 - bounded retries and backoff;
