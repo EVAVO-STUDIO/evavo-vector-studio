@@ -1,0 +1,210 @@
+name: One-time hosted job publication
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/hosted-job-publication.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-hosted-job-publication
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Publish hosted job contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str, code: str) -> None:
+              target = Path(path)
+              source = target.read_text(encoding="utf-8")
+              if source.count(old) != 1:
+                  raise SystemExit(code)
+              target.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "docs/API.md",
+              "Vector Studio exposes four bounded synchronous production endpoints:",
+              "Vector Studio exposes four bounded synchronous production endpoints plus a separately configured hosted job record control plane:",
+              "API_INTRO_INVALID",
+          )
+          replace_once(
+              "docs/API.md",
+              "- `POST /api/v1/motion/dotlottie` for deterministic dotLottie v2 packaging.",
+              "- `POST /api/v1/motion/dotlottie` for deterministic dotLottie v2 packaging;\n- `POST /api/v1/jobs` for idempotent hosted job record creation when a persistent record store is configured;\n- `GET` and `DELETE /api/v1/jobs/{jobId}` for record inspection and cancellation requests.",
+              "API_ENDPOINTS_INVALID",
+          )
+          replace_once(
+              "docs/API.md",
+              "They are intended for interactive work and agent calls that can wait for a response. They are not durable queues. Persistence, resumability, object storage, retries and long-running workers belong in a separate worker service.",
+              "The four production endpoints are intended for interactive work and agent calls that can wait for a response. The hosted job route can retain records when configured, but record creation does not schedule execution. Object storage, queue delivery and long-running workers remain a separate deployment phase.",
+              "API_BOUNDARY_INVALID",
+          )
+          api = Path("docs/API.md")
+          source = api.read_text(encoding="utf-8")
+          anchor = "# Shared approval boundary\n"
+          section = '''# Hosted job record API
+
+## Service discovery
+
+```http
+GET /api/v1/jobs
+```
+
+The response reports hosted job contract `1.0`, supported operations, record-store availability and the explicit `remoteExecutionAvailable: false` boundary.
+
+## Create an idempotent record
+
+```http
+POST /api/v1/jobs
+Authorization: Bearer <VECTOR_API_TOKEN>
+Content-Type: application/json
+```
+
+The request requires `workspaceId`, `idempotencyKey`, `operation` and a bounded JSON `payload`. Optional `priority` is 0 to 9 and `maxAttempts` is 1 to 10. Raw source and generated bodies do not belong in this JSON contract.
+
+A new record returns `201`. An exact idempotent replay returns `200`. A changed request under the same workspace and key returns `HOSTED_JOB_IDEMPOTENCY_CONFLICT`.
+
+Successful creation retains:
+
+```text
+executionScheduled: false
+remoteExecutionAvailable: false
+```
+
+## Inspect or cancel
+
+```http
+GET /api/v1/jobs/{jobId}
+DELETE /api/v1/jobs/{jobId}
+```
+
+Queued work cancels immediately. Leased or running work becomes `cancel-requested` for cooperative acknowledgement by a future worker.
+
+The store fails closed with `HOSTED_JOB_STORE_NOT_CONFIGURED` until `VECTOR_JOB_STORE_MODE=file` or a future persistent adapter is configured. Production file mode additionally requires `VECTOR_JOB_FILE_STORE_PERSISTENT=true` and a genuinely persistent mounted volume.
+
+The current API does not expose worker leasing and does not claim hosted execution. See `docs/HOSTED-JOBS.md`.
+
+'''
+          if source.count(anchor) != 1 or "# Hosted job record API" in source:
+              raise SystemExit("API_SECTION_INVALID")
+          api.write_text(source.replace(anchor, section + anchor, 1), encoding="utf-8")
+
+          architecture = Path("docs/ARCHITECTURE.md")
+          source = architecture.read_text(encoding="utf-8")
+          replace_old = '''The current API exposes bounded synchronous routes:
+
+```text
+POST /api/v1/trace
+POST /api/v1/motion/svg
+POST /api/v1/motion/lottie
+POST /api/v1/motion/dotlottie
+```
+
+Production requests require a bearer token. Responses use `no-store`. These endpoints are interactive processing surfaces, not durable queues.'''
+          replace_new = '''The API exposes bounded synchronous production routes plus a separately configured hosted job control plane:
+
+```text
+POST /api/v1/trace
+POST /api/v1/motion/svg
+POST /api/v1/motion/lottie
+POST /api/v1/motion/dotlottie
+POST /api/v1/jobs
+GET /api/v1/jobs/{jobId}
+DELETE /api/v1/jobs/{jobId}
+```
+
+Production requests require a bearer token and responses use `no-store`. The hosted job routes can retain idempotent records when a safe store is configured, but they do not schedule execution or claim a deployed worker.'''
+          if source.count(replace_old) != 1:
+              raise SystemExit("ARCHITECTURE_API_INVALID")
+          source = source.replace(replace_old, replace_new, 1)
+          anchor = "## Evidence and approval\n"
+          section = '''## Hosted job control plane
+
+`@evavo/job-control` separates record durability from execution. It provides workspace-scoped idempotency, optimistic versions, leases, heartbeats, cancellation, retries, expired-lease recovery and output receipts.
+
+The local file adapter uses atomic JSON replacement, exclusive locks and hashed idempotency indexes. Production file mode fails closed unless an operator confirms a persistent mounted volume.
+
+Creating a hosted job record does not enqueue or execute work. A hosted worker release still requires object storage, queue delivery, distributed leases, workspace authorization and deployment evidence.
+
+'''
+          if source.count(anchor) != 1 or "## Hosted job control plane" in source:
+              raise SystemExit("ARCHITECTURE_SECTION_INVALID")
+          architecture.write_text(source.replace(anchor, section + anchor, 1), encoding="utf-8")
+
+          readme = Path("README.md")
+          source = readme.read_text(encoding="utf-8")
+          anchor = "The current runner resumes when invoked again. It is not yet a hosted background queue or multi-node worker service.\n"
+          section = anchor + '''
+### Hosted job control plane
+
+Hosted job control contract `1.0` can create idempotent persistent records, inspect state and request cancellation when a deliberate record-store adapter is configured.
+
+- workspace-scoped idempotency;
+- optimistic state versions;
+- worker leases and heartbeats in `@evavo/job-control`;
+- bounded retries and expired-lease recovery;
+- cancellation requests and acknowledgement;
+- output byte-count and SHA-256 receipts;
+- production fail-closed store configuration;
+- `executionScheduled: false` and `remoteExecutionAvailable: false` until a worker is deployed.
+
+The current API records intent only. It does not claim hosted execution. See [`docs/HOSTED-JOBS.md`](docs/HOSTED-JOBS.md).
+'''
+          if source.count(anchor) != 1 or "### Hosted job control plane" in source:
+              raise SystemExit("README_SECTION_INVALID")
+          readme.write_text(source.replace(anchor, section, 1), encoding="utf-8")
+
+          workflow = Path(".github/workflows/quality.yml")
+          source = workflow.read_text(encoding="utf-8")
+          anchor = '''      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+'''
+          step = '''      - name: Verify hosted job control contract
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          node scripts/check-hosted-job-contract.mjs 2>&1 | tee .ci/hosted-job-contract.log
+
+'''
+          if source.count(anchor) != 1 or "Verify hosted job control contract" in source:
+              raise SystemExit("WORKFLOW_STEP_INVALID")
+          workflow.write_text(source.replace(anchor, step + anchor, 1), encoding="utf-8")
+          PY
+          grep -Fq '# Hosted job record API' docs/API.md
+          grep -Fq '## Hosted job control plane' docs/ARCHITECTURE.md
+          grep -Fq '### Hosted job control plane' README.md
+          grep -Fq 'Verify hosted job control contract' .github/workflows/quality.yml
+          git diff --check
+
+      - name: Commit and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-hosted-job-publication.yml \
+            .github/hosted-job-publication.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "docs(job-control): publish hosted job control plane"
+          git pull --rebase origin main
+          git push origin HEAD:main
