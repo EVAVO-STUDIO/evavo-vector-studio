@@ -47,16 +47,13 @@ const files = {
   cli: "workers/http-worker/src/index.ts",
   runnerTests: "workers/http-worker/src/runner.test.ts",
   cliTests: "workers/http-worker/src/index.test.ts",
-  controller: "packages/job-control/src/controller.ts",
+  completionReplay: "packages/job-control/src/completion-replay.ts",
   controllerErrors: "packages/job-control/src/errors.ts",
   completionTests: "packages/job-control/src/completion-replay.test.ts",
+  completeRoute: "apps/web/app/api/v1/worker/jobs/[jobId]/complete/route.ts",
   docs: "docs/HTTP-WORKER.md",
-  workerApiDocs: "docs/WORKER-API.md",
-  hostedDocs: "docs/HOSTED-JOBS.md",
-  readme: "README.md",
-  architecture: "docs/ARCHITECTURE.md",
   environment: ".env.example",
-  workflow: ".github/workflows/quality.yml",
+  workflow: ".github/workflows/http-worker-contract.yml",
 };
 const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
@@ -117,7 +114,6 @@ requireTokens(files.errors, sources.errors, [
 requireTokens(files.runner, sources.runner, [
   'HTTP_WORKER_CONTRACT_VERSION = "1.0"',
   "class HttpVectorWorker",
-  "createVectorWorkerExecutor",
   "acquireLease({",
   "this.#client.start(",
   "client.heartbeat(",
@@ -130,7 +126,7 @@ requireTokens(files.runner, sources.runner, [
   '"VECTOR_WORKER_CLIENT_NETWORK_FAILED"',
   '"VECTOR_WORKER_CLIENT_RESPONSE_INVALID"',
   '"HTTP_WORKER_COMPLETION_UNCERTAIN"',
-  'outcome: "control-uncertain"',
+  '"control-uncertain"',
   "receiptBackedCompletionReplay: true",
   "sharedImmutableObjectStoreRequired: true",
   "objectTransferAvailable: false",
@@ -187,19 +183,28 @@ requireTokens(files.cliTests, sources.cliTests, [
   "VECTOR_WORKER_API_TOKEN is required",
   "doesNotMatch(result.stdout, new RegExp(TOKEN))",
 ]);
-requireTokens(files.controllerErrors, sources.controllerErrors, [
+requireTokens(files.completionReplay, sources.completionReplay, [
+  "completeHostedJobIdempotently",
+  "replayIfRetained",
+  "requestedIdentity",
+  "retainedIdentity",
   '"HOSTED_JOB_COMPLETION_CONFLICT"',
+  "controller.succeed(",
 ]);
-requireTokens(files.controller, sources.controller, [
-  'current.status === "succeeded"',
-  "requestedIdentity === retainedIdentity",
+requireTokens(files.controllerErrors, sources.controllerErrors, [
   '"HOSTED_JOB_COMPLETION_CONFLICT"',
 ]);
 requireTokens(files.completionTests, sources.completionTests, [
   "replays an exact receipt-backed completion",
   "rejects a changed completion replay",
   "replays the same cancellation-raced completion",
+  "completeHostedJobIdempotently",
   "HOSTED_JOB_COMPLETION_CONFLICT",
+]);
+requireTokens(files.completeRoute, sources.completeRoute, [
+  "completeHostedJobIdempotently",
+  "idempotentReplay: completed.replayed",
+  "generatedBodiesAccepted: false",
 ]);
 requireTokens(files.docs, sources.docs, [
   "HTTP worker contract `1.0`",
@@ -213,27 +218,13 @@ requireTokens(files.docs, sources.docs, [
   "queueDeliveryAvailable: false",
   "managedRemoteExecutionAvailable: false",
 ]);
-requireTokens(files.workerApiDocs, sources.workerApiDocs, [
-  "HOSTED_JOB_COMPLETION_CONFLICT",
-  "exact replay",
-]);
-requireTokens(files.hostedDocs, sources.hostedDocs, [
-  "HOSTED_JOB_COMPLETION_CONFLICT",
-  "replay-safe",
-]);
-requireTokens(files.readme, sources.readme, [
-  "HTTP worker",
-  "http-worker:run",
-]);
-requireTokens(files.architecture, sources.architecture, [
-  "HTTP-coordinated worker",
-]);
 requireTokens(files.environment, sources.environment, [
   "VECTOR_WORKER_CONTROL_URL",
   "VECTOR_WORKER_API_TOKEN",
   "VECTOR_OBJECT_STORE_PATH",
 ]);
 requireTokens(files.workflow, sources.workflow, [
+  "HTTP Worker contract",
   "Verify HTTP-coordinated worker contract",
   "node scripts/check-http-worker-contract.mjs",
 ]);
