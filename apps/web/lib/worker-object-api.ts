@@ -10,7 +10,6 @@ import {
 } from "@evavo/worker-protocol";
 import {
   VectorWorkerError,
-  commitVectorObjectTransactionIdempotently,
   type StoredObject,
 } from "@evavo/worker-engine/object-store";
 import { noStoreHeaders } from "./api-security";
@@ -37,6 +36,9 @@ const PUBLIC_DETAIL_FIELDS = new Set([
   "maximum",
   "bytes",
   "count",
+  "contentType",
+  "keyCount",
+  "unknownFields",
 ]);
 
 function publicDetails(
@@ -193,7 +195,7 @@ export function workerObjectDownloadResponse(object: StoredObject): Response {
     "x-vector-object-sha256": object.sha256,
     "x-vector-object-stored-mime": object.mimeType,
   }));
-  return new Response(object.bytes, { status: 200, headers });
+  return new Response(Buffer.from(object.bytes), { status: 200, headers });
 }
 
 export function workerObjectErrorResponse(error: unknown): Response {
