@@ -13,6 +13,7 @@ Health endpoint                 available
 Signed handoff verifier         available
 App-private session contract    available
 One-time replay adapters        memory test + Upstash REST
+Central issuer fixture          available
 Production deployment evidence  unavailable
 Client release eligibility      false
 ```
@@ -69,6 +70,26 @@ The HMAC-SHA256 token also binds:
 - a bounded cryptographic nonce.
 
 Claims are strict. Unknown fields, noncanonical base64url, invalid identifiers, wrong host, wrong application, wrong label, invalid times, signature mismatch and token oversize fail closed.
+
+## Central issuer compatibility fixture
+
+The independent next-website compatibility fixture lives at:
+
+```text
+packages/hub-auth/fixtures/next-website-vector-studio-launch-v1.json
+packages/hub-auth/src/next-website-compatibility.test.ts
+```
+
+It contains one explicitly test-only secret, the canonical JSON payload order used by `next-website`, the resulting HMAC token and the expected claims. The Vector Studio receiver does not create that token with its own helper. Its executable test instead:
+
+1. decodes the retained central payload;
+2. verifies the exact HMAC independently;
+3. passes the exact token through `verifyVectorHubLaunchToken`;
+4. compares every accepted claim with the central fixture;
+5. verifies replay identity and bounded expiry evidence;
+6. rejects production environment names and local paths from the fixture.
+
+This catches claim-order, label, host, application, TTL and signature drift between the central issuer and the Vector Studio receiver. The fixture secret is not a deployment credential and must never be reused outside tests.
 
 ## One-time redemption
 
@@ -189,8 +210,9 @@ The app remains unavailable for signed launch when any required production setti
 
 ```powershell
 pnpm hub:check
+pnpm --filter @evavo/hub-auth test
 pnpm check
 pnpm --filter @evavo/vector-web build
 ```
 
-The contract and executable fixtures prove token shape, signature validation, key separation, exact TTL, session issuance, session expiry, one-success replay behaviour and safe provider failure. They do not prove deployed credentials, DNS, Vercel configuration, Upstash connectivity or live browser redemption.
+The contract and executable fixtures prove central-token compatibility, token shape, signature validation, key separation, exact TTL, session issuance, session expiry, one-success replay behaviour and safe provider failure. They do not prove deployed credentials, DNS, Vercel configuration, Upstash connectivity or live browser redemption.
