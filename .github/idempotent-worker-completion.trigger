@@ -1,1 +1,1 @@
-make receipt-backed completion replay-safe
+make receipt-backed completion replay-safe revision 2
