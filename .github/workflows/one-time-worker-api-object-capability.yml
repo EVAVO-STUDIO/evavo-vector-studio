@@ -1,0 +1,66 @@
+name: One-time worker API object capability alignment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/worker-api-object-capability.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Align worker API gate with dynamic object transfer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          target = Path("scripts/check-worker-api-contract.mjs")
+          source = target.read_text(encoding="utf-8")
+
+          replacements = [
+              ('  "objectTransferAvailable: false",\n  "queueDeliveryAvailable: false",',
+               '  "objectTransferAvailable",\n  \'objects: "/api/v1/worker/objects"\',\n  "queueDeliveryAvailable: false",'),
+              ('  \'service: "evavo-vector-studio-worker-control"\',\n  "workerRuntimeView(runtimeValue)",',
+               '  \'service: "evavo-vector-studio-worker-control"\',\n  "getWorkerObjectStoreRuntime",\n  "workerObjectRuntimeView(objectRuntime)",\n  "workerRuntimeView(runtimeValue, objectRuntime)",'),
+              ('  "workerLeaseResponse(leased)",\n  "objectTransferAvailable: false",',
+               '  "workerLeaseResponse(leased)",\n  "getWorkerObjectStoreRuntime",\n  "objectTransferAvailable: objectRuntime.objectTransferAvailable",\n  \'objectTransferEndpoint: "/api/v1/worker/objects"\','),
+              ('  "objectTransferAvailable: false",\n  "queueDeliveryAvailable: false",\n  "remoteExecutionAvailable: false",\n  "run-batch",',
+               '  "objectTransferAvailable: configured-runtime-dependent",\n  "queueDeliveryAvailable: false",\n  "remoteExecutionAvailable: false",\n  "/api/v1/worker/objects",\n  "run-batch",'),
+              ('    "/api/v1/worker/jobs/{jobId}/acknowledge-cancellation",\n  ],\n  idempotentCompletionReplay: true,\n  objectTransferAvailable: false,',
+               '    "/api/v1/worker/jobs/{jobId}/acknowledge-cancellation",\n    "/api/v1/worker/objects",\n  ],\n  idempotentCompletionReplay: true,\n  objectTransferAvailable: "configured-runtime-dependent",'),
+          ]
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise SystemExit(f"WORKER_API_CAPABILITY_ANCHOR_INVALID:{old[:50]}:{source.count(old)}")
+              source = source.replace(old, new, 1)
+          target.write_text(source, encoding="utf-8")
+          PY
+          grep -Fq 'workerRuntimeView(runtimeValue, objectRuntime)' scripts/check-worker-api-contract.mjs
+          grep -Fq 'objectTransferAvailable: "configured-runtime-dependent"' scripts/check-worker-api-contract.mjs
+          git diff --check
+
+      - name: Commit alignment and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-worker-api-object-capability.yml \
+            .github/worker-api-object-capability.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "test(worker-api): align dynamic object transfer capability"
+          git pull --rebase origin main
+          git push origin HEAD:main
