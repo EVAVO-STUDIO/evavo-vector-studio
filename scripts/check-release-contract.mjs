@@ -48,11 +48,21 @@ const packagePaths = [
   "packages/raster-engine/package.json",
   "packages/motion-engine/package.json",
   "packages/lottie-engine/package.json",
+  "packages/job-engine/package.json",
+  "packages/job-control/package.json",
+  "packages/worker-engine/package.json",
+  "packages/worker-protocol/package.json",
+  "packages/worker-client/package.json",
+  "packages/vector-jobs/package.json",
+  "workers/local-worker/package.json",
+  "workers/http-worker/package.json",
   "packages/cli/package.json",
   "packages/mcp/package.json",
   "apps/web/package.json",
 ];
-const packageDocuments = await Promise.all(packagePaths.map(async (relativePath) => [relativePath, await readJson(relativePath)]));
+const packageDocuments = await Promise.all(
+  packagePaths.map(async (relativePath) => [relativePath, await readJson(relativePath)]),
+);
 
 const releaseVersion = rootPackage?.version;
 if (typeof releaseVersion !== "string" || !/^\d+\.\d+\.\d+$/.test(releaseVersion)) {
@@ -95,7 +105,9 @@ const files = {
   qualityDocs: "docs/QUALITY-EVIDENCE.md",
   inputSafetyDocs: "docs/INPUT-SAFETY.md",
 };
-const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])));
+const sources = Object.fromEntries(
+  await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
+);
 
 requireTokens(files.coreIndex, sources.coreIndex, [
   'export * from "./difference-artifact-verification.js"',
@@ -260,5 +272,6 @@ process.stdout.write(`${JSON.stringify({
   ok: true,
   releaseVersion,
   contractVersion: "1.4",
+  checkedPackages: packagePaths,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
