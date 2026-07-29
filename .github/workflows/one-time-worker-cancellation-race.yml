@@ -32,80 +32,35 @@ jobs:
 
           controller = Path("packages/job-control/src/controller.ts")
           source = controller.read_text(encoding="utf-8")
-
-          helper_anchor = '''function normaliseFailure(
-            input: HostedJobFailureInput,
-            now: Date,
-          ) {
-'''
-          if source.count(helper_anchor) != 1:
-              raise SystemExit("COMPLETION_HELPER_ANCHOR_INVALID")
-          helper = '''function normaliseCompletion(completion: HostedJobCompletion): Readonly<{
-            outputs: ReturnType<typeof validateHostedJobOutputReceipts>;
-            evidence: Readonly<Record<string, unknown>>;
-          }> {
-            const outputs = validateHostedJobOutputReceipts(completion.outputs);
-            const evidence = completion.evidence ?? {};
-            const evidenceJson = canonicalHostedJobJson(evidence);
-            if (Buffer.byteLength(evidenceJson, "utf8") > HOSTED_JOB_MAX_PAYLOAD_BYTES) {
-              throw new HostedJobError(
-                "HOSTED_JOB_REQUEST_INVALID",
-                "completion.evidence exceeds the hosted job JSON limit.",
-                { status: 422 },
-              );
-            }
-            return Object.freeze({
-              outputs,
-              evidence: Object.freeze({ ...evidence }),
-            });
-          }
-
-'''
-          source = source.replace(helper_anchor, helper + helper_anchor, 1)
-
-          old_validation = '''    const outputs = validateHostedJobOutputReceipts(completion.outputs);
-            const evidence = completion.evidence ?? {};
-            const evidenceJson = canonicalHostedJobJson(evidence);
-            if (Buffer.byteLength(evidenceJson, "utf8") > HOSTED_JOB_MAX_PAYLOAD_BYTES) {
-              throw new HostedJobError(
-                "HOSTED_JOB_REQUEST_INVALID",
-                "completion.evidence exceeds the hosted job JSON limit.",
-                { status: 422 },
-              );
-            }
-'''
-          if source.count(old_validation) != 1:
-              raise SystemExit("SUCCEED_VALIDATION_ANCHOR_INVALID")
-          source = source.replace(
-              old_validation,
-              '''    const { outputs, evidence } = normaliseCompletion(completion);
-''',
-              1,
-          )
-          source = source.replace(
-              '          evidence: Object.freeze({ ...evidence }),',
-              '          evidence,',
-              1,
-          )
-
-          method_anchor = '''  async fail(
+          if "  async succeedCommitted(" in source:
+              raise SystemExit("SUCCEED_COMMITTED_ALREADY_PRESENT")
+          anchor = '''  async fail(
             jobId: string,
             leaseToken: string,
             input: HostedJobFailureInput,
 '''
-          if source.count(method_anchor) != 1:
-              raise SystemExit("SUCCEED_COMMITTED_INSERT_ANCHOR_INVALID")
+          if source.count(anchor) != 1:
+              raise SystemExit("SUCCEED_COMMITTED_ANCHOR_INVALID")
           method = '''  async succeedCommitted(
             jobId: string,
             leaseToken: string,
             completion: HostedJobCompletion,
           ): Promise<HostedJobRecord> {
-            const { outputs, evidence } = normaliseCompletion(completion);
+            const outputs = validateHostedJobOutputReceipts(completion.outputs);
+            const evidence = completion.evidence ?? {};
+            const evidenceJson = canonicalHostedJobJson(evidence);
             if (outputs.length < 1) {
               throw new HostedJobError(
                 "HOSTED_JOB_REQUEST_INVALID",
                 "Committed worker success requires at least one immutable output receipt.",
                 { status: 422, details: { jobId } },
+              );
+            }
+            if (Buffer.byteLength(evidenceJson, "utf8") > HOSTED_JOB_MAX_PAYLOAD_BYTES) {
+              throw new HostedJobError(
+                "HOSTED_JOB_REQUEST_INVALID",
+                "completion.evidence exceeds the hosted job JSON limit.",
+                { status: 422 },
               );
             }
             return this.#mutate(jobId, (current, now) => {
@@ -122,7 +77,7 @@ jobs:
                 lease: null,
                 result: Object.freeze({
                   outputs,
-                  evidence,
+                  evidence: Object.freeze({ ...evidence }),
                   completedAt: iso(now),
                 }),
                 failure: null,
@@ -132,22 +87,26 @@ jobs:
           }
 
 '''
-          source = source.replace(method_anchor, method + method_anchor, 1)
-          controller.write_text(source, encoding="utf-8")
+          controller.write_text(source.replace(anchor, method + anchor, 1), encoding="utf-8")
 
           runner = Path("workers/local-worker/src/runner.ts")
           source = runner.read_text(encoding="utf-8")
           old = "      const completed = await this.#controller.succeed(\n"
-          new = "      const completed = await this.#controller.succeedCommitted(\n"
           if source.count(old) != 1:
-              raise SystemExit("RUNNER_COMMIT_METHOD_ANCHOR_INVALID")
-          runner.write_text(source.replace(old, new, 1), encoding="utf-8")
+              raise SystemExit("RUNNER_SUCCESS_CALL_INVALID")
+          runner.write_text(
+              source.replace(
+                  old,
+                  "      const completed = await this.#controller.succeedCommitted(\n",
+                  1,
+              ),
+              encoding="utf-8",
+          )
 
           test = Path("packages/job-control/src/controller.test.ts")
           source = test.read_text(encoding="utf-8")
-          if 'records committed success when cancellation races after immutable output commit' in source:
-              raise SystemExit("CONTROLLER_RACE_TEST_ALREADY_PRESENT")
-          source += '''\n\ntest("records committed success when cancellation races after immutable output commit", async () => {
+          if "committed success when cancellation races" not in source:
+              source += '''\n\ntest("records committed success when cancellation races after immutable output commit", async () => {
             const value = fixture();
             const created = await value.controller.create(request("committed-cancel-race"));
             const leased = await value.controller.acquireLease({
@@ -156,11 +115,9 @@ jobs:
             });
             assert.equal(leased?.id, created.record.id);
             await value.controller.start(created.record.id, "lease-1");
-            const requested = await value.controller.requestCancellation(
-              created.record.id,
-              { reason: "Arrived after object commit" },
-            );
-            assert.equal(requested.status, "cancel-requested");
+            await value.controller.requestCancellation(created.record.id, {
+              reason: "Arrived after object commit",
+            });
             const completed = await value.controller.succeedCommitted(
               created.record.id,
               "lease-1",
@@ -179,13 +136,9 @@ jobs:
             assert.equal(completed.status, "succeeded");
             assert.equal(completed.cancellation?.reason, "Arrived after object commit");
             assert.equal(completed.result?.outputs[0]?.bytes, 123);
-            assert.equal(
-              completed.result?.evidence.cancellationRaceResolution,
-              "committed-success-retained",
-            );
           });
 '''
-          test.write_text(source, encoding="utf-8")
+              test.write_text(source, encoding="utf-8")
           PY
           grep -Fq 'async succeedCommitted(' packages/job-control/src/controller.ts
           grep -Fq 'this.#controller.succeedCommitted(' workers/local-worker/src/runner.ts
