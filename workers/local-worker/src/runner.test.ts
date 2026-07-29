@@ -4,12 +4,14 @@ import test from "node:test";
 import {
   HostedJobController,
   MemoryHostedJobStore,
+  type HostedJobRecord,
 } from "@evavo/job-control";
 import {
   MemoryVectorObjectStore,
   VectorWorkerError,
   createVectorWorkerExecutor,
   type VectorWorkerExecutor,
+  type WorkerExecutionResult,
 } from "@evavo/worker-engine";
 import { LocalVectorWorker } from "./runner.js";
 
@@ -51,7 +53,7 @@ function optimiseRequest(
   });
 }
 
-function worker(
+function localWorker(
   controller: HostedJobController,
   executor: VectorWorkerExecutor,
 ) {
@@ -64,6 +66,17 @@ function worker(
   });
 }
 
+function testExecutor(
+  execute: (
+    job: HostedJobRecord,
+  ) => Promise<WorkerExecutionResult>,
+): VectorWorkerExecutor {
+  return Object.freeze({
+    supportedOperations: Object.freeze(["optimise-svg"] as const),
+    execute,
+  });
+}
+
 test("leases, executes and records receipt-backed local work", async () => {
   const source = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Mark</title><path d="M2 2H18V18H2Z"/></svg>';
   const fixture = controllerFixture();
@@ -72,7 +85,7 @@ test("leases, executes and records receipt-backed local work", async () => {
   const created = await fixture.controller.create(
     optimiseRequest("optimise-one", source),
   );
-  const local = worker(
+  const local = localWorker(
     fixture.controller,
     createVectorWorkerExecutor(objects),
   );
@@ -103,32 +116,29 @@ test("retains committed success when cancellation races after executor commit", 
     maxAttempts: 1,
     payload: {},
   });
-  const executor: VectorWorkerExecutor = Object.freeze({
-    supportedOperations: Object.freeze(["optimise-svg"]),
-    async execute(job) {
-      await fixture.controller.requestCancellation(job.id, {
-        reason: "Arrived after immutable commit",
-      });
-      return Object.freeze({
-        jobId: job.id,
-        operation: "optimise-svg",
-        workerContractVersion: "1.0",
-        outputs: Object.freeze([
-          Object.freeze({
-            path: "memory://output/committed.svg",
-            mimeType: "image/svg+xml",
-            bytes: 100,
-            sha256: "c".repeat(64),
-          }),
-        ]),
-        evidence: Object.freeze({
-          cancellationRaceResolution: "committed-success-retained",
-          approval: "human-review-required",
+  const executor = testExecutor(async (job) => {
+    await fixture.controller.requestCancellation(job.id, {
+      reason: "Arrived after immutable commit",
+    });
+    return Object.freeze({
+      jobId: job.id,
+      operation: "optimise-svg",
+      workerContractVersion: "1.0",
+      outputs: Object.freeze([
+        Object.freeze({
+          path: "memory://output/committed.svg",
+          mimeType: "image/svg+xml",
+          bytes: 100,
+          sha256: "c".repeat(64),
         }),
-      });
-    },
+      ]),
+      evidence: Object.freeze({
+        cancellationRaceResolution: "committed-success-retained",
+        approval: "human-review-required",
+      }),
+    });
   });
-  const result = await worker(fixture.controller, executor).runOne();
+  const result = await localWorker(fixture.controller, executor).runOne();
   assert.equal(result.outcome, "succeeded");
   assert.equal(result.job?.id, created.record.id);
   assert.equal(result.job?.status, "succeeded");
@@ -152,17 +162,14 @@ test("requeues retryable execution failure and reports stable evidence", async (
     maxAttempts: 2,
     payload: {},
   });
-  const executor: VectorWorkerExecutor = Object.freeze({
-    supportedOperations: Object.freeze(["optimise-svg"]),
-    async execute() {
-      throw new VectorWorkerError(
-        "TEST_TRANSIENT_EXECUTION_FAILURE",
-        "Transient test failure",
-        { retryable: true },
-      );
-    },
+  const executor = testExecutor(async () => {
+    throw new VectorWorkerError(
+      "TEST_TRANSIENT_EXECUTION_FAILURE",
+      "Transient test failure",
+      { retryable: true },
+    );
   });
-  const result = await worker(fixture.controller, executor).runOne();
+  const result = await localWorker(fixture.controller, executor).runOne();
   assert.equal(result.outcome, "queued");
   assert.equal(result.job?.status, "queued");
   assert.equal(result.job?.attempts, 1);
@@ -172,14 +179,11 @@ test("requeues retryable execution failure and reports stable evidence", async (
 
 test("exits an idle polling loop deterministically", async () => {
   const fixture = controllerFixture();
-  const executor: VectorWorkerExecutor = Object.freeze({
-    supportedOperations: Object.freeze(["optimise-svg"]),
-    async execute() {
-      throw new Error("The idle worker must not execute a job.");
-    },
+  const executor = testExecutor(async () => {
+    throw new Error("The idle worker must not execute a job.");
   });
   const results: string[] = [];
-  const summary = await worker(fixture.controller, executor).run({
+  const summary = await localWorker(fixture.controller, executor).run({
     idleExitMs: 0,
     onResult: (result) => {
       results.push(result.outcome);
