@@ -1,0 +1,137 @@
+name: One-time object transfer documentation patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/object-transfer-docs.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-object-transfer-docs
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Publish object transfer architecture and README
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str, code: str) -> None:
+              target = Path(path)
+              source = target.read_text(encoding="utf-8")
+              if source.count(old) != 1:
+                  raise SystemExit(f"{code}:{source.count(old)}")
+              target.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          readme_anchor = '''The Local worker is available for workstation and self-hosted execution. Distributed remote execution remains unavailable. See [`docs/LOCAL-WORKER.md`](docs/LOCAL-WORKER.md).
+
+          ## Quick start on Windows PowerShell
+          '''
+          readme_section = '''The Local worker is available for workstation and self-hosted execution. Distributed remote execution remains unavailable. See [`docs/LOCAL-WORKER.md`](docs/LOCAL-WORKER.md).
+
+          ### Worker object transfer
+
+          Worker object-transfer contract `1.0` provides separately authenticated immutable binary upload and download when a persistent object-store runtime is explicitly configured.
+
+          - `POST /api/v1/worker/objects` accepts deterministic `EVAVOOB1` transactions;
+          - `GET /api/v1/worker/objects?key={objectKey}` returns raw bytes with key, byte-count and SHA-256 headers;
+          - up to 16 objects, 32 MiB per object and 64 MiB per transaction;
+          - atomic new-file-only commits;
+          - complete content replay and concurrent exact-commit reconciliation;
+          - changed or partial immutable overlap rejection;
+          - no filesystem paths or generated bodies in JSON;
+          - production file mode fails closed without `VECTOR_OBJECT_FILE_STORE_PERSISTENT=true`.
+
+          The current file adapter reports `mimeTypeVerification: content-only` on retained replay because original MIME metadata is not stored beside raw bytes. Provider-backed cloud object storage, queue delivery and managed remote execution remain unavailable. See [`docs/OBJECT-TRANSFER.md`](docs/OBJECT-TRANSFER.md).
+
+          ## Quick start on Windows PowerShell
+          '''
+          replace_once("README.md", readme_anchor, readme_section, "README_TRANSFER_ANCHOR_INVALID")
+
+          replace_once(
+              "README.md",
+              "packages/worker-protocol  authenticated remote worker control contract\nworkers/local-worker      local lease processor and machine-readable CLI",
+              "packages/worker-protocol  authenticated worker control and binary transfer contracts\npackages/worker-client    secret-safe worker HTTP control client\nworkers/local-worker      local lease processor and machine-readable CLI\nworkers/http-worker       HTTP-coordinated shared-store worker",
+              "README_LAYOUT_ANCHOR_INVALID",
+          )
+          replace_once(
+              "README.md",
+              "- [`docs/WORKER-API.md`](docs/WORKER-API.md)\n",
+              "- [`docs/WORKER-API.md`](docs/WORKER-API.md)\n- [`docs/OBJECT-TRANSFER.md`](docs/OBJECT-TRANSFER.md)\n",
+              "README_DOC_LINK_ANCHOR_INVALID",
+          )
+
+          architecture_anchor = '''Local worker execution is available. Distributed queue delivery, shared remote storage and autoscaled remote workers remain unavailable.
+
+          ## Evidence and approval
+          '''
+          architecture_section = '''Local worker execution is available. Distributed queue delivery, shared remote storage and autoscaled remote workers remain unavailable.
+
+          ### Worker object transfer
+
+          The worker object-transfer API separates binary object movement from JSON job control:
+
+          1. require the independent worker bearer token;
+          2. fail closed unless `VECTOR_OBJECT_STORE_MODE=file` is deliberately configured;
+          3. require a production persistent-volume acknowledgement for file mode;
+          4. decode one bounded canonical `EVAVOOB1` transaction;
+          5. verify transaction and per-object SHA-256 before storage;
+          6. inspect retained immutable keys before writing;
+          7. atomically commit all new objects or none;
+          8. return complete content replay without overwriting;
+          9. reject partial or changed immutable revisions;
+          10. return raw downloads with key, byte-count and SHA-256 headers.
+
+          The current file adapter retains raw bytes but not authoritative original MIME metadata. File-backed replays can therefore prove content identity while reporting `mimeTypeVerification: content-only`.
+
+          This object transfer enables a future HTTP worker to fetch sources and publish outputs without a shared volume. The current HTTP worker still uses shared-store execution until its client adopts and verifies the binary transfer protocol end to end.
+
+          ## Evidence and approval
+          '''
+          replace_once(
+              "docs/ARCHITECTURE.md",
+              architecture_anchor,
+              architecture_section,
+              "ARCHITECTURE_TRANSFER_ANCHOR_INVALID",
+          )
+          replace_once(
+              "docs/ARCHITECTURE.md",
+              "- local worker outputs commit atomically with no-overwrite semantics;\n- related files commit atomically;",
+              "- local worker outputs commit atomically with no-overwrite semantics;\n- object transfer verifies canonical manifests, transaction hashes and object hashes;\n- object-transfer replays reject partial and changed immutable revisions;\n- related files commit atomically;",
+              "ARCHITECTURE_SECURITY_ANCHOR_INVALID",
+          )
+          PY
+          grep -Fq '### Worker object transfer' README.md
+          grep -Fq 'POST /api/v1/worker/objects' README.md
+          grep -Fq '### Worker object transfer' docs/ARCHITECTURE.md
+          grep -Fq 'object transfer' docs/ARCHITECTURE.md
+          git diff --check
+
+      - name: Commit documentation and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-object-transfer-docs.yml \
+            .github/object-transfer-docs.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "docs(object-transfer): publish API architecture"
+          git pull --rebase origin main
+          git push origin HEAD:main
