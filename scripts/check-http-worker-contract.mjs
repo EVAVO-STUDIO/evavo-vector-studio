@@ -44,14 +44,21 @@ const files = {
   tsconfig: "workers/http-worker/tsconfig.json",
   errors: "workers/http-worker/src/errors.ts",
   runner: "workers/http-worker/src/runner.ts",
+  objectStore: "workers/http-worker/src/http-object-store.ts",
   cli: "workers/http-worker/src/index.ts",
   runnerTests: "workers/http-worker/src/runner.test.ts",
+  runnerCapabilityTests: "workers/http-worker/src/runner-capabilities.test.ts",
+  objectStoreTests: "workers/http-worker/src/http-object-store.test.ts",
   cliTests: "workers/http-worker/src/index.test.ts",
+  cliHttpTests: "workers/http-worker/src/index-http-mode.test.ts",
   completionReplay: "packages/job-control/src/completion-replay.ts",
   controllerErrors: "packages/job-control/src/errors.ts",
   completionTests: "packages/job-control/src/completion-replay.test.ts",
   completeRoute: "apps/web/app/api/v1/worker/jobs/[jobId]/complete/route.ts",
+  workerClient: "packages/worker-client/src/object-client.ts",
   docs: "docs/HTTP-WORKER.md",
+  objectDocs: "docs/OBJECT-TRANSFER.md",
+  clientDocs: "docs/WORKER-CLIENT.md",
   environment: ".env.example",
   workflow: ".github/workflows/http-worker-contract.yml",
 };
@@ -107,12 +114,14 @@ requireTokens(files.tsconfig, sources.tsconfig, [
 requireTokens(files.errors, sources.errors, [
   '"HTTP_WORKER_COMPLETION_UNCERTAIN"',
   '"HTTP_WORKER_CONTROL_UNCERTAIN"',
+  '"HTTP_WORKER_OBJECT_TRANSFER_UNAVAILABLE"',
   "VectorWorkerClientError",
   "VectorWorkerError",
   "httpWorkerFailure",
 ]);
 requireTokens(files.runner, sources.runner, [
   'HTTP_WORKER_CONTRACT_VERSION = "1.0"',
+  'HttpWorkerObjectTransport = "shared-file" | "worker-api"',
   "class HttpVectorWorker",
   "acquireLease({",
   "this.#client.start(",
@@ -127,9 +136,11 @@ requireTokens(files.runner, sources.runner, [
   '"VECTOR_WORKER_CLIENT_RESPONSE_INVALID"',
   '"HTTP_WORKER_COMPLETION_UNCERTAIN"',
   '"control-uncertain"',
+  "objectTransport: HttpWorkerObjectTransport",
+  'execution: this.#config.objectTransport === "worker-api"',
   "receiptBackedCompletionReplay: true",
-  "sharedImmutableObjectStoreRequired: true",
-  "objectTransferAvailable: false",
+  'this.#config.objectTransport === "shared-file"',
+  'this.#config.objectTransport === "worker-api"',
   "queueDeliveryAvailable: false",
   "managedRemoteExecutionAvailable: false",
   "generatedBodiesInControlResponses: false",
@@ -137,11 +148,35 @@ requireTokens(files.runner, sources.runner, [
 ]);
 forbidTokens(files.runner, sources.runner, [
   '"VECTOR_WORKER_CLIENT_HTTP_FAILED",',
-  "objectTransferAvailable: true",
   "queueDeliveryAvailable: true",
   "managedRemoteExecutionAvailable: true",
   'approval: "approved"',
 ]);
+
+requireTokens(files.objectStore, sources.objectStore, [
+  'HTTP_OBJECT_STORE_CONTRACT_VERSION = "1.0"',
+  "class HttpVectorObjectStore",
+  "type VectorWorkerObjectClient",
+  "copyWrites",
+  "withRetries",
+  "safeToRetry",
+  '"VECTOR_WORKER_CLIENT_TIMEOUT"',
+  '"VECTOR_WORKER_CLIENT_NETWORK_FAILED"',
+  '"VECTOR_WORKER_CLIENT_RESPONSE_INVALID"',
+  '"VECTOR_WORKER_OBJECT_TRANSACTION_CONFLICT"',
+  "this.#client.downloadObject",
+  "this.#client.uploadObjects",
+  "exactUploadReplay: true",
+  "downloadSha256Verification: true",
+  "sharedFilesystemRequired: false",
+  "existingObjectsOverwritten: false",
+]);
+forbidTokens(files.objectStore, sources.objectStore, [
+  "console.log(",
+  "existingObjectsOverwritten: true",
+  "managedRemoteExecutionAvailable: true",
+]);
+
 requireTokens(files.cli, sources.cli, [
   "#!/usr/bin/env node",
   '"capabilities"',
@@ -149,16 +184,26 @@ requireTokens(files.cli, sources.cli, [
   '"run"',
   "VECTOR_WORKER_CONTROL_URL",
   "VECTOR_WORKER_API_TOKEN",
+  "VECTOR_HTTP_WORKER_OBJECT_STORE_MODE",
   "VECTOR_OBJECT_STORE_PATH",
   "VECTOR_WORKER_ID",
   "createVectorWorkerClient",
+  "createVectorWorkerObjectClient",
   "FileVectorObjectStore.open",
+  "new HttpVectorObjectStore",
+  "requireObjectTransfer",
+  'objectStoreMode must be file or http',
+  'objectTransport: objects.transport',
+  'objectTransferAvailable !== true',
+  '"object-download-attempts"',
+  '"object-upload-attempts"',
+  '"object-retry-ms"',
   "createVectorWorkerExecutor",
   'type: "http-worker-started"',
   'type: "http-worker-result"',
   'type: "http-worker-summary"',
-  "process.once(\"SIGINT\"",
-  "process.once(\"SIGTERM\"",
+  'process.once("SIGINT"',
+  'process.once("SIGTERM"',
   "tokenReturned: false",
   "generatedBodiesInConsole: false",
   "process.exitCode = 75",
@@ -169,6 +214,7 @@ forbidTokens(files.cli, sources.cli, [
   "tokenReturned: true",
   "generatedBodiesInConsole: true",
 ]);
+
 requireTokens(files.runnerTests, sources.runnerTests, [
   "returns idle without starting execution",
   "safely replays a lost completion response",
@@ -177,17 +223,38 @@ requireTokens(files.runnerTests, sources.runnerTests, [
   "HTTP_WORKER_COMPLETION_UNCERTAIN",
   "doesNotMatch(JSON.stringify(result), /<svg",
 ]);
+requireTokens(files.runnerCapabilityTests, sources.runnerCapabilityTests, [
+  "defaults to the existing shared-file transport",
+  "reports API transfer without claiming queue delivery",
+  "rejects unknown object transports",
+  '"http-coordinated-object-transfer"',
+]);
+requireTokens(files.objectStoreTests, sources.objectStoreTests, [
+  "retries a safe download transport failure",
+  "retries one exact copied upload",
+  "does not retry immutable transaction conflicts",
+  "maps missing downloads",
+  "stops before network access",
+  "worker-object-transfer-api",
+]);
 requireTokens(files.cliTests, sources.cliTests, [
   "fails closed when the worker control token is absent",
   "runs one idle HTTP-coordinated worker cycle",
   "VECTOR_WORKER_API_TOKEN is required",
   "doesNotMatch(result.stdout, new RegExp(TOKEN))",
 ]);
+requireTokens(files.cliHttpTests, sources.cliHttpTests, [
+  "runs an idle cycle in verified worker-api object mode",
+  "fails before lease acquisition when object transfer is unavailable",
+  "HTTP_WORKER_OBJECT_TRANSFER_UNAVAILABLE",
+  "objectTransferAvailable: true",
+  "objectTransferAvailable: false",
+]);
+
 requireTokens(files.completionReplay, sources.completionReplay, [
   "completeHostedJobIdempotently",
   "replayIfRetained",
-  "requestedIdentity",
-  "retainedIdentity",
+  "completionIdentity",
   '"HOSTED_JOB_COMPLETION_CONFLICT"',
   "controller.succeed(",
 ]);
@@ -206,21 +273,37 @@ requireTokens(files.completeRoute, sources.completeRoute, [
   "idempotentReplay: completed.replayed",
   "generatedBodiesAccepted: false",
 ]);
+requireTokens(files.workerClient, sources.workerClient, [
+  "createVectorWorkerObjectClient",
+  "downloadSha256Verification",
+]);
 requireTokens(files.docs, sources.docs, [
   "HTTP worker contract `1.0`",
   "evavo-vector-http-worker",
   "pnpm http-worker:run-once",
   "pnpm http-worker:run",
+  "Shared-file mode",
+  "Worker-API object mode",
+  "VECTOR_HTTP_WORKER_OBJECT_STORE_MODE",
+  "HTTP_WORKER_OBJECT_TRANSFER_UNAVAILABLE",
   "Receipt-backed completion reconciliation",
   "HOSTED_JOB_COMPLETION_CONFLICT",
   "HTTP_WORKER_COMPLETION_UNCERTAIN",
-  "objectTransferAvailable: false",
+  "objectTransport: shared-file | worker-api",
   "queueDeliveryAvailable: false",
   "managedRemoteExecutionAvailable: false",
+]);
+requireTokens(files.objectDocs, sources.objectDocs, [
+  "Worker object-transfer contract `1.0`",
+]);
+requireTokens(files.clientDocs, sources.clientDocs, [
+  "createVectorWorkerObjectClient",
+  "verifies SHA-256 before exposing bytes",
 ]);
 requireTokens(files.environment, sources.environment, [
   "VECTOR_WORKER_CONTROL_URL",
   "VECTOR_WORKER_API_TOKEN",
+  "VECTOR_HTTP_WORKER_OBJECT_STORE_MODE=file",
   "VECTOR_OBJECT_STORE_PATH",
 ]);
 requireTokens(files.workflow, sources.workflow, [
@@ -243,7 +326,8 @@ process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-http-worker-contract",
   ok: true,
   httpWorkerContractVersion: "1.0",
-  objectTransferAvailable: false,
+  objectTransports: ["shared-file", "worker-api"],
+  verifiedHttpObjectTransfer: true,
   queueDeliveryAvailable: false,
   managedRemoteExecutionAvailable: false,
   receiptBackedCompletionReplay: true,
