@@ -6,6 +6,7 @@ import {
   VECTOR_OBJECT_TRANSFER_CONTRACT_VERSION,
   VectorWorkerProtocolError,
   decodeVectorObjectTransaction,
+  readVectorObjectTransactionRequestBody,
   type DecodedVectorObjectTransaction,
 } from "@evavo/worker-protocol";
 import {
@@ -77,6 +78,7 @@ export function workerObjectRuntimeView(
       partialReplayRejected: true,
       changedContentRejected: true,
       generatedBodiesInJson: false,
+      boundedStreamingRequestRead: true,
       rawDownloadContentType: "application/octet-stream",
       mimeMetadataOnFileReplay: "content-only",
       productionFileStoreRequiresPersistentVolumeAcknowledgement: true,
@@ -135,28 +137,9 @@ export async function parseWorkerObjectTransaction(
       },
     );
   }
-  const body = new Uint8Array(await request.arrayBuffer());
-  if (body.byteLength < 1) {
-    throw new VectorWorkerProtocolError(
-      "VECTOR_WORKER_OBJECT_TRANSACTION_INVALID",
-      "The object transaction body is empty.",
-      { status: 400 },
-    );
-  }
-  if (body.byteLength > VECTOR_OBJECT_TRANSACTION_MAX_BYTES) {
-    throw new VectorWorkerProtocolError(
-      "VECTOR_WORKER_OBJECT_TRANSACTION_TOO_LARGE",
-      "The object transaction exceeds the transfer byte limit.",
-      {
-        status: 413,
-        details: {
-          bytes: body.byteLength,
-          maximum: VECTOR_OBJECT_TRANSACTION_MAX_BYTES,
-        },
-      },
-    );
-  }
-  return decodeVectorObjectTransaction(body);
+  return decodeVectorObjectTransaction(
+    await readVectorObjectTransactionRequestBody(request),
+  );
 }
 
 export function parseWorkerObjectKey(request: Request): string {
@@ -190,7 +173,7 @@ export function workerObjectDownloadResponse(object: StoredObject): Response {
     "content-disposition": `attachment; filename="${safeFilename}"`,
     "x-vector-object-transfer-contract":
       VECTOR_OBJECT_TRANSFER_CONTRACT_VERSION,
-    "x-vector-object-key": encodeURIComponent(object.objectKey),
+    "x-vector-object-key": object.objectKey,
     "x-vector-object-bytes": String(object.byteCount),
     "x-vector-object-sha256": object.sha256,
     "x-vector-object-stored-mime": object.mimeType,
