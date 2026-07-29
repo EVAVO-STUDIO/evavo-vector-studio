@@ -33,52 +33,26 @@ jobs:
           def replace_once(path: str, old: str, new: str, code: str) -> None:
               target = Path(path)
               source = target.read_text(encoding="utf-8")
-              if source.count(old) != 1:
-                  raise SystemExit(f"{code}:{source.count(old)}")
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{code}:{count}")
               target.write_text(source.replace(old, new, 1), encoding="utf-8")
 
-          quality_anchor = '''      - name: Verify worker control client contract
-                if: ${{ !cancelled() }}
-                shell: bash
-                run: |
-                  mkdir -p .ci
-                  set -o pipefail
-                  node scripts/check-worker-client-contract.mjs 2>&1 | tee .ci/worker-client-contract.log
-
-              - name: Install dependencies
-          '''
-          quality_new = '''      - name: Verify worker control client contract
-                if: ${{ !cancelled() }}
-                shell: bash
-                run: |
-                  mkdir -p .ci
-                  set -o pipefail
-                  node scripts/check-worker-client-contract.mjs 2>&1 | tee .ci/worker-client-contract.log
-
-              - name: Verify HTTP-coordinated worker contract
-                if: ${{ !cancelled() }}
-                shell: bash
-                run: |
-                  mkdir -p .ci
-                  set -o pipefail
-                  node scripts/check-http-worker-contract.mjs 2>&1 | tee .ci/http-worker-contract.log
-
-              - name: Install dependencies
-          '''
           replace_once(
               ".github/workflows/quality.yml",
-              quality_anchor,
-              quality_new,
+              "      - name: Install dependencies\n",
+              "      - name: Verify HTTP-coordinated worker contract\n"
+              "        if: ${{ !cancelled() }}\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          mkdir -p .ci\n"
+              "          set -o pipefail\n"
+              "          node scripts/check-http-worker-contract.mjs 2>&1 | tee .ci/http-worker-contract.log\n\n"
+              "      - name: Install dependencies\n",
               "QUALITY_HTTP_GATE_ANCHOR_INVALID",
           )
 
-          readme_anchor = '''The Local worker is available for workstation and self-hosted execution. Distributed remote execution remains unavailable. See [`docs/LOCAL-WORKER.md`](docs/LOCAL-WORKER.md).
-
-          ## Quick start on Windows PowerShell
-          '''
-          readme_section = '''The Local worker is available for workstation and self-hosted execution. Distributed remote execution remains unavailable. See [`docs/LOCAL-WORKER.md`](docs/LOCAL-WORKER.md).
-
-          ### HTTP-coordinated worker execution
+          readme_section = '''### HTTP-coordinated worker execution
 
           The `evavo-vector-http-worker` process coordinates leases through the authenticated Worker Control API while executing against a trusted shared immutable object store.
 
@@ -94,7 +68,7 @@ jobs:
           ```powershell
           $env:VECTOR_WORKER_CONTROL_URL = "https://vector.evavo.com.au"
           $env:VECTOR_WORKER_API_TOKEN = "replace-with-a-worker-only-secret"
-          $env:VECTOR_OBJECT_STORE_PATH = "C:\EVAVO\VectorWorker\objects"
+          $env:VECTOR_OBJECT_STORE_PATH = "C:\\EVAVO\\VectorWorker\\objects"
           $env:VECTOR_WORKER_ID = "greg-workstation-01"
 
           pnpm http-worker:capabilities
@@ -104,45 +78,36 @@ jobs:
 
           See [`docs/HTTP-WORKER.md`](docs/HTTP-WORKER.md).
 
-          ## Quick start on Windows PowerShell
           '''
-          replace_once("README.md", readme_anchor, readme_section, "README_HTTP_SECTION_ANCHOR_INVALID")
+          # Remove Python source indentation retained inside the triple-quoted block.
+          readme_section = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in readme_section.splitlines()
+          ) + "\n"
           replace_once(
               "README.md",
-              '''packages/worker-protocol  authenticated remote worker control contract
-          workers/local-worker      local lease processor and machine-readable CLI
-          packages/cli              single-file and durable batch automation
-          ''',
-              '''packages/worker-protocol  authenticated remote worker control contract
-          packages/worker-client    bounded secret-safe worker control client
-          workers/local-worker      local lease processor and machine-readable CLI
-          workers/http-worker       HTTP-coordinated shared-store worker
-          packages/cli              single-file and durable batch automation
-          ''',
+              "## Quick start on Windows PowerShell\n",
+              readme_section + "## Quick start on Windows PowerShell\n",
+              "README_HTTP_SECTION_ANCHOR_INVALID",
+          )
+          replace_once(
+              "README.md",
+              "workers/local-worker      local lease processor and machine-readable CLI\n",
+              "packages/worker-client    bounded secret-safe worker control client\n"
+              "workers/local-worker      local lease processor and machine-readable CLI\n"
+              "workers/http-worker       HTTP-coordinated shared-store worker\n",
               "README_LAYOUT_ANCHOR_INVALID",
           )
           replace_once(
               "README.md",
-              '''- [`docs/WORKER-API.md`](docs/WORKER-API.md)
-
-          ## Deployment boundary
-          ''',
-              '''- [`docs/WORKER-API.md`](docs/WORKER-API.md)
-          - [`docs/WORKER-CLIENT.md`](docs/WORKER-CLIENT.md)
-          - [`docs/HTTP-WORKER.md`](docs/HTTP-WORKER.md)
-
-          ## Deployment boundary
-          ''',
+              "- [`docs/WORKER-API.md`](docs/WORKER-API.md)\n",
+              "- [`docs/WORKER-API.md`](docs/WORKER-API.md)\n"
+              "- [`docs/WORKER-CLIENT.md`](docs/WORKER-CLIENT.md)\n"
+              "- [`docs/HTTP-WORKER.md`](docs/HTTP-WORKER.md)\n",
               "README_DOCS_ANCHOR_INVALID",
           )
 
-          architecture_anchor = '''Local worker execution is available. Distributed queue delivery, shared remote storage and autoscaled remote workers remain unavailable.
-
-          ## Evidence and approval
-          '''
-          architecture_section = '''Local worker execution is available. Distributed queue delivery, shared remote storage and autoscaled remote workers remain unavailable.
-
-          ### HTTP-coordinated worker
+          architecture_section = '''### HTTP-coordinated worker
 
           `@evavo/http-worker` combines the bounded `@evavo/worker-client`, the governed worker executor and a trusted immutable object store. It acquires and starts leases over HTTP, renews heartbeats, observes cancellation, executes the same five production operations and returns receipt-only completion evidence.
 
@@ -150,67 +115,54 @@ jobs:
 
           HTTP coordination is available. Object transfer, queue delivery, distributed storage guarantees and managed remote execution remain unavailable. The API and worker currently require trusted access to the same immutable object namespace.
 
-          ## Evidence and approval
           '''
+          architecture_section = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in architecture_section.splitlines()
+          ) + "\n"
           replace_once(
               "docs/ARCHITECTURE.md",
-              architecture_anchor,
-              architecture_section,
+              "## Evidence and approval\n",
+              architecture_section + "## Evidence and approval\n",
               "ARCHITECTURE_HTTP_SECTION_ANCHOR_INVALID",
           )
           replace_once(
               "docs/ARCHITECTURE.md",
-              '''- a local worker retained exact input and output receipts under a valid lease.
-          ''',
-              '''- a local worker retained exact input and output receipts under a valid lease;
-          - an HTTP-coordinated worker retained exact completion identity across a lost response.
-          ''',
+              "- a local worker retained exact input and output receipts under a valid lease.\n",
+              "- a local worker retained exact input and output receipts under a valid lease;\n"
+              "- an HTTP-coordinated worker retained exact completion identity across a lost response.\n",
               "ARCHITECTURE_EVIDENCE_ANCHOR_INVALID",
           )
           replace_once(
               "docs/ARCHITECTURE.md",
-              '''- local execution proves distributed deployment readiness.
-          ''',
-              '''- local execution proves distributed deployment readiness;
-          - HTTP coordination proves object transfer, queue delivery or managed remote deployment.
-          ''',
+              "- local execution proves distributed deployment readiness.\n",
+              "- local execution proves distributed deployment readiness;\n"
+              "- HTTP coordination proves object transfer, queue delivery or managed remote deployment.\n",
               "ARCHITECTURE_NONCLAIM_ANCHOR_INVALID",
           )
           replace_once(
               "docs/ARCHITECTURE.md",
-              '''- local worker outputs commit atomically with no-overwrite semantics;
-          - related files commit atomically;
-          ''',
-              '''- local worker outputs commit atomically with no-overwrite semantics;
-          - worker control uses a separate server-only token and redacted lease records;
-          - HTTP completion replay accepts only exact retained receipts and evidence;
-          - related files commit atomically;
-          ''',
+              "- local worker outputs commit atomically with no-overwrite semantics;\n",
+              "- local worker outputs commit atomically with no-overwrite semantics;\n"
+              "- worker control uses a separate server-only token and redacted lease records;\n"
+              "- HTTP completion replay accepts only exact retained receipts and evidence;\n",
               "ARCHITECTURE_SECURITY_ANCHOR_INVALID",
           )
           replace_once(
               "docs/ARCHITECTURE.md",
-              '''The repository now has restartable local batch execution, a provider-neutral hosted job record control plane and an executable local worker. A released hosted EVAVO application still needs:
-          ''',
-              '''The repository now has restartable local batch execution, a provider-neutral hosted job record control plane, an executable local worker and an HTTP-coordinated shared-store worker. A released hosted EVAVO application still needs:
-          ''',
+              "The repository now has restartable local batch execution, a provider-neutral hosted job record control plane and an executable local worker. A released hosted EVAVO application still needs:\n",
+              "The repository now has restartable local batch execution, a provider-neutral hosted job record control plane, an executable local worker and an HTTP-coordinated shared-store worker. A released hosted EVAVO application still needs:\n",
               "ARCHITECTURE_DEPLOYMENT_ANCHOR_INVALID",
           )
 
-          hosted_anchor = '''See [`LOCAL-WORKER.md`](LOCAL-WORKER.md).
-
-          ## Worker boundary
-          '''
-          hosted_section = '''See [`LOCAL-WORKER.md`](LOCAL-WORKER.md).
-
-          ## HTTP-coordinated worker
+          hosted_section = '''## HTTP-coordinated worker
 
           A separately deployed `evavo-vector-http-worker` can acquire leases through the Worker Control API and execute the same governed operations against a trusted shared immutable object store.
 
           ```powershell
           $env:VECTOR_WORKER_CONTROL_URL = "https://vector.evavo.com.au"
           $env:VECTOR_WORKER_API_TOKEN = "replace-with-a-worker-only-secret"
-          $env:VECTOR_OBJECT_STORE_PATH = "C:\EVAVO\VectorWorker\objects"
+          $env:VECTOR_OBJECT_STORE_PATH = "C:\\EVAVO\\VectorWorker\\objects"
           pnpm http-worker:run
           ```
 
@@ -218,58 +170,47 @@ jobs:
 
           This surface coordinates execution but does not provide object transfer, queue delivery, autoscaling or managed remote execution. See [`HTTP-WORKER.md`](HTTP-WORKER.md).
 
-          ## Worker boundary
           '''
-          replace_once("docs/HOSTED-JOBS.md", hosted_anchor, hosted_section, "HOSTED_HTTP_ANCHOR_INVALID")
+          hosted_section = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in hosted_section.splitlines()
+          ) + "\n"
+          replace_once(
+              "docs/HOSTED-JOBS.md",
+              "## Worker boundary\n",
+              hosted_section + "## Worker boundary\n",
+              "HOSTED_HTTP_ANCHOR_INVALID",
+          )
 
           replace_once(
               "docs/API.md",
-              '''Completion accepts at least one output receipt and compact evidence. Generated raster, SVG, Lottie or archive bodies are never accepted as a substitute for object storage.
-          ''',
-              '''Completion accepts at least one output receipt and compact evidence. Generated raster, SVG, Lottie or archive bodies are never accepted as a substitute for object storage.
-
-          Exact receipt-backed completion replay is idempotent. A changed replay fails with `HOSTED_JOB_COMPLETION_CONFLICT`, allowing an HTTP worker to reconcile a lost response without duplicating immutable output.
-          ''',
+              "Completion accepts at least one output receipt and compact evidence. Generated raster, SVG, Lottie or archive bodies are never accepted as a substitute for object storage.\n",
+              "Completion accepts at least one output receipt and compact evidence. Generated raster, SVG, Lottie or archive bodies are never accepted as a substitute for object storage.\n\n"
+              "Exact receipt-backed completion replay is idempotent. A changed replay fails with `HOSTED_JOB_COMPLETION_CONFLICT`, allowing an HTTP worker to reconcile a lost response without duplicating immutable output.\n",
               "API_COMPLETION_REPLAY_ANCHOR_INVALID",
           )
           replace_once(
               "docs/API.md",
-              '''See [`WORKER-API.md`](WORKER-API.md).
-
-          # Shared approval boundary
-          ''',
-              '''See [`WORKER-API.md`](WORKER-API.md).
-
-          The `evavo-vector-http-worker` consumes this control API while reading and writing a trusted shared immutable object store. It performs bounded heartbeats and completion reconciliation but does not claim HTTP object transfer or managed queue execution. See [`HTTP-WORKER.md`](HTTP-WORKER.md).
-
-          # Shared approval boundary
-          ''',
+              "# Shared approval boundary\n",
+              "The `evavo-vector-http-worker` consumes this control API while reading and writing a trusted shared immutable object store. It performs bounded heartbeats and completion reconciliation but does not claim HTTP object transfer or managed queue execution. See [`HTTP-WORKER.md`](HTTP-WORKER.md).\n\n"
+              "# Shared approval boundary\n",
               "API_HTTP_WORKER_ANCHOR_INVALID",
           )
 
-          release = Path("scripts/check-release-contract.mjs")
-          source = release.read_text(encoding="utf-8")
-          old = '''  "packages/lottie-engine/package.json",
-            "packages/cli/package.json",
-            "packages/mcp/package.json",
-            "apps/web/package.json",
-          ];'''
-          new = '''  "packages/lottie-engine/package.json",
-            "packages/job-engine/package.json",
-            "packages/job-control/package.json",
-            "packages/worker-engine/package.json",
-            "packages/worker-protocol/package.json",
-            "packages/worker-client/package.json",
-            "packages/vector-jobs/package.json",
-            "workers/local-worker/package.json",
-            "workers/http-worker/package.json",
-            "packages/cli/package.json",
-            "packages/mcp/package.json",
-            "apps/web/package.json",
-          ];'''
-          if source.count(old) != 1:
-              raise SystemExit(f"RELEASE_PACKAGE_LIST_ANCHOR_INVALID:{source.count(old)}")
-          release.write_text(source.replace(old, new, 1), encoding="utf-8")
+          replace_once(
+              "scripts/check-release-contract.mjs",
+              '  "packages/cli/package.json",\n',
+              '  "packages/job-engine/package.json",\n'
+              '  "packages/job-control/package.json",\n'
+              '  "packages/worker-engine/package.json",\n'
+              '  "packages/worker-protocol/package.json",\n'
+              '  "packages/worker-client/package.json",\n'
+              '  "packages/vector-jobs/package.json",\n'
+              '  "workers/local-worker/package.json",\n'
+              '  "workers/http-worker/package.json",\n'
+              '  "packages/cli/package.json",\n',
+              "RELEASE_PACKAGE_LIST_ANCHOR_INVALID",
+          )
           PY
           grep -Fq 'Verify HTTP-coordinated worker contract' .github/workflows/quality.yml
           grep -Fq 'HTTP-coordinated worker execution' README.md
