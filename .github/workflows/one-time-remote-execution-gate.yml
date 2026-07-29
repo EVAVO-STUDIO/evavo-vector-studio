@@ -1,0 +1,79 @@
+name: One-time remote execution gate extension
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/remote-execution-gate.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Pin full remote execution fixture into contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          target = Path("scripts/check-http-worker-contract.mjs")
+          source = target.read_text(encoding="utf-8")
+          old = '  cliHttpTests: "workers/http-worker/src/index-http-mode.test.ts",\n'
+          new = old + '  remoteExecutionTests: "workers/http-worker/src/remote-execution.test.ts",\n'
+          if source.count(old) != 1:
+              raise SystemExit(f"REMOTE_TEST_FILE_ANCHOR_INVALID:{source.count(old)}")
+          source = source.replace(old, new, 1)
+          anchor = '''requireTokens(files.cliHttpTests, sources.cliHttpTests, [
+            "runs an idle cycle in verified worker-api object mode",
+            "fails before lease acquisition when object transfer is unavailable",
+            "HTTP_WORKER_OBJECT_TRANSFER_UNAVAILABLE",
+            "objectTransferAvailable: true",
+            "objectTransferAvailable: false",
+          ]);
+'''
+          addition = anchor + '''requireTokens(files.remoteExecutionTests, sources.remoteExecutionTests, [
+            "optimises one SVG using only HTTP control and object transfer",
+            "MemoryHostedJobStore",
+            "MemoryVectorObjectStore",
+            "completeHostedJobIdempotently",
+            "decodeVectorObjectTransaction",
+            "commitVectorObjectTransactionIdempotently",
+            '"--object-store-mode"',
+            '"http"',
+            "output/mark.optimised.svg",
+            "output/mark.evidence.json",
+            "doesNotMatch(result.stdout, /<svg",
+            "doesNotMatch(result.stdout, new RegExp(TOKEN))",
+          ]);
+'''
+          if source.count(anchor) != 1:
+              raise SystemExit(f"REMOTE_TEST_TOKEN_ANCHOR_INVALID:{source.count(anchor)}")
+          target.write_text(source.replace(anchor, addition, 1), encoding="utf-8")
+          PY
+          grep -Fq 'remote-execution.test.ts' scripts/check-http-worker-contract.mjs
+          grep -Fq 'optimises one SVG using only HTTP control and object transfer' scripts/check-http-worker-contract.mjs
+          git diff --check
+
+      - name: Commit extension and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-remote-execution-gate.yml \
+            .github/remote-execution-gate.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "test(http-worker): govern full remote object execution"
+          git pull --rebase origin main
+          git push origin HEAD:main
