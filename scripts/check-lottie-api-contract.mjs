@@ -42,6 +42,7 @@ const rootPackage = await readJson("package.json");
 const webPackage = await readJson("apps/web/package.json");
 const files = {
   route: "apps/web/app/api/v1/motion/lottie/route.ts",
+  apiSecurity: "apps/web/lib/api-security.ts",
   motionRoute: "apps/web/app/api/v1/motion/svg/route.ts",
   dotLottieRoute: "apps/web/app/api/v1/motion/dotlottie/route.ts",
   page: "apps/web/app/page.tsx",
@@ -65,12 +66,23 @@ if (!String(rootPackage?.scripts?.check ?? "").includes("pnpm lottie-api:check")
   errors.push("package.json check must include lottie-api:check before dependency-backed gates.");
 }
 
+requireTokens(files.apiSecurity, sources.apiSecurity, [
+  "export function apiAuthorisationFailure(",
+  "allowWorkspaceSession?: boolean",
+  "configuredToken = process.env.VECTOR_API_TOKEN?.trim()",
+  "vectorWorkspaceContextFromRequest(request)",
+  "vectorWorkspaceSessionMutationAllowed(request)",
+  'error: "VECTOR_WORKSPACE_ORIGIN_REJECTED"',
+]);
 requireTokens(files.route, sources.route, [
+  'import { apiAuthorisationFailure } from "../../../../../lib/api-security"',
   'endpoint: "/api/v1/motion/lottie"',
   "MAX_SVG_INPUT_BYTES = 5 * 1024 * 1024",
   "MAX_MOTION_PLAN_BYTES = 256 * 1024",
   "MAX_LOTTIE_OUTPUT_BYTES = 20 * 1024 * 1024",
-  'configuredToken = process.env.VECTOR_API_TOKEN?.trim()',
+  'apiAuthorisationFailure(request, { allowWorkspaceSession: true })',
+  'authentication: "same-origin Vector workspace session or Bearer VECTOR_API_TOKEN"',
+  'headers.set("vary", "authorization, cookie, origin")',
   'contentType.startsWith("multipart/form-data")',
   'const ALLOWED_FORM_FIELDS = new Set([',
   '"frameRate"',
@@ -93,6 +105,8 @@ requireTokens(files.route, sources.route, [
   'headers.set("cache-control", "no-store, max-age=0")',
 ]);
 forbidTokens(files.route, sources.route, [
+  'configuredToken = process.env.VECTOR_API_TOKEN?.trim()',
+  "function authorisationFailure(",
   "eval(",
   "new Function(",
   'playerRenderValidation: true',
@@ -151,7 +165,7 @@ if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-studio-lottie-api-contract",
     ok: false,
-    lottieContractVersion: "1.0",
+    lottieContractVersion: "1.1",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -160,8 +174,9 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-lottie-api-contract",
   ok: true,
-  lottieContractVersion: "1.0",
+  lottieContractVersion: "1.1",
   endpoint: "/api/v1/motion/lottie",
+  authentication: "workspace-session-or-bearer",
   directMimeType: "video/lottie+json",
   separateDotLottieEndpoint: "/api/v1/motion/dotlottie",
   compatibility: {
