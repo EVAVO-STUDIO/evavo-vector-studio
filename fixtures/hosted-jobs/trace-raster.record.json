@@ -1,0 +1,24 @@
+{
+  "workspaceId": "evavo-studio",
+  "idempotencyKey": "primary-mark:trace:revision-01",
+  "operation": "trace-raster",
+  "priority": 7,
+  "maxAttempts": 3,
+  "payload": {
+    "source": {
+      "objectKey": "workspace/primary-mark/source.png",
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    "outputs": {
+      "svgObjectKey": "workspace/primary-mark/revision-01.svg",
+      "evidenceObjectKey": "workspace/primary-mark/revision-01.evidence.json"
+    },
+    "options": {
+      "profile": "logo",
+      "candidateMode": "adaptive",
+      "maxColours": 8,
+      "preservePalette": true,
+      "optimise": true
+    }
+  }
+}
