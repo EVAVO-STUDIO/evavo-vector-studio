@@ -171,6 +171,14 @@ jobs:
           set -o pipefail
           node scripts/check-http-worker-contract.mjs 2>&1 | tee .ci/http-worker-contract.log
 
+      - name: Verify worker object-transfer API contract
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          node scripts/check-object-transfer-api-contract.mjs 2>&1 | tee .ci/object-transfer-api-contract.log
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
