@@ -213,7 +213,7 @@ $env:VECTOR_MCP_ALLOWED_ROOTS = "C:\GitRepos\evavo-vector-studio;C:\EVAVO\Vector
 pnpm vector:mcp
 ```
 
-MCP contract `1.3` exposes thirteen tools, including:
+MCP contract `1.4` exposes fifteen tools, including:
 
 ```text
 vector_trace_raster
@@ -224,9 +224,11 @@ vector_export_lottie
 vector_inspect_lottie
 vector_package_dotlottie
 vector_inspect_dotlottie
+vector_run_batch
+vector_inspect_batch
 ```
 
-The Lottie MCP and dotLottie MCP operations use canonical allowed roots, new-file-only transactions and receipt-only results. Generated SVG, PNG, Lottie JSON and ZIP bodies remain outside model context.
+The Lottie, dotLottie and durable batch MCP operations use canonical allowed roots, new-file-only transactions and receipt-only results. Generated SVG, PNG, Lottie JSON and ZIP bodies remain outside model context. MCP batches are paginated, cancellation-aware and resumable when invoked again, accept at most 100 manifest items, and are not a hosted background queue.
 
 ## Authenticated API
 
