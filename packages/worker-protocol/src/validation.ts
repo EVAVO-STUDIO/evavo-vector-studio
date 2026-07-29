@@ -5,6 +5,7 @@ import {
   HOSTED_JOB_MIN_LEASE_MS,
   canonicalHostedJobJson,
   validateHostedJobOutputReceipts,
+  type HostedJobOutputReceipt,
   type HostedJobRecord,
 } from "@evavo/job-control";
 import { VectorWorkerProtocolError } from "./errors.js";
@@ -212,7 +213,15 @@ export function validateWorkerCompleteRequest(
     );
   }
   strictKeys(value, ["leaseToken", "outputs", "evidence"], "Worker completion input");
-  const outputs = validateHostedJobOutputReceipts(value.outputs);
+  if (!Array.isArray(value.outputs)) {
+    throw new VectorWorkerProtocolError(
+      "VECTOR_WORKER_PROTOCOL_REQUEST_INVALID",
+      "Worker completion outputs must be an array of immutable output receipts.",
+    );
+  }
+  const outputs = validateHostedJobOutputReceipts(
+    value.outputs as readonly HostedJobOutputReceipt[],
+  );
   if (outputs.length < 1) {
     throw new VectorWorkerProtocolError(
       "VECTOR_WORKER_PROTOCOL_REQUEST_INVALID",
