@@ -3,10 +3,16 @@ import test from "node:test";
 import { VectorWorkerProtocolError } from "./errors.js";
 import { readVectorObjectTransactionRequestBody } from "./object-transfer-http.js";
 
+function requestBody(bytes: Uint8Array): ArrayBuffer {
+  const body = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(body).set(bytes);
+  return body;
+}
+
 function request(body?: Uint8Array, signal?: AbortSignal): Request {
   return new Request("https://vector.example.test/api/v1/worker/objects", {
     method: "POST",
-    ...(body ? { body } : {}),
+    ...(body ? { body: requestBody(body) } : {}),
     ...(signal ? { signal } : {}),
   });
 }
