@@ -1,16 +1,17 @@
 # EVAVO Vector Studio API
 
-Vector Studio exposes four bounded synchronous production endpoints plus a separately configured hosted job record control plane:
+Vector Studio exposes four bounded synchronous production endpoints plus separately configured hosted job and worker control planes:
 
 - `POST /api/v1/trace` for static raster reconstruction;
 - `POST /api/v1/motion/svg` for validated animated SVG creation;
 - `POST /api/v1/motion/lottie` for governed path-based Lottie JSON export;
 - `POST /api/v1/motion/dotlottie` for deterministic dotLottie v2 packaging;
-- `GET` and `POST /api/v1/jobs` plus `GET` and `DELETE /api/v1/jobs/{jobId}` for hosted record discovery, idempotent creation, inspection and cancellation.
+- `GET` and `POST /api/v1/jobs` plus `GET` and `DELETE /api/v1/jobs/{jobId}` for hosted record discovery, idempotent creation, inspection and cancellation;
+- `/api/v1/worker` routes for separately authenticated lease coordination.
 
-The four production endpoints are interactive processing surfaces. The hosted job route can retain records when configured, but record creation does not schedule execution. Object storage, queue delivery and long-running workers remain a separate deployment phase.
+The four production endpoints are interactive processing surfaces. Hosted job creation does not automatically schedule execution. Worker control coordinates job state only; object storage, queue delivery and distributed workers remain a separate deployment phase.
 
-Production requests require `Authorization: Bearer <VECTOR_API_TOKEN>`. When `NODE_ENV=production` and `VECTOR_API_TOKEN` is absent, routes fail closed with `503`. Responses use `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
+Production client requests require `Authorization: Bearer <VECTOR_API_TOKEN>`. Worker control requests require the separate `Authorization: Bearer <VECTOR_WORKER_API_TOKEN>` in every environment. Responses use `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
 
 # Raster trace API
 
@@ -226,14 +227,42 @@ GET /api/v1/jobs/{jobId}
 DELETE /api/v1/jobs/{jobId}
 ```
 
-Queued work cancels immediately. Leased or running work becomes `cancel-requested` for cooperative acknowledgement by a future worker.
+Queued work cancels immediately. Leased or running work becomes `cancel-requested` for cooperative acknowledgement.
 
 The store fails closed with `HOSTED_JOB_STORE_NOT_CONFIGURED` until a safe adapter is configured. Production file mode additionally requires `VECTOR_JOB_FILE_STORE_PERSISTENT=true` and a genuinely persistent mounted volume.
 
-The current API does not expose worker leasing and does not claim hosted execution. See `docs/HOSTED-JOBS.md`.
+# Worker control API
+
+Worker control protocol `1.0` coordinates authenticated hosted-job leases. It requires the separate server-only `VECTOR_WORKER_API_TOKEN` in every environment.
+
+```text
+GET  /api/v1/worker
+POST /api/v1/worker/lease
+POST /api/v1/worker/jobs/{jobId}/start
+POST /api/v1/worker/jobs/{jobId}/heartbeat
+POST /api/v1/worker/jobs/{jobId}/complete
+POST /api/v1/worker/jobs/{jobId}/fail
+POST /api/v1/worker/jobs/{jobId}/acknowledge-cancellation
+```
+
+Requests use bounded `application/json`. Lease acquisition is the only response that returns the opaque `leaseToken`; all later records expose `tokenPresent: true` instead.
+
+Completion accepts at least one output receipt and compact evidence. Generated raster, SVG, Lottie or archive bodies are never accepted as a substitute for object storage.
+
+The control API reports:
+
+```text
+objectTransferAvailable: false
+queueDeliveryAvailable: false
+remoteExecutionAvailable: false
+```
+
+A worker must already have trusted access to the immutable source and output object store through another deployment mechanism. The control API validates receipt structure but does not independently verify remote object existence.
+
+See [`WORKER-API.md`](WORKER-API.md).
 
 # Shared approval boundary
 
-A successful synchronous production response means requested processing completed. A successful hosted job response means only that the record operation completed. Neither grants production approval.
+A successful synchronous production response means requested processing completed. A successful hosted job or worker control response means only that the requested record transition completed. None grants production approval.
 
 Human review remains mandatory for tracing geometry, topology, negative space, logo fidelity, motion timing, easing, transform origins, reduced-motion delivery, Lottie paint order, archive compatibility, player fidelity and final platform compatibility.
