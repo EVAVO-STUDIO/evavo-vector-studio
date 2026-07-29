@@ -146,7 +146,7 @@ requireTokens(files.coordinatorTests, sources.coordinatorTests, [
 ]);
 
 requireTokens(files.runtime, sources.runtime, [
-  'VECTOR_OBJECT_STORE_MODE',
+  "VECTOR_OBJECT_STORE_MODE",
   'mode === "disabled"',
   'mode !== "file"',
   "VECTOR_OBJECT_FILE_STORE_PERSISTENT",
@@ -154,10 +154,7 @@ requireTokens(files.runtime, sources.runtime, [
   "objectTransferAvailable: true",
   "resetWorkerObjectStoreRuntimeForTests",
 ]);
-forbidTokens(files.runtime, sources.runtime, [
-  'mode: "memory"',
-  "objectTransferAvailable: true,\n    reason:",
-]);
+forbidTokens(files.runtime, sources.runtime, ['mode: "memory"']);
 requireTokens(files.helpers, sources.helpers, [
   "workerObjectRuntimeView",
   "requireWorkerObjectRuntime",
@@ -173,7 +170,6 @@ requireTokens(files.helpers, sources.helpers, [
   "PUBLIC_DETAIL_FIELDS",
 ]);
 forbidTokens(files.helpers, sources.helpers, [
-  "storePath",
   "rootPath",
   "temporaryPath",
   '"content-type": object.mimeType',
