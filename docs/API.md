@@ -1,17 +1,18 @@
 # EVAVO Vector Studio API
 
-Vector Studio exposes four bounded synchronous production endpoints plus separately configured hosted job and worker control planes:
+Vector Studio exposes four bounded synchronous production endpoints plus separately configured hosted job, worker control and immutable object-transfer planes:
 
 - `POST /api/v1/trace` for static raster reconstruction;
 - `POST /api/v1/motion/svg` for validated animated SVG creation;
 - `POST /api/v1/motion/lottie` for governed path-based Lottie JSON export;
 - `POST /api/v1/motion/dotlottie` for deterministic dotLottie v2 packaging;
 - `GET` and `POST /api/v1/jobs` plus `GET` and `DELETE /api/v1/jobs/{jobId}` for hosted record discovery, idempotent creation, inspection and cancellation;
-- `/api/v1/worker` routes for separately authenticated lease coordination.
+- `/api/v1/worker` routes for separately authenticated lease coordination;
+- `POST` and `GET /api/v1/worker/objects` for separately configured immutable binary object transfer.
 
-The four production endpoints are interactive processing surfaces. Hosted job creation does not automatically schedule execution. Worker control coordinates job state only; object storage, queue delivery and distributed workers remain a separate deployment phase.
+The four production endpoints are interactive processing surfaces. Hosted job creation does not automatically schedule execution. Worker control coordinates job state. Object transfer is available only when its fail-closed persistent store is deliberately configured. Queue delivery and managed distributed workers remain a separate deployment phase.
 
-Production client requests require `Authorization: Bearer <VECTOR_API_TOKEN>`. Worker control requests require the separate `Authorization: Bearer <VECTOR_WORKER_API_TOKEN>` in every environment. Responses use `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
+Production client requests require `Authorization: Bearer <VECTOR_API_TOKEN>`. Worker control and object-transfer requests require the separate `Authorization: Bearer <VECTOR_WORKER_API_TOKEN>` in every environment. Responses use `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
 
 # Raster trace API
 
@@ -122,7 +123,7 @@ Direct SVG headers include `X-Vector-Job-Id`, `X-Vector-Motion-Contract`, `X-Vec
 GET /api/v1/motion/lottie
 ```
 
-Structural inspection is available. Independent player-render comparison is not performed. Deterministic dotLottie packaging is available through the separate `# dotLottie API` endpoint.
+Structural inspection is available. Independent player-render comparison is not performed. Deterministic dotLottie packaging is available through the separate dotLottie endpoint.
 
 ## Lottie request
 
@@ -249,20 +250,35 @@ Requests use bounded `application/json`. Lease acquisition is the only response 
 
 Completion accepts at least one output receipt and compact evidence. Generated raster, SVG, Lottie or archive bodies are never accepted as a substitute for object storage.
 
-The control API reports:
+# Worker object-transfer API
 
 ```text
-objectTransferAvailable: false
+POST /api/v1/worker/objects
+GET  /api/v1/worker/objects?key={objectKey}
+```
+
+The transfer API requires the worker token and `VECTOR_OBJECT_STORE_MODE=file`. Production file mode also requires `VECTOR_OBJECT_FILE_STORE_PERSISTENT=true`.
+
+Uploads use `Content-Type: application/vnd.evavo.vector-object-transaction`. The deterministic `EVAVOOB1` body supports 1 to 16 objects, 32 MiB per object and 64 MiB total. Every object and the complete body are SHA-256 bound.
+
+New uploads return `201`. Complete retained content replays return `200`. Changed or partial immutable overlap fails with `VECTOR_WORKER_OBJECT_TRANSACTION_CONFLICT`; existing files are never overwritten.
+
+Downloads return raw `application/octet-stream` data with `X-Vector-Object-Key`, `X-Vector-Object-Bytes` and `X-Vector-Object-Sha256`. Clients must verify all three before using the body.
+
+The current file adapter reports `mimeTypeVerification: content-only` for retained replays because original MIME metadata is not persisted beside raw bytes.
+
+The worker capability response reports object transfer dynamically:
+
+```text
+objectTransferAvailable: configured-runtime-dependent
 queueDeliveryAvailable: false
 remoteExecutionAvailable: false
 ```
 
-A worker must already have trusted access to the immutable source and output object store through another deployment mechanism. The control API validates receipt structure but does not independently verify remote object existence.
-
-See [`WORKER-API.md`](WORKER-API.md).
+See [`WORKER-API.md`](WORKER-API.md) and [`OBJECT-TRANSFER.md`](OBJECT-TRANSFER.md).
 
 # Shared approval boundary
 
-A successful synchronous production response means requested processing completed. A successful hosted job or worker control response means only that the requested record transition completed. None grants production approval.
+A successful synchronous production response means requested processing completed. A successful hosted job, worker control or object-transfer response means only that the requested record or immutable byte operation completed. None grants production approval.
 
 Human review remains mandatory for tracing geometry, topology, negative space, logo fidelity, motion timing, easing, transform origins, reduced-motion delivery, Lottie paint order, archive compatibility, player fidelity and final platform compatibility.
