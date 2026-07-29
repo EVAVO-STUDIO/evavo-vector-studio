@@ -125,6 +125,8 @@ Structural inspection is available. Independent player-render comparison is not 
 
 ## Lottie request
 
+The browser Motion Director uses wrapper JSON mode for exact verification before opening the official player preview.
+
 `POST /api/v1/motion/lottie` requires `multipart/form-data` with one governed SVG plus exactly one of `motion` and `motionFile`.
 
 | Field | Required | Values |
@@ -151,7 +153,7 @@ Direct responses use `Content-Type: video/lottie+json`. Evidence headers include
 GET /api/v1/motion/dotlottie
 ```
 
-`POST /api/v1/motion/dotlottie` accepts the same governed SVG and motion sources, then creates and inspects deterministic manifest-v2 packaging.
+`POST /api/v1/motion/dotlottie` accepts the same governed SVG and motion sources, then creates and inspects deterministic manifest-v2 packaging. Use `format=dotlottie` for direct archive delivery.
 
 | Field | Required | Values |
 | --- | --- | --- |
