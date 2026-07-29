@@ -42,10 +42,12 @@ const files = {
   rootPackage: "package.json",
   package: "packages/worker-engine/package.json",
   types: "packages/worker-engine/src/types.ts",
+  baseErrors: "packages/worker-engine/src/base-errors.ts",
   errors: "packages/worker-engine/src/errors.ts",
   payloads: "packages/worker-engine/src/payloads.ts",
   fileStore: "packages/worker-engine/src/file-object-store.ts",
   memoryStore: "packages/worker-engine/src/memory-object-store.ts",
+  objectStoreIndex: "packages/worker-engine/src/object-store.ts",
   executor: "packages/worker-engine/src/executor.ts",
   index: "packages/worker-engine/src/index.ts",
   fileStoreTests: "packages/worker-engine/src/file-object-store.test.ts",
@@ -74,10 +76,14 @@ for (const dependency of [
   "@evavo/motion-engine",
   "@evavo/raster-engine",
   "@evavo/vector-core",
+  "@evavo/worker-protocol",
 ]) {
   if (workerPackage?.dependencies?.[dependency] !== "workspace:*") {
     errors.push(`packages/worker-engine must consume ${dependency} through the workspace.`);
   }
+}
+if (!workerPackage?.exports?.["./object-store"]) {
+  errors.push("packages/worker-engine must expose its dependency-light object-store subpath.");
 }
 if (rootPackage?.scripts?.["worker:check"] !== "node scripts/check-worker-contract.mjs") {
   errors.push("package.json must expose worker:check.");
@@ -100,14 +106,27 @@ requireTokens(files.types, sources.types, [
   "putManyNew",
   "type VectorWorkerExecutor",
 ]);
-requireTokens(files.errors, sources.errors, [
+requireTokens(files.baseErrors, sources.baseErrors, [
   '"VECTOR_WORKER_OBJECT_HASH_MISMATCH"',
   '"VECTOR_WORKER_OBJECT_EXISTS"',
   '"VECTOR_WORKER_OBJECT_COLLISION"',
+  '"VECTOR_WORKER_OBJECT_TRANSACTION_CONFLICT"',
   '"VECTOR_WORKER_CANCELLED"',
+  "class VectorWorkerError",
+  "throwIfWorkerAborted",
+]);
+forbidTokens(files.baseErrors, sources.baseErrors, [
   "RasterRuntimeGuardError",
   "MotionEngineError",
   "LottieEngineError",
+]);
+requireTokens(files.errors, sources.errors, [
+  'export * from "./base-errors.js"',
+  "RasterRuntimeGuardError",
+  "RasterEngineError",
+  "MotionEngineError",
+  "LottieEngineError",
+  "vectorWorkerFailure",
 ]);
 requireTokens(files.payloads, sources.payloads, [
   "validateVectorWorkerPayload",
@@ -128,11 +147,19 @@ requireTokens(files.fileStore, sources.fileStore, [
   "committed.map((item) => rm(item.targetPath, { force: true }))",
   'open(item.temporaryPath, "wx", 0o600)',
   "throwIfWorkerAborted(options.signal)",
+  'from "./base-errors.js"',
 ]);
 requireTokens(files.memoryStore, sources.memoryStore, [
   "MemoryVectorObjectStore",
   "putManyNew",
   "Immutable object storage never overwrites",
+  'from "./base-errors.js"',
+]);
+requireTokens(files.objectStoreIndex, sources.objectStoreIndex, [
+  'export * from "./base-errors.js"',
+  'export * from "./file-object-store.js"',
+  'export * from "./memory-object-store.js"',
+  'export * from "./object-transaction-store.js"',
 ]);
 requireTokens(files.executor, sources.executor, [
   "createVectorWorkerExecutor",
@@ -148,6 +175,7 @@ requireTokens(files.executor, sources.executor, [
   'approval: "human-review-required"',
 ]);
 requireTokens(files.index, sources.index, [
+  'export * from "./errors.js"',
   'export * from "./executor.js"',
   'export * from "./file-object-store.js"',
   'export * from "./memory-object-store.js"',
@@ -177,15 +205,9 @@ requireTokens(files.docs, sources.docs, [
   "Generated SVG, PNG, Lottie JSON or archive bodies",
   "remoteExecutionAvailable",
 ]);
-requireTokens(files.hostedDocs, sources.hostedDocs, [
-  "worker",
-]);
-requireTokens(files.architecture, sources.architecture, [
-  "worker",
-]);
-requireTokens(files.readme, sources.readme, [
-  "worker",
-]);
+requireTokens(files.hostedDocs, sources.hostedDocs, ["worker"]);
+requireTokens(files.architecture, sources.architecture, ["worker"]);
+requireTokens(files.readme, sources.readme, ["worker"]);
 requireTokens(files.workflow, sources.workflow, [
   "Verify worker execution contract",
   "node scripts/check-worker-contract.mjs",
@@ -223,6 +245,7 @@ process.stdout.write(`${JSON.stringify({
   ],
   runBatchAvailable: false,
   hostedWorkerProcessAvailable: false,
+  objectStoreSubpathAvailable: true,
   generatedBodiesInJobRecord: false,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
