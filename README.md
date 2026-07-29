@@ -82,6 +82,21 @@ The `evavo-vector-batch` CLI provides a crash-resumable local runner for ChatGPT
 
 The current runner resumes when invoked again. It is not yet a hosted background queue or multi-node worker service.
 
+### Hosted job control plane
+
+Hosted job control contract `1.0` can create idempotent persistent records, inspect state and request cancellation when a deliberate record-store adapter is configured.
+
+- workspace-scoped idempotency;
+- optimistic state versions;
+- worker leases and heartbeats in `@evavo/job-control`;
+- bounded retries and expired-lease recovery;
+- cancellation requests and acknowledgement;
+- output byte-count and SHA-256 receipts;
+- production fail-closed store configuration;
+- `executionScheduled: false` and `remoteExecutionAvailable: false` until a worker is deployed.
+
+The current API records intent only. It does not claim hosted execution. See [`docs/HOSTED-JOBS.md`](docs/HOSTED-JOBS.md).
+
 ## Quick start on Windows PowerShell
 
 ```powershell
@@ -237,11 +252,15 @@ POST /api/v1/trace
 POST /api/v1/motion/svg
 POST /api/v1/motion/lottie
 POST /api/v1/motion/dotlottie
+GET  /api/v1/jobs
+POST /api/v1/jobs
+GET  /api/v1/jobs/{jobId}
+DELETE /api/v1/jobs/{jobId}
 ```
 
-The endpoints are bounded synchronous surfaces with `Cache-Control: no-store`. Production access closes when `VECTOR_API_TOKEN` is absent.
+The production endpoints are bounded synchronous surfaces with `Cache-Control: no-store`. Hosted job routes are a separately configured record control plane. They fail closed without a safe record store and do not schedule execution.
 
-The current API is not a durable queue. Use the local resumable batch CLI for restartable file production. A future hosted worker still requires database-backed jobs, object storage, leases, heartbeats, retries, cancellation and workspace authorisation.
+A future hosted worker still requires database-backed jobs, object storage, queue delivery, distributed leases, heartbeats, retries, cancellation and workspace authorisation.
 
 ## Quality and approval
 
@@ -260,12 +279,13 @@ packages/raster-engine    raster preflight, reconstruction and visual evidence
 packages/motion-engine    governed animated SVG
 packages/lottie-engine    Lottie JSON and deterministic dotLottie
 packages/job-engine       persistent resumable batch state and runner
+packages/job-control      hosted job records, leases, cancellation and receipts
 packages/cli              single-file and durable batch automation
 packages/mcp              local stdio agent tools
 schemas                   motion and batch contracts
 fixtures                  deterministic validation fixtures
 scripts                   dependency-free contract gates
-docs                      architecture, API, CLI, MCP, motion, archive and batch contracts
+docs                      architecture, API, CLI, MCP, motion, archive and job contracts
 ```
 
 ## Detailed contracts
@@ -280,6 +300,7 @@ docs                      architecture, API, CLI, MCP, motion, archive and batch
 - [`docs/DOTLOTTIE.md`](docs/DOTLOTTIE.md)
 - [`docs/MCP.md`](docs/MCP.md)
 - [`docs/BATCH.md`](docs/BATCH.md)
+- [`docs/HOSTED-JOBS.md`](docs/HOSTED-JOBS.md)
 
 ## Deployment boundary
 
