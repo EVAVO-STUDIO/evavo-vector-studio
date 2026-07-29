@@ -1,6 +1,6 @@
 import type {
-  HostedJobCompletion,
   HostedJobOperation,
+  HostedJobOutputReceipt,
   HostedJobRecord,
 } from "@evavo/job-control";
 
@@ -62,10 +62,12 @@ export type WorkerExecutionContext = Readonly<{
   signal?: AbortSignal;
 }>;
 
-export type WorkerExecutionResult = HostedJobCompletion & Readonly<{
+export type WorkerExecutionResult = Readonly<{
   jobId: string;
   operation: VectorWorkerOperation;
   workerContractVersion: typeof VECTOR_WORKER_CONTRACT_VERSION;
+  outputs: readonly HostedJobOutputReceipt[];
+  evidence: Readonly<Record<string, unknown>>;
 }>;
 
 export type VectorWorkerExecutor = Readonly<{
