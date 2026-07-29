@@ -1,28 +1,30 @@
 # EVAVO Vector Studio MCP Server
 
-The MCP server exposes Vector Studio as a local stdio toolset for ChatGPT-compatible MCP hosts, Claude, editors and other agent runtimes. It uses the same raster, SVG, topology, difference-image, animated-SVG, Lottie and dotLottie engines as the CLI and HTTP surfaces.
+The EVAVO Vector Studio MCP server exposes governed raster, SVG, motion, Lottie, dotLottie and durable batch production through local stdio tools for ChatGPT-compatible MCP hosts, Claude, editors and other agent runtimes.
 
-MCP contract version `1.3` is a local, bounded execution surface. It is not a remote public endpoint, browser extension or durable job queue.
+MCP contract version `1.4` is a bounded local execution surface. It can retain resumable batch state between separate calls, but it is not a remote public endpoint, browser extension or hosted background queue.
 
 ## Current tool contract
 
 | Tool | Behaviour |
 | --- | --- |
-| `vector_capabilities` | Returns versions, allowed roots, limits, runtime state, output availability and approval policy. |
-| `vector_input_policy` | Returns accepted static-image classes and pre-decode rejection rules for animation and multi-page containers. |
+| `vector_capabilities` | Returns versions, tools, allowed roots, limits, output availability and approval policy. |
+| `vector_input_policy` | Returns accepted static-image classes and pre-decode rejection rules. |
 | `vector_inspect_raster` | Inspects one existing static raster without creating output. |
-| `vector_trace_raster` | Creates one new SVG and, optionally, one new difference PNG through a single no-overwrite transaction. |
-| `vector_inspect_svg` | Inspects SVG safety, geometry, topology and editability without modifying the file. |
-| `vector_optimise_svg` | Writes a conservatively optimised SVG to a new path after governed safety validation. |
-| `vector_validate_motion_plan` | Validates and normalizes one inline or file-based motion-v1 plan and can save the normalized plan to a new JSON file. |
-| `vector_animate_svg` | Applies one validated motion plan to a governed static SVG and atomically creates a new animated SVG plus optional evidence JSON. |
-| `vector_inspect_animated_svg` | Inspects EVAVO motion identity, animation rules, reduced-motion fallback and underlying SVG safety. |
-| `vector_export_lottie` | Creates governed path-based Lottie JSON plus optional evidence JSON and returns receipts rather than the generated body. |
-| `vector_inspect_lottie` | Inspects existing Lottie JSON for the governed shape-layer, property, keyframe, asset and expression subset. |
-| `vector_package_dotlottie` | Packages one allowed-root Lottie JSON file into a deterministic new `.lottie` archive plus optional evidence JSON. |
-| `vector_inspect_dotlottie` | Inspects ZIP safety, manifest-v2 semantics, deterministic metadata and embedded governed Lottie structure. |
+| `vector_trace_raster` | Creates one new SVG and, optionally, one new difference PNG. |
+| `vector_inspect_svg` | Inspects SVG safety, geometry, topology and editability. |
+| `vector_optimise_svg` | Writes a conservatively optimised SVG to a new path. |
+| `vector_validate_motion_plan` | Validates and normalises one inline or file-based motion-v1 plan. |
+| `vector_animate_svg` | Creates one governed animated SVG plus optional evidence JSON. |
+| `vector_inspect_animated_svg` | Inspects motion identity, keyframes, target rules and reduced-motion fallback. |
+| `vector_export_lottie` | Creates governed Lottie JSON plus optional evidence and returns file receipts. |
+| `vector_inspect_lottie` | Inspects an existing Lottie JSON document against the governed subset. |
+| `vector_package_dotlottie` | Packages one governed Lottie JSON file into a deterministic `.lottie` archive. |
+| `vector_inspect_dotlottie` | Inspects ZIP safety, manifest-v2 semantics and embedded Lottie structure. |
+| `vector_run_batch` | Runs or resumes one bounded batch-v1 manifest with persistent local state and paginated receipts. |
+| `vector_inspect_batch` | Reads retained batch progress, failures, receipts, lock state and recent events without executing work. |
 
-Animated SVG, governed Lottie JSON and deterministic dotLottie v2 packaging are available. Independent source-to-player render validation and browser archive-load validation remain unavailable and are reported as such.
+Every production result remains review-required. Structural success, archive loading and deterministic output do not establish artistic approval or independent source-to-player equivalence.
 
 ## Build and run
 
@@ -34,16 +36,16 @@ pnpm install
 pnpm vector:mcp
 ```
 
-The server communicates over stdin and stdout. Diagnostic startup or shutdown failures are written to stderr so they cannot corrupt MCP protocol framing.
+The server communicates through stdin and stdout. Diagnostic startup and shutdown failures go to stderr so MCP protocol framing is not corrupted.
 
 ## Allowed filesystem roots
 
-Every input and output must remain within a canonical allowed root. Configure roots with `VECTOR_MCP_ALLOWED_ROOTS`.
+Every input, manifest, state root and output must stay inside a canonical allowed root. Configure roots with `VECTOR_MCP_ALLOWED_ROOTS`.
 
-On Windows, separate multiple roots with a semicolon:
+On Windows, separate roots with a semicolon:
 
 ```powershell
-$env:VECTOR_MCP_ALLOWED_ROOTS = "C:\GitRepos\evavo-vector-studio;C:\EVAVO\VectorAssets"
+$env:VECTOR_MCP_ALLOWED_ROOTS = "C:\EVAVO\VectorAssets;C:\GitRepos\evavo-vector-studio"
 pnpm vector:mcp
 ```
 
@@ -51,19 +53,20 @@ When the variable is absent, the server working directory is the only allowed ro
 
 The policy:
 
-- resolves roots and existing inputs through `realpath`;
+- resolves configured roots and existing inputs through `realpath`;
 - rejects missing inputs and non-file inputs;
-- rejects paths outside every root, including ordinary symlink escapes;
+- rejects lexical and ordinary symlink escapes;
 - accepts new nested output paths only beneath an allowed root;
-- rejects existing output paths;
+- rejects existing output paths for new-file operations;
 - rejects input/output and output/output collisions;
-- uses new-files-only output semantics.
+- commits related outputs atomically;
+- returns paths only after byte count and SHA-256 receipts exist.
 
-This is a local filesystem safety boundary, not an operating-system sandbox. Do not run the server in a hostile account that can continuously replace directories while a tool call is committing files.
+This is a local filesystem boundary, not an operating-system sandbox against a hostile account continuously replacing directories during a call.
 
 ## Generic MCP host configuration
 
-Build the package first, then configure the host to launch Node with the compiled stdio entry point.
+Build the package, then configure the host to launch the compiled stdio entry point:
 
 ```json
 {
@@ -84,16 +87,16 @@ Build the package first, then configure the host to launch Node with the compile
 }
 ```
 
-The server uses the reviewed v1 TypeScript SDK line and `StdioServerTransport`, which is appropriate for local process-spawned MCP integrations.
+The server uses the reviewed v1 TypeScript SDK line and `StdioServerTransport` for local process-spawned integrations.
 
-## Recommended raster workflow
+## Raster workflow
 
-1. Call `vector_capabilities` once after connecting.
+1. Call `vector_capabilities` after connecting.
 2. Call `vector_input_policy` before handling an unfamiliar raster container.
-3. Call `vector_inspect_raster` when the source class or likely trace profile is uncertain.
+3. Inspect uncertain sources with `vector_inspect_raster`.
 4. Call `vector_trace_raster` with explicit new output paths.
-5. Review render, topology, editability, candidate and warning evidence.
-6. Call `vector_inspect_svg` again after any external manual edit.
+5. Review render, candidate, topology and editability evidence.
+6. Reinspect an SVG after any external manual edit.
 
 ```json
 {
@@ -111,16 +114,16 @@ The server uses the reviewed v1 TypeScript SDK line and `StdioServerTransport`, 
 }
 ```
 
-`summary` is the default evidence size. `full` returns the complete retained candidate evidence.
+`summary` is the default compact evidence mode. `full` includes complete retained candidate evidence.
 
-## Recommended animated-SVG workflow
+## Animated SVG workflow
 
-1. Inspect the static source with `vector_inspect_svg`.
-2. Create a motion-v1 plan inline or as an allowed-root JSON file.
-3. Call `vector_validate_motion_plan` before production when the plan was generated or edited externally.
-4. Call `vector_animate_svg` with a new animated SVG path and, preferably, a new evidence JSON path.
-5. Call `vector_inspect_animated_svg` on the committed output.
-6. Review timing, easing, transform origins, reduced-motion behaviour and brand character.
+1. Inspect the governed static SVG.
+2. Create a motion-v1 plan inline or in an allowed-root JSON file.
+3. Validate externally generated plans.
+4. Create a new animated SVG and evidence file.
+5. Inspect the committed output.
+6. Review timing, easing, origins and reduced-motion behaviour.
 
 ```json
 {
@@ -145,17 +148,11 @@ The server uses the reviewed v1 TypeScript SDK line and `StdioServerTransport`, 
 }
 ```
 
-Exactly one of `motionPlan` and `motionPath` is required. `vector_validate_motion_plan` accepts the same input modes plus optional `normalizedOutputPath`.
+Exactly one of `motionPlan` and `motionPath` is required.
 
-## Recommended Lottie workflow
+## Lottie JSON workflow
 
-Lottie export consumes the same motion-v1 plan, but only when the SVG and playback settings remain inside the smaller governed Lottie subset.
-
-1. Inspect the source SVG.
-2. Validate the motion plan.
-3. Call `vector_export_lottie` with a new `.json` output path and optional evidence path.
-4. Call `vector_inspect_lottie` on the committed output.
-5. Review the retained compatibility boundary and test the file in intended players before publication.
+The Lottie tools use the same motion-v1 plan but require the smaller governed Lottie source and playback subset.
 
 ```json
 {
@@ -169,7 +166,7 @@ Lottie export consumes the same motion-v1 plan, but only when the SVG and playba
 }
 ```
 
-Lottie MCP limits:
+Limits:
 
 ```text
 SVG source          5 MiB
@@ -179,23 +176,17 @@ Frame rate          1 to 120
 Precision           0 to 6
 ```
 
-The Lottie JSON export evidence deliberately retains:
+The tool returns file receipts and inspection evidence. It never places generated Lottie JSON in model context.
+
+Compatibility remains:
 
 ```text
 structuralInspection: passed
 playerRenderValidation: not-yet-performed
-dotLottiePackaging: not-yet-available
 approval: review-required
 ```
 
-The `dotLottiePackaging` field belongs to the Lottie JSON result contract. Archive packaging is a separate operation with separate evidence.
-
-## Recommended dotLottie workflow
-
-1. Produce or inspect governed Lottie JSON.
-2. Call `vector_package_dotlottie` with a new `.lottie` path and optional evidence path.
-3. Call `vector_inspect_dotlottie` on the committed archive.
-4. Review archive findings and test the archive in intended players and platform SDKs.
+## dotLottie workflow
 
 ```json
 {
@@ -206,49 +197,68 @@ The `dotLottiePackaging` field belongs to the Lottie JSON result contract. Archi
 }
 ```
 
-The dotLottie MCP contract is deliberately receipt-only:
+The archive contract is receipt-only:
 
 ```text
-Lottie JSON input             20 MiB
+Lottie JSON input              20 MiB
 Generated or inspected archive 25 MiB
-Manifest version               2
-Generated archive entries      2
-Archive bytes in model context false
-Embedded JSON in model context false
+Manifest version                2
+Generated archive entries       2
+Archive bytes in model context  false
+Embedded JSON in model context  false
 ```
 
-`vector_package_dotlottie` returns manifest, structural inspection, compatibility evidence and file receipts. It never returns ZIP bytes or the embedded generated Lottie JSON. `vector_inspect_dotlottie` returns findings, counts and SHA-256 without modifying the archive.
+`vector_package_dotlottie` never returns generated dotLottie archive bytes or embedded generated JSON. It returns manifest, inspection, compatibility and file receipts.
 
-Current archive compatibility evidence remains:
+## Durable batch workflow
+
+Use durable batches when several operations must retain progress across separate agent calls.
+
+1. Create a strict batch-v1 manifest beneath an allowed root.
+2. Call `vector_run_batch` with the manifest and optional root.
+3. Use `itemOffset` and `itemLimit` to request a paginated item page.
+4. Call `vector_inspect_batch` in later turns to read state without executing work.
+5. Call `vector_run_batch` again to resume retained pending, interrupted or corrected failed work.
+
+```json
+{
+  "manifestPath": "C:\\EVAVO\\VectorAssets\\batches\\brand-assets.batch.json",
+  "rootPath": "C:\\EVAVO\\VectorAssets",
+  "itemOffset": 0,
+  "itemLimit": 25,
+  "eventLimit": 25
+}
+```
+
+The MCP batch boundary is:
 
 ```text
-archiveInspection: passed
-embeddedLottieInspection: passed
-playerRenderValidation: not-yet-performed
-browserArchiveLoadValidation: not-yet-performed
-approval: review-required
+MCP manifest limit           100 items
+Local CLI manifest limit     1,000 items
+Item page size               1 to 100
+Recent event count           0 to 100
+Persistent state             true
+Resumable on a later call    true
+Request cancellation         forwarded
+Generated bodies in context  false
+Hosted background queue      false
 ```
+
+The current call is synchronous. The MCP process must stay alive while it runs. State persists after cancellation or process exit, but work does not continue in the background. A later invocation can inspect or resume it.
+
+Completed items are reused only when the input revision and every retained output receipt still verify. Existing production outputs are never silently replaced.
 
 ## Evidence and model-context policy
 
-Raster, motion, Lottie and dotLottie tools return settings, inspections, hashes, warnings, compatibility state and file receipts.
+Raster, SVG, motion, Lottie, dotLottie and durable batch tools return settings, inspections, hashes, warnings, compatibility states, paginated job state and file receipts.
 
-No operational tool places full SVG markup, PNG bytes, generated Lottie JSON, generated dotLottie archive bytes or embedded animation JSON into model context. Outputs are represented by receipts containing path, MIME type, byte count and SHA-256. Evidence files avoid embedding duplicate output bodies.
+No operational tool places full SVG markup, PNG bytes, generated Lottie JSON, generated dotLottie archive bytes or embedded animation JSON into model context. Evidence files avoid embedding duplicate generated bodies.
 
-## Transaction and overwrite policy
+## Transactions, cancellation and limits
 
-Related outputs are committed as one transaction:
+Related outputs are committed together with new-file-only semantics. A conflict aborts the transaction and already committed members of that transaction are removed during rollback.
 
-1. Files are staged in their destination directories.
-2. Each final path is created with no-overwrite semantics.
-3. A conflict aborts the transaction.
-4. Any final files already committed by that transaction are removed during rollback.
-
-This applies to traced SVG plus difference PNG, animated SVG plus evidence JSON, normalized motion-plan output, Lottie JSON plus evidence JSON, and dotLottie archive plus evidence JSON. The server never replaces an existing output. Choose a new revisioned file name when rerunning work.
-
-## Runtime limits and cancellation
-
-Raster inspection and tracing share the bounded native runtime guard:
+Raster inspection and tracing share the native runtime guard:
 
 ```text
 VECTOR_TRACE_TIMEOUT_MS          5000 to 180000, default 45000
@@ -256,23 +266,21 @@ VECTOR_TRACE_MAX_CONCURRENT      1 to 4, default 1
 VECTOR_TRACE_RETRY_AFTER_SECONDS 1 to 60, default 5
 ```
 
-At capacity, a tool returns the stable `RASTER_RUNTIME_BUSY` failure with retry information. A deadline returns `VECTOR_MCP_RUNTIME_TIMEOUT`.
-
-MCP request cancellation is forwarded into native raster work. Pure motion, Lottie and dotLottie operations check cancellation before validation, processing and output commit.
+Request cancellation is forwarded to native raster work and durable batch execution. Motion, Lottie and dotLottie operations check cancellation before validation, processing and commit. Retained batch state remains inspectable after cancellation.
 
 ## Governed feature boundaries
 
-Animated SVG supports opacity, X/Y translation, uniform scale, rotation, timing, delay, direction, fill, iterations and easing, plus source, first-frame or last-frame reduced-motion fallback.
+Animated SVG supports opacity, X/Y translation, uniform scale, rotation, timing, delay, direction, fill, iterations, easing and explicit reduced-motion fallback.
 
-Lottie v1 supports path-based SVG geometry, solid fill and stroke, opacity, translation, uniform scale and rotation for one normal playback cycle. It rejects gradients, text, images, masks, filters, expressions, precompositions, repeated or reversed playback, path morphing and motion paths instead of silently approximating them.
+Lottie v1 supports path-based SVG geometry, solid fill and stroke, opacity, translation, uniform scale and rotation for one normal playback cycle. Unsupported gradients, text, images, masks, filters, expressions, precompositions, repeated playback, path morphing and motion paths are rejected.
 
-dotLottie v1 packages exactly one governed animation into manifest-v2 ZIP entries `manifest.json` and `a/<animation-id>.json`. It rejects traversal, duplicate names, ZIP64, encryption, unsupported entries and oversized declared content.
+dotLottie v1 packages exactly one governed animation as `manifest.json` plus `a/<animation-id>.json`. Traversal, duplicate names, ZIP64, encryption, unsupported entries and oversized declared content are rejected.
 
-Structural validity does not establish player equivalence. Independent player-render validation and browser archive-load validation remain unavailable.
+Durable batch v1 supports tracing, SVG optimisation, animated SVG, Lottie JSON and dotLottie packaging. It is persistent and resumable but remains local and single-process.
 
 ## Approval boundary
 
-A successful call means processing, validation and requested file commits completed. It does not grant production approval.
+A successful call means the requested validation, processing and file commits completed. It does not grant production approval.
 
 Human review remains mandatory for:
 
@@ -286,4 +294,4 @@ Human review remains mandatory for:
 - archive and manifest compatibility;
 - accessibility and final delivery context.
 
-The MCP server reports `human-review-required`, `review-required` or `structural-repair-required` instead of converting deterministic output into an unsupported approval claim.
+The server reports `human-review-required`, `review-required`, `processing-or-repair-required` or `structural-repair-required` instead of converting deterministic completion into an unsupported approval claim.
