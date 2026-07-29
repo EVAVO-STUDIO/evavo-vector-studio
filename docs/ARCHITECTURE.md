@@ -160,6 +160,16 @@ The API fails closed unless `VECTOR_JOB_STORE_MODE` selects a deliberate adapter
 
 Creating a hosted job record does not enqueue or execute work. Responses retain `executionScheduled: false` and `remoteExecutionAvailable: false` until a worker and queue are deployed.
 
+### Local worker
+
+`@evavo/local-worker` combines hosted job records, leases, immutable object storage and the governed worker executor into a real single-process service.
+
+The process can import immutable objects, submit and inspect records, execute one job or poll continuously, renew heartbeats, observe cancellation, requeue retryable failures and retain receipt-only completion records. CLI commands return JSON; polling mode returns NDJSON.
+
+A late cancellation that arrives after immutable outputs commit is recorded as receipt-backed success with retained cancellation metadata and `cancellationRaceResolution: committed-success-retained`. This prevents generated objects from becoming orphaned.
+
+Local worker execution is available. Distributed queue delivery, shared remote storage and autoscaled remote workers remain unavailable.
+
 ## Evidence and approval
 
 Machine completion, structural validity, measured render quality, archive loading and professional approval are separate states.
@@ -176,7 +186,8 @@ The system can establish that:
 - dotLottie passed archive and embedded-Lottie inspection;
 - a browser player accepted exact verified archive bytes;
 - a durable item retained the same input revision and output receipts;
-- a hosted job record preserved canonical intent, idempotency and state transitions.
+- a hosted job record preserved canonical intent, idempotency and state transitions;
+- a local worker retained exact input and output receipts under a valid lease.
 
 It cannot establish automatically that:
 
@@ -186,7 +197,8 @@ It cannot establish automatically that:
 - layers are ideal for every future editing workflow;
 - motion direction and rhythm are creatively appropriate;
 - one browser player is pixel-equivalent to the source or every other player;
-- a hosted worker ran merely because a job record exists.
+- a hosted worker ran merely because a job record exists;
+- local execution proves distributed deployment readiness.
 
 Production auto-approval is unavailable. Outputs remain `review-required` or `human-review-required`.
 
@@ -201,6 +213,8 @@ Production auto-approval is unavailable. Outputs remain `review-required` or `hu
 - hosted job requests use strict bounded canonical JSON;
 - hosted record mutation uses optimistic compare-and-swap versions;
 - hosted file records use exclusive locks and atomic replacement;
+- local worker inputs use immutable object keys and SHA-256 revisions;
+- local worker outputs commit atomically with no-overwrite semantics;
 - related files commit atomically;
 - archive entry names, counts and sizes are checked before decompression;
 - durable manifest drift and completed output drift are rejected.
@@ -209,10 +223,10 @@ These controls are application boundaries, not an operating-system sandbox.
 
 ## Deployment boundary
 
-The repository now has restartable local batch execution and a provider-neutral hosted job record control plane. A released hosted EVAVO application still needs:
+The repository now has restartable local batch execution, a provider-neutral hosted job record control plane and an executable local worker. A released hosted EVAVO application still needs:
 
 - database-backed job and event storage for multi-instance deployment;
-- object storage for immutable source and generated artefacts;
+- shared object storage for immutable source and generated artefacts;
 - queue delivery guarantees and visibility timeouts;
 - distributed leases and worker heartbeats;
 - bounded retry, backoff and dead-letter policy;
