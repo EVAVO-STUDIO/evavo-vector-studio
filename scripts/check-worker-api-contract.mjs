@@ -50,6 +50,7 @@ const files = {
   completionReplay: "packages/job-control/src/completion-replay.ts",
   security: "apps/web/lib/api-security.ts",
   adapter: "apps/web/lib/worker-api.ts",
+  objectRuntime: "apps/web/lib/worker-object-store.ts",
   discovery: "apps/web/app/api/v1/worker/route.ts",
   lease: "apps/web/app/api/v1/worker/lease/route.ts",
   start: "apps/web/app/api/v1/worker/jobs/[jobId]/start/route.ts",
@@ -83,6 +84,9 @@ if (protocolPackage?.scripts?.test !== "tsc -p tsconfig.json && node --test dist
 if (webPackage?.dependencies?.["@evavo/worker-protocol"] !== "workspace:*") {
   errors.push("apps/web must consume @evavo/worker-protocol through the workspace.");
 }
+if (webPackage?.dependencies?.["@evavo/worker-engine"] !== "workspace:*") {
+  errors.push("apps/web must consume the dependency-light worker object store through the workspace.");
+}
 if (rootPackage?.scripts?.["worker-api:check"] !== "node scripts/check-worker-api-contract.mjs") {
   errors.push("package.json must expose worker-api:check.");
 }
@@ -108,6 +112,7 @@ requireTokens(files.errors, sources.errors, [
   '"VECTOR_WORKER_PROTOCOL_REQUEST_INVALID"',
   '"VECTOR_WORKER_PROTOCOL_OPERATION_UNSUPPORTED"',
   '"VECTOR_WORKER_PROTOCOL_BODY_TOO_LARGE"',
+  '"VECTOR_WORKER_OBJECT_TRANSACTION_INVALID"',
 ]);
 requireTokens(files.validation, sources.validation, [
   "validateWorkerLeaseRequest",
@@ -130,6 +135,7 @@ requireTokens(files.tests, sources.tests, [
 ]);
 requireTokens(files.index, sources.index, [
   'export * from "./errors.js"',
+  'export * from "./object-transfer.js"',
   'export * from "./types.js"',
   'export * from "./validation.js"',
 ]);
@@ -150,15 +156,23 @@ requireTokens(files.security, sources.security, [
 requireTokens(files.adapter, sources.adapter, [
   "VECTOR_WORKER_PROTOCOL_MAX_BODY_BYTES",
   'contentType !== "application/json"',
-  "Buffer.byteLength(source, \"utf8\")",
+  'Buffer.byteLength(source, "utf8")',
   "workerProtocolRecord(record)",
-  "objectTransferAvailable: false",
+  "objectTransferAvailable",
+  'objects: "/api/v1/worker/objects"',
+  'objectDownload: "/api/v1/worker/objects?key={objectKey}"',
   "queueDeliveryAvailable: false",
   "remoteExecutionAvailable: false",
+  "failClosedWithoutObjectStore: true",
   "leaseTokensReturnedOnlyByAcquisition: true",
   "VECTOR_WORKER_JOB_STORE_NOT_CONFIGURED",
   "VectorWorkerProtocolError",
   "HostedJobError",
+]);
+requireTokens(files.objectRuntime, sources.objectRuntime, [
+  "getWorkerObjectStoreRuntime",
+  "objectTransferAvailable: true",
+  "VECTOR_OBJECT_STORE_MODE",
 ]);
 
 for (const route of [
@@ -179,21 +193,23 @@ for (const route of [
   ]);
   forbidTokens(route, routeSource, [
     "request.formData()",
-    "request.arrayBuffer()",
-    "Buffer.from(await",
     "remoteExecutionAvailable: true",
   ]);
 }
 requireTokens(files.discovery, sources.discovery, [
   'service: "evavo-vector-studio-worker-control"',
-  "workerRuntimeView(runtimeValue)",
+  "getWorkerObjectStoreRuntime",
+  "workerObjectRuntimeView(objectRuntime)",
+  "workerRuntimeView(runtimeValue, objectRuntime)",
 ]);
 requireTokens(files.lease, sources.lease, [
   "validateWorkerLeaseRequest",
   "acquireLease(input)",
   "status: 204",
   "workerLeaseResponse(leased)",
-  "objectTransferAvailable: false",
+  "getWorkerObjectStoreRuntime",
+  "objectTransferAvailable: objectRuntime.objectTransferAvailable",
+  'objectTransferEndpoint: "/api/v1/worker/objects"',
 ]);
 requireTokens(files.start, sources.start, [
   "validateWorkerLeaseTokenRequest",
@@ -212,9 +228,7 @@ requireTokens(files.complete, sources.complete, [
   "generatedBodiesAccepted: false",
   'approval: "human-review-required"',
 ]);
-forbidTokens(files.complete, sources.complete, [
-  ".succeed(",
-]);
+forbidTokens(files.complete, sources.complete, [".succeed("]);
 requireTokens(files.fail, sources.fail, [
   "validateWorkerFailRequest",
   ".fail(",
@@ -233,7 +247,8 @@ requireTokens(files.docs, sources.docs, [
   "/complete",
   "/fail",
   "/acknowledge-cancellation",
-  "objectTransferAvailable: false",
+  "/api/v1/worker/objects",
+  "objectTransferAvailable: configured-runtime-dependent",
   "queueDeliveryAvailable: false",
   "remoteExecutionAvailable: false",
   "run-batch",
@@ -242,17 +257,18 @@ requireTokens(files.docs, sources.docs, [
 ]);
 requireTokens(files.apiDocs, sources.apiDocs, [
   "/api/v1/worker",
+  "/api/v1/worker/objects",
   "VECTOR_WORKER_API_TOKEN",
 ]);
-requireTokens(files.hostedDocs, sources.hostedDocs, [
-  "worker control API",
-]);
+requireTokens(files.hostedDocs, sources.hostedDocs, ["worker control API"]);
 requireTokens(files.readme, sources.readme, [
   "Worker control API",
   "/api/v1/worker/lease",
+  "/api/v1/worker/objects",
 ]);
 requireTokens(files.environment, sources.environment, [
   "VECTOR_WORKER_API_TOKEN",
+  "VECTOR_OBJECT_STORE_MODE=disabled",
 ]);
 requireTokens(files.workflow, sources.workflow, [
   "Verify worker control API contract",
@@ -281,9 +297,10 @@ process.stdout.write(`${JSON.stringify({
     "/api/v1/worker/jobs/{jobId}/complete",
     "/api/v1/worker/jobs/{jobId}/fail",
     "/api/v1/worker/jobs/{jobId}/acknowledge-cancellation",
+    "/api/v1/worker/objects",
   ],
   idempotentCompletionReplay: true,
-  objectTransferAvailable: false,
+  objectTransferAvailable: "configured-runtime-dependent",
   queueDeliveryAvailable: false,
   remoteExecutionAvailable: false,
   checkedFiles: [...checkedFiles].sort(),
