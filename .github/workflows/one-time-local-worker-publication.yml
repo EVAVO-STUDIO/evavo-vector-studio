@@ -1,0 +1,166 @@
+name: One-time local worker publication
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/local-worker-publication.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-local-worker-publication
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Publish local worker capability and quality gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def insert_once(path: str, anchor: str, insertion: str, marker: str) -> None:
+              target = Path(path)
+              source = target.read_text(encoding="utf-8")
+              if marker in source:
+                  raise SystemExit(f"ALREADY_PRESENT:{marker}")
+              if source.count(anchor) != 1:
+                  raise SystemExit(f"ANCHOR_INVALID:{path}:{anchor[:40]}")
+              target.write_text(source.replace(anchor, insertion + anchor, 1), encoding="utf-8")
+
+          readme_section = '''### Local worker execution
+
+The `evavo-vector-worker` process can execute supported hosted job records against persistent local job and immutable object stores.
+
+- immutable object import with SHA-256 receipts;
+- idempotent job submission and inspection;
+- one-shot `worker:run-once` execution;
+- polling `worker:run` with JSON/NDJSON output;
+- leases, heartbeats, retryable requeue and cancellation acknowledgement;
+- atomic multi-object output commit;
+- committed-output cancellation-race protection;
+- generated bodies kept out of job records and console output;
+- `remoteExecutionAvailable: false` and `hostedBackgroundQueue: false`.
+
+The local process is available for workstation and self-hosted use. Distributed remote execution remains unavailable. See [`docs/LOCAL-WORKER.md`](docs/LOCAL-WORKER.md).
+
+'''
+          insert_once(
+              "README.md",
+              "## Quick start on Windows PowerShell\n",
+              readme_section,
+              "### Local worker execution",
+          )
+
+          target = Path("README.md")
+          source = target.read_text(encoding="utf-8")
+          old = '''packages/job-control      hosted job records, leases, cancellation and receipts
+          packages/cli              single-file and durable batch automation
+'''
+          new = '''packages/job-control      hosted job records, leases, cancellation and receipts
+          packages/worker-engine    immutable object-backed governed job execution
+          workers/local-worker      local lease processor and machine-readable CLI
+          packages/cli              single-file and durable batch automation
+'''
+          if source.count(old) != 1:
+              raise SystemExit("README_LAYOUT_ANCHOR_INVALID")
+          source = source.replace(old, new, 1)
+          old = "- [`docs/HOSTED-JOBS.md`](docs/HOSTED-JOBS.md)\n"
+          new = old + "- [`docs/WORKER.md`](docs/WORKER.md)\n- [`docs/LOCAL-WORKER.md`](docs/LOCAL-WORKER.md)\n"
+          if source.count(old) != 1:
+              raise SystemExit("README_DOCS_ANCHOR_INVALID")
+          target.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          architecture_section = '''### Local worker
+
+`@evavo/local-worker` combines the hosted job controller and immutable worker executor into a real single-process lease service.
+
+The process can import immutable objects, submit and inspect records, execute one job or poll continuously, renew heartbeats, observe cancellation, requeue retryable failures and record output receipts. CLI commands return JSON; polling returns NDJSON.
+
+When cancellation races after immutable outputs have already committed, `succeedCommitted` records the receipts as succeeded while retaining cancellation metadata. This prevents orphaned generated objects.
+
+The local worker is available. Distributed queue delivery, shared remote storage and autoscaled remote workers remain unavailable.
+
+'''
+          insert_once(
+              "docs/ARCHITECTURE.md",
+              "## Evidence and approval\n",
+              architecture_section,
+              "### Local worker",
+          )
+
+          hosted_section = '''## Local worker execution
+
+A local worker process is now available through `evavo-vector-worker` and the repository `worker:*` commands. It uses `FileHostedJobStore`, `FileVectorObjectStore`, `HostedJobController`, `@evavo/worker-engine` and lease-aware polling.
+
+This changes the execution boundary from “no worker exists” to:
+
+```text
+Local single-process worker available
+Remote distributed execution unavailable
+Hosted background queue unavailable
+```
+
+The local process can execute `trace-raster`, `optimise-svg`, `animate-svg`, `export-lottie` and `package-dotlottie`. It does not make an ephemeral API filesystem durable and does not establish a managed hosted worker release.
+
+See [`LOCAL-WORKER.md`](LOCAL-WORKER.md).
+
+'''
+          insert_once(
+              "docs/HOSTED-JOBS.md",
+              "## Deployment phase still required\n",
+              hosted_section,
+              "## Local worker execution",
+          )
+
+          target = Path(".github/workflows/quality.yml")
+          source = target.read_text(encoding="utf-8")
+          anchor = '''      - name: Install dependencies
+          run: pnpm install --no-frozen-lockfile
+'''
+          insertion = '''      - name: Verify local worker process contract
+          if: ${{ !cancelled() }}
+          shell: bash
+          run: |
+            mkdir -p .ci
+            set -o pipefail
+            node scripts/check-local-worker-contract.mjs 2>&1 | tee .ci/local-worker-contract.log
+
+'''
+          if "Verify local worker process contract" in source:
+              raise SystemExit("QUALITY_LOCAL_WORKER_ALREADY_PRESENT")
+          if source.count(anchor) != 1:
+              raise SystemExit("QUALITY_INSTALL_ANCHOR_INVALID")
+          target.write_text(source.replace(anchor, insertion + anchor, 1), encoding="utf-8")
+          PY
+          grep -Fq '### Local worker execution' README.md
+          grep -Fq '### Local worker' docs/ARCHITECTURE.md
+          grep -Fq '## Local worker execution' docs/HOSTED-JOBS.md
+          grep -Fq 'Verify local worker process contract' .github/workflows/quality.yml
+          git diff --check
+
+      - name: Commit and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-local-worker-publication.yml \
+            .github/local-worker-publication.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "docs(worker): publish local lease processor surface"
+          git pull --rebase origin main
+          git push origin HEAD:main
