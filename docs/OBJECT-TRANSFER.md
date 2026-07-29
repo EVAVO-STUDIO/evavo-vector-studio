@@ -204,4 +204,4 @@ lifecycle retention policies
 remote execution approval
 ```
 
-The HTTP-coordinated worker can adopt this transport only after its client verifies upload and download headers and receipts end to end. Until then, shared-volume execution remains the active worker mode.
+The HTTP-coordinated worker now supports `worker-api` object mode through the verified object client and replay-safe `HttpVectorObjectStore` adapter. Shared-volume `file` mode remains the default, while HTTP mode removes the shared-filesystem requirement when service discovery reports `objectTransferAvailable: true`.

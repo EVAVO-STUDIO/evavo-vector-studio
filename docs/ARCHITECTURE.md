@@ -187,7 +187,7 @@ The worker object-transfer API separates binary object movement from JSON job co
 
 The current file adapter retains raw bytes but not authoritative original MIME metadata. File-backed replays can therefore prove content identity while reporting `mimeTypeVerification: content-only`.
 
-This object transfer enables a future HTTP worker to fetch sources and publish outputs without a shared volume. The current HTTP worker still uses shared-store execution until its client adopts and verifies the binary transfer protocol end to end.
+The HTTP worker now supports `worker-api` object transport. It verifies service discovery before leasing work, downloads sources through key/length/SHA-256 evidence, and uploads exact deterministic transactions through bounded replay-safe retries. Shared-file mode remains available and remains the default.
 
 ## Evidence and approval
 
@@ -206,7 +206,8 @@ The system can establish that:
 - a browser player accepted exact verified archive bytes;
 - a durable item retained the same input revision and output receipts;
 - a hosted job record preserved canonical intent, idempotency and state transitions;
-- a local worker retained exact input and output receipts under a valid lease.
+- a local worker retained exact input and output receipts under a valid lease;
+- an HTTP worker verified transferred source and output object identities without requiring a shared filesystem.
 
 It cannot establish automatically that:
 
@@ -217,7 +218,7 @@ It cannot establish automatically that:
 - motion direction and rhythm are creatively appropriate;
 - one browser player is pixel-equivalent to the source or every other player;
 - a hosted worker ran merely because a job record exists;
-- local execution proves distributed deployment readiness.
+- local or HTTP-coordinated execution proves managed queue or autoscaling readiness.
 
 Production auto-approval is unavailable. Outputs remain `review-required` or `human-review-required`.
 

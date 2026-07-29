@@ -128,6 +128,25 @@ Worker object-transfer contract `1.0` provides separately authenticated immutabl
 
 The current file adapter reports `mimeTypeVerification: content-only` on retained replay because original MIME metadata is not stored beside raw bytes. Provider-backed cloud object storage, queue delivery and managed remote execution remain unavailable. See [`docs/OBJECT-TRANSFER.md`](docs/OBJECT-TRANSFER.md).
 
+### HTTP-coordinated worker execution
+
+`evavo-vector-http-worker` can execute through either a trusted shared file store or the verified worker object-transfer API.
+
+```powershell
+# Existing shared-volume mode
+$env:VECTOR_HTTP_WORKER_OBJECT_STORE_MODE = "file"
+$env:VECTOR_OBJECT_STORE_PATH = "C:\EVAVO\VectorWorker\objects"
+
+# Verified remote object mode
+$env:VECTOR_HTTP_WORKER_OBJECT_STORE_MODE = "http"
+$env:VECTOR_WORKER_CONTROL_URL = "https://vector.evavo.com.au"
+$env:VECTOR_WORKER_API_TOKEN = "replace-with-a-worker-only-secret"
+
+pnpm http-worker:run
+```
+
+HTTP mode verifies service discovery before acquiring a lease, validates downloaded object key, byte count and SHA-256, and retries only safe exact transaction uncertainty. Queue delivery and managed remote execution remain unavailable. See [`docs/HTTP-WORKER.md`](docs/HTTP-WORKER.md).
+
 ## Quick start on Windows PowerShell
 
 ```powershell
@@ -298,7 +317,7 @@ Worker control protocol `1.0` provides separately authenticated HTTP lease coord
 `VECTOR_WORKER_API_TOKEN` is mandatory and distinct from the ordinary API token. Lease tokens are returned only on acquisition. Generated bodies are not accepted or returned.
 
 ```text
-objectTransferAvailable: false
+objectTransferAvailable: configured-runtime-dependent
 queueDeliveryAvailable: false
 remoteExecutionAvailable: false
 ```
@@ -325,9 +344,9 @@ packages/job-engine       persistent resumable batch state and runner
 packages/job-control      hosted job records, leases, cancellation and receipts
 packages/worker-engine    immutable object-backed governed job execution
 packages/worker-protocol  authenticated worker control and binary transfer contracts
-packages/worker-client    secret-safe worker HTTP control client
+packages/worker-client    verified worker control and object clients
 workers/local-worker      local lease processor and machine-readable CLI
-workers/http-worker       HTTP-coordinated shared-store worker
+workers/http-worker       HTTP-coordinated file or object-API worker
 packages/cli              single-file and durable batch automation
 packages/mcp              local stdio agent tools
 schemas                   motion and batch contracts
@@ -353,6 +372,8 @@ docs                      architecture, API, CLI, MCP, motion, archive and job c
 - [`docs/LOCAL-WORKER.md`](docs/LOCAL-WORKER.md)
 - [`docs/WORKER-API.md`](docs/WORKER-API.md)
 - [`docs/OBJECT-TRANSFER.md`](docs/OBJECT-TRANSFER.md)
+- [`docs/WORKER-CLIENT.md`](docs/WORKER-CLIENT.md)
+- [`docs/HTTP-WORKER.md`](docs/HTTP-WORKER.md)
 
 ## Deployment boundary
 
