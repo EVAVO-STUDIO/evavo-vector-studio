@@ -14,7 +14,7 @@ export const VECTOR_WORKER_PROTOCOL_OPERATIONS = Object.freeze([
   "animate-svg",
   "export-lottie",
   "package-dotlottie",
-] as const satisfies readonly HostedJobLeaseRequest["operations"]);
+] as const satisfies NonNullable<HostedJobLeaseRequest["operations"]>);
 
 export type VectorWorkerProtocolOperation =
   typeof VECTOR_WORKER_PROTOCOL_OPERATIONS[number];
