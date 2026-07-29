@@ -18,16 +18,13 @@ function invalid(
   );
 }
 
-function tooLarge(bytes: number): never {
+function tooLarge(bytes: number, maximum: number): never {
   throw new VectorWorkerProtocolError(
     "VECTOR_WORKER_OBJECT_TRANSACTION_TOO_LARGE",
     "The object transaction exceeds the transfer byte limit.",
     {
       status: 413,
-      details: {
-        bytes,
-        maximum: VECTOR_OBJECT_TRANSACTION_MAX_BYTES,
-      },
+      details: { bytes, maximum },
     },
   );
 }
@@ -75,7 +72,7 @@ export async function readVectorObjectTransactionRequestBody(
       total += value.byteLength;
       if (total > maximumBytes) {
         await reader.cancel("object-transaction-too-large").catch(() => undefined);
-        tooLarge(total);
+        tooLarge(total, maximumBytes);
       }
       chunks.push(new Uint8Array(value));
     }
