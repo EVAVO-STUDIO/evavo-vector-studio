@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import {
   MOTION_CONTRACT_VERSION,
   MotionEngineError,
@@ -6,6 +5,7 @@ import {
   validateAnimatedSvgMotionSpec,
 } from "@evavo/motion-engine";
 import { createJobId } from "@evavo/vector-core";
+import { apiAuthorisationFailure } from "../../../../../lib/api-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,7 +30,7 @@ function noStoreHeaders(extra: HeadersInit = {}): Headers {
   const headers = new Headers(extra);
   headers.set("cache-control", "no-store, max-age=0");
   headers.set("x-content-type-options", "nosniff");
-  headers.set("vary", "authorization");
+  headers.set("vary", "authorization, cookie, origin");
   return headers;
 }
 
@@ -38,25 +38,6 @@ function json(value: unknown, status = 200, extraHeaders: HeadersInit = {}): Res
   return Response.json(value, { status, headers: noStoreHeaders(extraHeaders) });
 }
 
-function secureEqual(expected: string, supplied: string): boolean {
-  const expectedBytes = Buffer.from(expected, "utf8");
-  const suppliedBytes = Buffer.from(supplied, "utf8");
-  return expectedBytes.length === suppliedBytes.length && timingSafeEqual(expectedBytes, suppliedBytes);
-}
-
-function authorisationFailure(request: Request): Response | null {
-  const configuredToken = process.env.VECTOR_API_TOKEN?.trim();
-  if (!configuredToken) {
-    return process.env.NODE_ENV === "production"
-      ? json({ error: "VECTOR_API_NOT_CONFIGURED", message: "VECTOR_API_TOKEN is required in production." }, 503)
-      : null;
-  }
-  const header = request.headers.get("authorization") ?? "";
-  const suppliedToken = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  return suppliedToken && secureEqual(configuredToken, suppliedToken)
-    ? null
-    : json({ error: "VECTOR_API_UNAUTHORISED" }, 401);
-}
 
 function stringField(form: FormData, name: string): string | undefined {
   const value = form.get(name);
@@ -227,13 +208,13 @@ export function GET(): Response {
     lottieEndpoint: "/api/v1/motion/lottie",
     lottiePlayerRenderValidationAvailable: false,
     dotLottieAvailable: false,
-    authentication: "Bearer VECTOR_API_TOKEN in production",
+    authentication: "same-origin Vector workspace session or Bearer VECTOR_API_TOKEN",
     approval: "human review required",
   });
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const authFailure = authorisationFailure(request);
+  const authFailure = apiAuthorisationFailure(request, { allowWorkspaceSession: true });
   if (authFailure) return authFailure;
 
   const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";

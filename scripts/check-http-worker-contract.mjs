@@ -51,6 +51,7 @@ const files = {
   objectStoreTests: "workers/http-worker/src/http-object-store.test.ts",
   cliTests: "workers/http-worker/src/index.test.ts",
   cliHttpTests: "workers/http-worker/src/index-http-mode.test.ts",
+  remoteExecutionTests: "workers/http-worker/src/remote-execution.test.ts",
   completionReplay: "packages/job-control/src/completion-replay.ts",
   controllerErrors: "packages/job-control/src/errors.ts",
   completionTests: "packages/job-control/src/completion-replay.test.ts",
@@ -249,6 +250,21 @@ requireTokens(files.cliHttpTests, sources.cliHttpTests, [
   "HTTP_WORKER_OBJECT_TRANSFER_UNAVAILABLE",
   "objectTransferAvailable: true",
   "objectTransferAvailable: false",
+]);
+requireTokens(files.remoteExecutionTests, sources.remoteExecutionTests, [
+  "optimises one SVG using only HTTP control and object transfer",
+  "MemoryHostedJobStore",
+  "MemoryVectorObjectStore",
+  "completeHostedJobIdempotently",
+  "decodeVectorObjectTransaction",
+  "commitVectorObjectTransactionIdempotently",
+  '"--object-store-mode"',
+  '"http"',
+  "output/mark.optimised.svg",
+  "output/mark.evidence.json",
+  "doesNotMatch(result.stdout, /<svg",
+  "doesNotMatch(result.stdout, new RegExp(TOKEN))",
+  'assert.equal(evidence.approval, "human-review-required")',
 ]);
 
 requireTokens(files.completionReplay, sources.completionReplay, [

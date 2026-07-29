@@ -49,6 +49,7 @@ const packagePaths = [
   "packages/motion-engine/package.json",
   "packages/lottie-engine/package.json",
   "packages/job-engine/package.json",
+  "packages/hub-auth/package.json",
   "packages/job-control/package.json",
   "packages/worker-engine/package.json",
   "packages/worker-protocol/package.json",
