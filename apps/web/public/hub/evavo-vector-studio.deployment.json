@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "evavo-vector-studio",
+  "productSlug": "vector-studio",
+  "title": "EVAVO Vector Studio",
+  "environment": "production",
+  "productionOrigin": "https://vector.evavo.com.au",
+  "canonicalRuntime": {
+    "workspaceHref": "https://vector.evavo.com.au/",
+    "accessHref": "https://vector.evavo.com.au/access",
+    "redemptionHref": "https://vector.evavo.com.au/launch",
+    "healthHref": "https://vector.evavo.com.au/api/health",
+    "logoutHref": "https://vector.evavo.com.au/api/auth/logout",
+    "manifestHref": "https://vector.evavo.com.au/manifest.webmanifest",
+    "traceHref": "https://vector.evavo.com.au/api/v1/trace",
+    "motionHref": "https://vector.evavo.com.au/api/v1/motion/svg",
+    "lottieHref": "https://vector.evavo.com.au/api/v1/motion/lottie",
+    "dotLottieHref": "https://vector.evavo.com.au/api/v1/motion/dotlottie"
+  },
+  "repository": {
+    "sourceRepo": "EVAVO-STUDIO/evavo-vector-studio",
+    "branch": "main"
+  },
+  "platform": {
+    "provider": "vercel-compatible-next-runtime",
+    "appPath": "apps/web",
+    "framework": "nextjs",
+    "nodeRuntime": "nodejs",
+    "buildCommand": "pnpm --filter @evavo/vector-web build",
+    "installCommand": "pnpm install --frozen-lockfile"
+  },
+  "promotionState": {
+    "status": "staged",
+    "vercelProjectProvisioned": false,
+    "productionDomainProvisioned": false,
+    "productionEnvironmentConfigured": false,
+    "frozenInstallVerified": false,
+    "fullVerificationVerified": false,
+    "productionBuildVerified": false,
+    "signedLaunchConfigurationVerified": false,
+    "durableReplayVerified": false,
+    "ownerOneTimeLaunchSmokeVerified": false,
+    "clientOneTimeLaunchSmokeVerified": false,
+    "traceRuntimeSmokeVerified": false,
+    "motionRuntimeSmokeVerified": false,
+    "workerRuntimeSmokeVerified": false,
+    "clientReleaseEligible": false,
+    "lastVerifiedCommit": null
+  },
+  "privateRuntime": {
+    "robots": "noindex,nofollow",
+    "referrerPolicy": "no-referrer",
+    "launchMode": "signed-handoff-private-workspace",
+    "launchVersion": "evavo-client-app-launch-v1",
+    "launchTtlSeconds": 120,
+    "launchClockSkewSeconds": 15,
+    "launchSigningEnvironment": "EVAVO_CLIENT_APP_LAUNCH_SECRET",
+    "privateSigningEnvironment": "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
+    "signingSecretPolicy": "32-512-exact-no-surrounding-whitespace",
+    "signingKeyReusePolicy": "fail-closed",
+    "sessionVersion": "evavo-vector-session-v1",
+    "sessionTtlSeconds": 28800,
+    "sessionCookie": "__Host-evavo-vector-session",
+    "sessionCookiePolicy": "secure-httponly-samesite-lax-path-root",
+    "launchReplayMode": "atomic-redis-set-ex-nx",
+    "launchReplayProvider": "upstash-redis-rest",
+    "launchReplayMaximumTtlSeconds": 150,
+    "launchReplayRawCredentialStorage": false,
+    "acceptedActors": ["owner", "client"],
+    "applicationKey": "vector-studio",
+    "targetHost": "vector.evavo.com.au",
+    "workspaceApiSessionAuthorization": "same-origin-app-private-session-or-server-bearer",
+    "productionApproval": "human-review-required"
+  },
+  "verification": {
+    "hubContractCheck": "pnpm hub:check",
+    "releaseCheck": "pnpm contract:check",
+    "fullCheck": "pnpm check",
+    "productionBuild": "pnpm --filter @evavo/vector-web build"
+  },
+  "guardrails": [
+    "Production URLs are target metadata rather than deployment evidence",
+    "Client release remains ineligible while any promotion evidence field is false",
+    "Hub and app-private signing authorities must be different",
+    "Verified handoffs are consumed atomically before session delivery",
+    "Replay storage retains only a derived key and bounded expiry",
+    "Invalid, replayed and unavailable launches do not destroy an existing session",
+    "Workspace-session mutations require exact same-origin evidence",
+    "Machine bearer authentication remains separate from browser session authentication",
+    "No credentials or credential values appear in deployment metadata",
+    "Generated outputs remain human-review-required"
+  ]
+}

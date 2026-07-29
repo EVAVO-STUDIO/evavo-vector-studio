@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "sourceCard": "apps/web/public/hub/evavo-vector-studio.card.json",
+  "id": "evavo-vector-studio",
+  "productSlug": "vector-studio",
+  "title": "EVAVO Vector Studio",
+  "eyebrow": "Trace · SVG · Motion · Lottie",
+  "description": "A private EVAVO production workspace for professional raster reconstruction, editable SVG, directed motion, Lottie delivery and governed automation.",
+  "href": "/access",
+  "status": "active-development",
+  "accent": "evavo-cherry",
+  "priority": 45,
+  "visibility": {
+    "showInPrivateHub": true,
+    "defaultVisible": false,
+    "acceptedActors": ["owner", "client"],
+    "requiresWorkspaceProvisioning": true,
+    "requiresAppEntitlement": true,
+    "allowedRoles": ["super-admin", "workspace-owner", "editor", "viewer"],
+    "authorizationAuthority": "verified-hub-session-assignment-entitlement-and-app-private-session",
+    "ownerAccess": "verified-owner-session-and-super-admin-role",
+    "clientAccess": "verified-client-session-active-workspace-assignment-vector-studio-entitlement-and-release"
+  },
+  "routing": {
+    "appKind": "internal-private-app",
+    "launchMode": "signed-handoff-private-workspace",
+    "routeTarget": "/",
+    "accessHref": "/access",
+    "redemptionHref": "/launch",
+    "healthHref": "/api/health",
+    "manifestHref": "/manifest.webmanifest",
+    "sourceRepo": "EVAVO-STUDIO/evavo-vector-studio"
+  },
+  "runtime": {
+    "healthHref": "/api/health",
+    "launchHref": "/launch",
+    "manifestHref": "/manifest.webmanifest",
+    "appKind": "internal-private-app",
+    "launchMode": "signed-handoff-private-workspace",
+    "sourceRepo": "EVAVO-STUDIO/evavo-vector-studio"
+  },
+  "deviceClasses": ["mobile", "tablet", "desktop"],
+  "capabilities": [
+    "Measured raster-to-vector reconstruction",
+    "SVG topology, geometry and editability evidence",
+    "Animated SVG, Lottie JSON and dotLottie delivery",
+    "Authenticated API, CLI, MCP and durable batches",
+    "Self-hosted HTTP worker execution with verified object transfer",
+    "Human-review-gated production outputs"
+  ],
+  "guardrails": [
+    "Public hub metadata never authorizes access",
+    "Owner and client launches require verified hub identity and application access",
+    "Cross-app handoffs expire after two minutes and are consumed once",
+    "Vector Studio sessions use a separate app-private signing authority",
+    "Production replay storage must be durable and atomic",
+    "No signing secret, worker token, provider token or local filesystem path is public",
+    "No generated output is automatically production approved",
+    "Client release remains disabled until promotion evidence is complete"
+  ]
+}

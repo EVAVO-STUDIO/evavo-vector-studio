@@ -1,0 +1,11 @@
+{
+  "name": "EVAVO Vector Studio",
+  "short_name": "Vector Studio",
+  "description": "Private EVAVO raster-to-vector, SVG motion and Lottie production workspace.",
+  "start_url": "/access",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050506",
+  "theme_color": "#ff244e",
+  "categories": ["design", "productivity", "graphics"]
+}

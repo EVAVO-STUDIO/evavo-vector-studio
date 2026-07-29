@@ -1,0 +1,42 @@
+{
+  "id": "evavo-vector-studio",
+  "productSlug": "vector-studio",
+  "title": "EVAVO Vector Studio",
+  "eyebrow": "Trace · SVG · Motion · Lottie",
+  "description": "A private EVAVO production workspace for professional raster reconstruction, editable SVG, directed motion, Lottie delivery and governed automation.",
+  "href": "/access",
+  "status": "active-development",
+  "accent": "evavo-cherry",
+  "priority": 45,
+  "deviceClasses": ["mobile", "tablet", "desktop"],
+  "capabilities": [
+    "Measured raster-to-vector reconstruction",
+    "SVG topology, geometry and editability evidence",
+    "Animated SVG, Lottie JSON and dotLottie delivery",
+    "Authenticated API, CLI, MCP and durable batches",
+    "Self-hosted HTTP worker execution with verified object transfer",
+    "Human-review-gated production outputs"
+  ],
+  "visualNotes": [
+    "EVAVO black, white and cherry system",
+    "Responsive production shell for desktop, tablet and mobile",
+    "Technical evidence presented without generic AI styling"
+  ],
+  "runtime": {
+    "healthHref": "/api/health",
+    "launchHref": "/launch",
+    "manifestHref": "/manifest.webmanifest",
+    "appKind": "internal-private-app",
+    "launchMode": "signed-handoff-private-workspace",
+    "sourceRepo": "EVAVO-STUDIO/evavo-vector-studio"
+  },
+  "visibility": {
+    "enabled": true,
+    "defaultVisible": false,
+    "acceptedActors": ["owner", "client"],
+    "allowedRoles": ["super-admin", "workspace-owner", "editor", "viewer"],
+    "requiresWorkspaceProvisioning": true,
+    "requiresAppEntitlement": true,
+    "authorizationAuthority": "verified-hub-session-assignment-entitlement-and-app-private-session"
+  }
+}

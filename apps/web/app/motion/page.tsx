@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { currentVectorWorkspaceContext } from "../../lib/workspace-access";
 import MotionWorkspace from "./components/MotionWorkspace";
 import styles from "./page.module.css";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Motion Director · EVAVO Vector Studio",
@@ -21,6 +25,9 @@ const boundaries = [
 ] as const;
 
 export default function MotionDirectorPage() {
+  const workspace = currentVectorWorkspaceContext();
+  if (!workspace) redirect("/access");
+
   return (
     <main className={styles.page}>
       <header className="topbar">
@@ -32,8 +39,11 @@ export default function MotionDirectorPage() {
           <a href="/">Trace workspace</a>
           <a href="#director">Motion Director</a>
           <a href="#boundary">Contract</a>
+          {workspace.actorType === "client" ? <a href="/api/auth/logout">Sign out</a> : null}
         </nav>
-        <span className="status"><i /> Motion v1</span>
+        <span className="status" title={workspace.organisation.name}>
+          <i /> {workspace.workspace.name}
+        </span>
       </header>
 
       <section className={styles.hero}>
@@ -41,7 +51,7 @@ export default function MotionDirectorPage() {
           <div>
             <p className={styles.eyebrow}>EVAVO VECTOR STUDIO / MOTION DIRECTOR</p>
             <h1 className={styles.title}>Direct motion.<span>Keep intent visible.</span></h1>
-            <p className={styles.copy}>Build script-free animated SVG from identified artwork layers, then verify the source, output, motion identity and accessibility fallback before the result is shown.</p>
+            <p className={styles.copy}>Build script-free animated SVG for {workspace.organisation.name} from identified artwork layers, then verify the source, output, motion identity and accessibility fallback before the result is shown.</p>
           </div>
           <div className={styles.heroRail} aria-label="Motion Director capability summary">
             <div className={styles.railItem}><span>01</span><div><strong>Static source</strong><small>Governed SVG with portable target IDs.</small></div></div>
@@ -81,7 +91,7 @@ export default function MotionDirectorPage() {
 
       <footer className={styles.footer}>
         <span>EVAVO VECTOR STUDIO · MOTION DIRECTOR</span>
-        <span>Script-free output · verified evidence · human review</span>
+        <span>{workspace.workspace.name} · Script-free output · verified evidence · human review</span>
       </footer>
     </main>
   );

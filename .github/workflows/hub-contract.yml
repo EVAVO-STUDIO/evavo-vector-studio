@@ -1,0 +1,46 @@
+name: EVAVO hub integration contract
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vector-studio-hub-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hub-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify EVAVO hub integration contract
+        run: node scripts/check-hub-integration-contract.mjs
+
+      - name: Install workspace
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Execute hub authentication tests
+        run: pnpm --filter @evavo/hub-auth test
+
+      - name: Typecheck private web boundary
+        run: pnpm --filter @evavo/vector-web typecheck
+
+      - name: Build private web application
+        run: pnpm --filter @evavo/vector-web build

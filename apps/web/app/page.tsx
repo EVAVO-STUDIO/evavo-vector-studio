@@ -1,5 +1,9 @@
+import { redirect } from "next/navigation";
 import { VECTOR_PIPELINE } from "@evavo/vector-core";
+import { currentVectorWorkspaceContext } from "../lib/workspace-access";
 import TraceWorkspace from "./components/TraceWorkspace";
+
+export const dynamic = "force-dynamic";
 
 const outputCards = [
   ["Clean SVG", "Available now", "Adaptive spline reconstruction, measured candidate selection, geometry inspection and optional difference PNG evidence."],
@@ -8,6 +12,9 @@ const outputCards = [
 ] as const;
 
 export default function HomePage() {
+  const workspace = currentVectorWorkspaceContext();
+  if (!workspace) redirect("/access");
+
   return (
     <main>
       <header className="topbar">
@@ -20,14 +27,17 @@ export default function HomePage() {
           <a href="/motion">Motion Director</a>
           <a href="#pipeline">Pipeline</a>
           <a href="#automation">Automation</a>
+          {workspace.actorType === "client" ? <a href="/api/auth/logout">Sign out</a> : null}
         </nav>
-        <span className="status"><i /> Bounded runtime</span>
+        <span className="status" title={workspace.organisation.name}>
+          <i /> {workspace.workspace.name}
+        </span>
       </header>
 
       <section id="top" className="hero">
         <p className="eyebrow">EVAVO PRODUCTION TOOL  /  VECTOR 01</p>
         <h1>Trace less.<br /><em>Reconstruct properly.</em></h1>
-        <p className="lede">A governed raster-to-vector workspace that inspects the source, compares bounded reconstruction candidates, measures the selected SVG and shows exactly where human review is still required.</p>
+        <p className="lede">A governed raster-to-vector workspace for {workspace.organisation.name} that inspects the source, compares bounded reconstruction candidates, measures the selected SVG and shows exactly where human review is still required.</p>
         <div className="heroActions">
           <a className="primary" href="#workspace">Open trace workspace</a>
           <a className="secondary" href="/motion">Direct SVG motion</a>
@@ -77,7 +87,7 @@ vector_package_dotlottie {
 }`}</code></pre>
       </section>
 
-      <footer><span>EVAVO VECTOR STUDIO</span><span>Deliberate geometry. Verifiable output.</span></footer>
+      <footer><span>EVAVO VECTOR STUDIO</span><span>{workspace.workspace.name} · Deliberate geometry. Verifiable output.</span></footer>
     </main>
   );
 }

@@ -1,10 +1,14 @@
 import { timingSafeEqual } from "node:crypto";
+import {
+  vectorWorkspaceContextFromRequest,
+  vectorWorkspaceSessionMutationAllowed,
+} from "./hub-session";
 
 export function noStoreHeaders(extra: HeadersInit = {}): Headers {
   const headers = new Headers(extra);
   headers.set("cache-control", "no-store, max-age=0");
   headers.set("x-content-type-options", "nosniff");
-  headers.set("vary", "authorization");
+  headers.set("vary", "authorization, cookie, origin");
   return headers;
 }
 
@@ -31,23 +35,44 @@ function bearerToken(request: Request): string {
   return header.startsWith("Bearer ") ? header.slice(7).trim() : "";
 }
 
-export function apiAuthorisationFailure(request: Request): Response | null {
+export function apiAuthorisationFailure(
+  request: Request,
+  options: Readonly<{ allowWorkspaceSession?: boolean }> = {},
+): Response | null {
   const configuredToken = process.env.VECTOR_API_TOKEN?.trim();
-  if (!configuredToken) {
-    return process.env.NODE_ENV === "production"
-      ? apiJson(
-          {
-            error: "VECTOR_API_NOT_CONFIGURED",
-            message: "VECTOR_API_TOKEN is required in production.",
-          },
-          503,
-        )
-      : null;
-  }
   const suppliedToken = bearerToken(request);
-  return suppliedToken && secureEqual(configuredToken, suppliedToken)
-    ? null
-    : apiJson({ error: "VECTOR_API_UNAUTHORISED" }, 401);
+  if (suppliedToken) {
+    return configuredToken && secureEqual(configuredToken, suppliedToken)
+      ? null
+      : apiJson({ error: "VECTOR_API_UNAUTHORISED" }, 401);
+  }
+
+  if (options.allowWorkspaceSession) {
+    const workspace = vectorWorkspaceContextFromRequest(request);
+    if (workspace) {
+      return vectorWorkspaceSessionMutationAllowed(request)
+        ? null
+        : apiJson(
+            {
+              error: "VECTOR_WORKSPACE_ORIGIN_REJECTED",
+              message: "Workspace-session mutations require exact same-origin evidence.",
+            },
+            403,
+          );
+    }
+  }
+
+  if (!configuredToken && process.env.NODE_ENV !== "production") return null;
+  if (!configuredToken && !options.allowWorkspaceSession) {
+    return apiJson(
+      {
+        error: "VECTOR_API_NOT_CONFIGURED",
+        message: "VECTOR_API_TOKEN is required for this production API surface.",
+      },
+      503,
+    );
+  }
+  return apiJson({ error: "VECTOR_API_UNAUTHORISED" }, 401);
 }
 
 export function workerApiAuthorisationFailure(
