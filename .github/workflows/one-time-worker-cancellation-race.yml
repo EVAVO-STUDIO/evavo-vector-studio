@@ -1,0 +1,208 @@
+name: One-time worker cancellation race fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/worker-cancellation-race.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-worker-cancellation-race
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Preserve committed output receipts across cancellation race
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          controller = Path("packages/job-control/src/controller.ts")
+          source = controller.read_text(encoding="utf-8")
+
+          helper_anchor = '''function normaliseFailure(
+            input: HostedJobFailureInput,
+            now: Date,
+          ) {
+'''
+          if source.count(helper_anchor) != 1:
+              raise SystemExit("COMPLETION_HELPER_ANCHOR_INVALID")
+          helper = '''function normaliseCompletion(completion: HostedJobCompletion): Readonly<{
+            outputs: ReturnType<typeof validateHostedJobOutputReceipts>;
+            evidence: Readonly<Record<string, unknown>>;
+          }> {
+            const outputs = validateHostedJobOutputReceipts(completion.outputs);
+            const evidence = completion.evidence ?? {};
+            const evidenceJson = canonicalHostedJobJson(evidence);
+            if (Buffer.byteLength(evidenceJson, "utf8") > HOSTED_JOB_MAX_PAYLOAD_BYTES) {
+              throw new HostedJobError(
+                "HOSTED_JOB_REQUEST_INVALID",
+                "completion.evidence exceeds the hosted job JSON limit.",
+                { status: 422 },
+              );
+            }
+            return Object.freeze({
+              outputs,
+              evidence: Object.freeze({ ...evidence }),
+            });
+          }
+
+'''
+          source = source.replace(helper_anchor, helper + helper_anchor, 1)
+
+          old_validation = '''    const outputs = validateHostedJobOutputReceipts(completion.outputs);
+            const evidence = completion.evidence ?? {};
+            const evidenceJson = canonicalHostedJobJson(evidence);
+            if (Buffer.byteLength(evidenceJson, "utf8") > HOSTED_JOB_MAX_PAYLOAD_BYTES) {
+              throw new HostedJobError(
+                "HOSTED_JOB_REQUEST_INVALID",
+                "completion.evidence exceeds the hosted job JSON limit.",
+                { status: 422 },
+              );
+            }
+'''
+          if source.count(old_validation) != 1:
+              raise SystemExit("SUCCEED_VALIDATION_ANCHOR_INVALID")
+          source = source.replace(
+              old_validation,
+              '''    const { outputs, evidence } = normaliseCompletion(completion);
+''',
+              1,
+          )
+          source = source.replace(
+              '          evidence: Object.freeze({ ...evidence }),',
+              '          evidence,',
+              1,
+          )
+
+          method_anchor = '''  async fail(
+            jobId: string,
+            leaseToken: string,
+            input: HostedJobFailureInput,
+'''
+          if source.count(method_anchor) != 1:
+              raise SystemExit("SUCCEED_COMMITTED_INSERT_ANCHOR_INVALID")
+          method = '''  async succeedCommitted(
+            jobId: string,
+            leaseToken: string,
+            completion: HostedJobCompletion,
+          ): Promise<HostedJobRecord> {
+            const { outputs, evidence } = normaliseCompletion(completion);
+            if (outputs.length < 1) {
+              throw new HostedJobError(
+                "HOSTED_JOB_REQUEST_INVALID",
+                "Committed worker success requires at least one immutable output receipt.",
+                { status: 422, details: { jobId } },
+              );
+            }
+            return this.#mutate(jobId, (current, now) => {
+              assertLease(current, leaseToken, now);
+              if (current.status !== "running" && current.status !== "cancel-requested") {
+                throw new HostedJobError(
+                  "HOSTED_JOB_TRANSITION_INVALID",
+                  "Only a running or cancellation-raced hosted job can retain committed success.",
+                  { status: 409, details: { jobId, status: current.status } },
+                );
+              }
+              return nextRecord(current, {
+                status: "succeeded",
+                lease: null,
+                result: Object.freeze({
+                  outputs,
+                  evidence,
+                  completedAt: iso(now),
+                }),
+                failure: null,
+                finishedAt: iso(now),
+              }, now);
+            });
+          }
+
+'''
+          source = source.replace(method_anchor, method + method_anchor, 1)
+          controller.write_text(source, encoding="utf-8")
+
+          runner = Path("workers/local-worker/src/runner.ts")
+          source = runner.read_text(encoding="utf-8")
+          old = "      const completed = await this.#controller.succeed(\n"
+          new = "      const completed = await this.#controller.succeedCommitted(\n"
+          if source.count(old) != 1:
+              raise SystemExit("RUNNER_COMMIT_METHOD_ANCHOR_INVALID")
+          runner.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          test = Path("packages/job-control/src/controller.test.ts")
+          source = test.read_text(encoding="utf-8")
+          if 'records committed success when cancellation races after immutable output commit' in source:
+              raise SystemExit("CONTROLLER_RACE_TEST_ALREADY_PRESENT")
+          source += '''\n\ntest("records committed success when cancellation races after immutable output commit", async () => {
+            const value = fixture();
+            const created = await value.controller.create(request("committed-cancel-race"));
+            const leased = await value.controller.acquireLease({
+              workerId: "worker-race",
+              leaseMs: 30_000,
+            });
+            assert.equal(leased?.id, created.record.id);
+            await value.controller.start(created.record.id, "lease-1");
+            const requested = await value.controller.requestCancellation(
+              created.record.id,
+              { reason: "Arrived after object commit" },
+            );
+            assert.equal(requested.status, "cancel-requested");
+            const completed = await value.controller.succeedCommitted(
+              created.record.id,
+              "lease-1",
+              {
+                outputs: [{
+                  path: "objects/output/mark.svg",
+                  mimeType: "image/svg+xml",
+                  bytes: 123,
+                  sha256: "b".repeat(64),
+                }],
+                evidence: {
+                  cancellationRaceResolution: "committed-success-retained",
+                },
+              },
+            );
+            assert.equal(completed.status, "succeeded");
+            assert.equal(completed.cancellation?.reason, "Arrived after object commit");
+            assert.equal(completed.result?.outputs[0]?.bytes, 123);
+            assert.equal(
+              completed.result?.evidence.cancellationRaceResolution,
+              "committed-success-retained",
+            );
+          });
+'''
+          test.write_text(source, encoding="utf-8")
+          PY
+          grep -Fq 'async succeedCommitted(' packages/job-control/src/controller.ts
+          grep -Fq 'this.#controller.succeedCommitted(' workers/local-worker/src/runner.ts
+          grep -Fq 'committed-success-retained' packages/job-control/src/controller.test.ts
+          git diff --check
+
+      - name: Commit and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-worker-cancellation-race.yml \
+            .github/worker-cancellation-race.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "fix(worker): retain committed outputs across cancellation race"
+          git pull --rebase origin main
+          git push origin HEAD:main
