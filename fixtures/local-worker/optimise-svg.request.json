@@ -1,0 +1,17 @@
+{
+  "workspaceId": "local-worker-fixtures",
+  "idempotencyKey": "gentle-entrance:optimise:revision-01",
+  "operation": "optimise-svg",
+  "priority": 5,
+  "maxAttempts": 3,
+  "payload": {
+    "source": {
+      "objectKey": "source/gentle-entrance/revision-01.svg",
+      "sha256": "fc5cbd02066c1a5dbd0552c42a26a8cc4b44204cec518002d60c3e82aa1963b7"
+    },
+    "outputs": {
+      "svgObjectKey": "output/gentle-entrance/revision-01.optimised.svg",
+      "evidenceObjectKey": "output/gentle-entrance/revision-01.optimised.evidence.json"
+    }
+  }
+}
