@@ -1,38 +1,45 @@
 # EVAVO Vector Studio Hosted Job Control Plane
 
-Hosted job control contract `1.0` records production intent, idempotency, status, leases, cancellation, attempts, output receipts and terminal evidence without claiming that a remote worker exists.
+Hosted job control contract `1.0` records production intent, idempotency, status, leases, cancellation, attempts, output receipts and terminal evidence without claiming distributed remote execution exists.
 
 The control plane and execution plane are separate. This is not a hosted background queue.
 
 ```text
-Control plane now available
+Control plane available
   idempotent record creation
   record inspection
   cancellation requests
   optimistic state transitions
-  worker leases and heartbeats in the core package
+  worker leases and heartbeats
   retry and expired-lease recovery
   output receipts and terminal evidence
 
-Execution plane not yet deployed
+Local execution bridge available
+  immutable source object import
+  one-shot and polling worker process
+  governed raster, SVG, Lottie and archive execution
+  receipt-only completion records
+
+Distributed execution not deployed
   hosted queue dispatch
-  remote worker processes
-  object storage transfer
+  shared remote object storage
   distributed leases
   worker autoscaling
   signed workspace launch
 ```
 
-Creating a hosted job record does not schedule execution. API responses explicitly retain:
+Creating a hosted job record does not automatically schedule execution. API responses explicitly retain:
 
 ```text
 executionScheduled: false
 remoteExecutionAvailable: false
 ```
 
+A separately started local worker can lease and execute a record from the same persistent job store.
+
 ## Package
 
-The provider-neutral implementation is:
+The provider-neutral control-plane implementation is:
 
 ```text
 packages/job-control
@@ -62,6 +69,8 @@ export-lottie
 package-dotlottie
 run-batch
 ```
+
+The hosted record contract can describe all six operations. The local worker executes the first five. `run-batch` remains available through the durable batch CLI and MCP batch tools rather than the hosted worker engine.
 
 The payload is a bounded JSON object describing references and options. It is not a transport for raw raster, SVG, Lottie or archive bodies.
 
@@ -114,7 +123,7 @@ A new record returns `201`. Reusing the same workspace and idempotency key with 
 HOSTED_JOB_IDEMPOTENCY_CONFLICT
 ```
 
-The API does not accept raw source files here. Source and output object references become meaningful only after object storage and a worker adapter are deployed.
+The API does not accept raw source files here. A source object is imported separately and the payload pins its exact SHA-256 revision.
 
 ## Inspect and cancel
 
@@ -132,7 +141,7 @@ Optional cancellation body:
 }
 ```
 
-Queued work is cancelled immediately. Leased or running work becomes `cancel-requested`; a cooperative worker must acknowledge cancellation before the record becomes `cancelled`.
+Queued work is cancelled immediately. Leased or running work becomes `cancel-requested`; a cooperative worker must observe and acknowledge cancellation.
 
 Terminal jobs are not rewritten by a later cancellation request.
 
@@ -157,15 +166,58 @@ running
 
 cancel-requested
   -> cancelled
+  -> succeeded    only when immutable outputs already committed
 ```
 
 Every mutation increments an optimistic integer version. Concurrent writers use compare-and-swap; a stale writer cannot silently replace a newer state.
 
+A cancellation that arrives after immutable outputs commit is resolved as receipt-backed success with cancellation metadata retained and:
+
+```text
+cancellationRaceResolution: committed-success-retained
+```
+
+This prevents committed output objects from becoming orphaned.
+
+## Local worker execution
+
+The local worker is available through:
+
+```text
+workers/local-worker
+@evavo/local-worker
+evavo-vector-worker
+```
+
+It combines:
+
+- `FileHostedJobStore`;
+- `HostedJobController`;
+- immutable `FileVectorObjectStore` storage;
+- `@evavo/worker-engine`;
+- lease-aware heartbeat and polling logic.
+
+It supports immutable import, idempotent submit, inspect, list, cancel, expired-lease reclaim, one-shot execution and polling execution. Commands return JSON; polling mode returns NDJSON.
+
+```powershell
+$env:VECTOR_JOB_STORE_PATH = "C:\EVAVO\VectorWorker\jobs"
+$env:VECTOR_OBJECT_STORE_PATH = "C:\EVAVO\VectorWorker\objects"
+$env:VECTOR_WORKER_ID = "greg-workstation-01"
+
+pnpm worker:capabilities
+pnpm worker:run-once
+pnpm worker:run -- --idle-exit-ms 30000
+```
+
+Generated bodies are stored as immutable objects. Job records and process output retain receipts and compact evidence only.
+
+See [`LOCAL-WORKER.md`](LOCAL-WORKER.md).
+
 ## Worker boundary
 
-The package exposes lease operations, but no public worker HTTP endpoint is released yet.
+The local process authenticates through operating-system and filesystem access rather than a released public worker HTTP endpoint.
 
-A future worker integration must:
+Any remote worker integration must:
 
 1. authenticate independently from browser/API clients;
 2. acquire only supported operation kinds;
@@ -176,11 +228,11 @@ A future worker integration must:
 7. finish with path/object-key, MIME type, byte count and SHA-256 receipts;
 8. retain human-review-required output policy.
 
-The current file adapter is suitable for local development, self-hosted processes and explicitly persistent mounted volumes. It is not suitable for an ephemeral serverless filesystem.
+The current file adapters are suitable for local development, self-hosted processes and explicitly persistent mounted volumes. They are not suitable for an ephemeral serverless filesystem.
 
 ## Configuration
 
-Default:
+API record-store default:
 
 ```text
 VECTOR_JOB_STORE_MODE=disabled
@@ -193,7 +245,14 @@ VECTOR_JOB_STORE_MODE=file
 VECTOR_JOB_STORE_PATH=/persistent/vector-job-records
 ```
 
-Production file mode additionally requires:
+Local worker object storage:
+
+```text
+VECTOR_OBJECT_STORE_PATH=/persistent/vector-objects
+VECTOR_WORKER_ID=worker-01
+```
+
+Production API file mode additionally requires:
 
 ```text
 VECTOR_JOB_FILE_STORE_PERSISTENT=true
@@ -210,7 +269,7 @@ HTTP 503
 
 ## File-store safety
 
-The file adapter uses:
+The job adapter uses:
 
 - a canonical root created and resolved through `realpath`;
 - one JSON record per job;
@@ -222,14 +281,22 @@ The file adapter uses:
 - strict record parsing;
 - optimistic compare-and-swap versions.
 
-This is an ordinary-process durability boundary, not protection against a hostile operating-system account continuously replacing directories or files.
+The object adapter uses:
+
+- portable slash-separated object keys;
+- canonical root and symlink checks;
+- immutable no-overwrite writes;
+- atomic multi-object commit and rollback;
+- exact source and output SHA-256 receipts.
+
+These are ordinary-process durability boundaries, not protection against a hostile operating-system account continuously replacing directories or files.
 
 ## Deployment phase still required
 
-A real hosted worker release still needs:
+A real distributed hosted worker release still needs:
 
 - database-backed job and event records;
-- object storage with immutable source revisions;
+- shared object storage with immutable source revisions;
 - queue visibility and delivery guarantees;
 - distributed worker leases and heartbeats;
 - remote cancellation;
@@ -239,4 +306,4 @@ A real hosted worker release still needs:
 - deployment, cold-start and native-binary smoke evidence;
 - operational metrics and incident diagnostics.
 
-Until those exist, Vector Studio can create durable job records only when a deliberately configured record store is available. It does not claim hosted execution.
+The local worker is available, but it does not claim remote execution. Until the distributed controls exist, Vector Studio remains a local/self-hosted execution system and a signed federated candidate rather than a released EVAVO hub worker service.
