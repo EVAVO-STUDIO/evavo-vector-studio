@@ -123,6 +123,14 @@ jobs:
           set -o pipefail
           node scripts/check-batch-contract.mjs 2>&1 | tee .ci/batch-contract.log
 
+      - name: Verify hosted job control contract
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          node scripts/check-hosted-job-contract.mjs 2>&1 | tee .ci/hosted-job-contract.log
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
