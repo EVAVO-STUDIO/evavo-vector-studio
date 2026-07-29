@@ -1,0 +1,125 @@
+name: One-time worker API publication
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/worker-api-publication.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Publish worker control API contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def insert(path: str, anchor: str, marker: str, section: str) -> None:
+              target = Path(path)
+              source = target.read_text(encoding="utf-8")
+              if marker in source:
+                  return
+              if source.count(anchor) != 1:
+                  raise SystemExit(f"ANCHOR_INVALID:{path}:{anchor}")
+              target.write_text(source.replace(anchor, section + anchor, 1), encoding="utf-8")
+
+          insert(
+              "docs/API.md",
+              "# Shared approval boundary\n",
+              "# Worker control API",
+              '''# Worker control API
+
+The worker control API coordinates authenticated hosted-job leases. It requires the separate server-only `VECTOR_WORKER_API_TOKEN` in every environment.
+
+```text
+GET  /api/v1/worker
+POST /api/v1/worker/lease
+POST /api/v1/worker/jobs/{jobId}/start
+POST /api/v1/worker/jobs/{jobId}/heartbeat
+POST /api/v1/worker/jobs/{jobId}/complete
+POST /api/v1/worker/jobs/{jobId}/fail
+POST /api/v1/worker/jobs/{jobId}/acknowledge-cancellation
+```
+
+Requests use bounded `application/json`. Lease acquisition is the only response that returns the opaque `leaseToken`; all later records expose `tokenPresent: true` instead. Completion accepts output receipts and compact evidence, never generated bodies.
+
+The control API reports `objectTransferAvailable: false`, `queueDeliveryAvailable: false` and `remoteExecutionAvailable: false`. A worker must already have trusted access to the immutable object store. See [`WORKER-API.md`](WORKER-API.md).
+
+''',
+          )
+          insert(
+              "docs/HOSTED-JOBS.md",
+              "## Deployment phase still required\n",
+              "## Worker control API",
+              '''## Worker control API
+
+A separately authenticated worker control API is available when `VECTOR_WORKER_API_TOKEN` and a safe hosted job record store are configured. It exposes lease, start, heartbeat, completion, failure and cancellation-acknowledgement transitions without transferring generated bodies or revealing lease tokens after acquisition.
+
+This adds HTTP control-plane coordination only. Object transfer, queue delivery and remote execution remain unavailable. See [`WORKER-API.md`](WORKER-API.md).
+
+''',
+          )
+          insert(
+              "README.md",
+              "## Quality and approval\n",
+              "## Worker control API",
+              '''## Worker control API
+
+Worker control protocol `1.0` provides separately authenticated HTTP lease coordination through `/api/v1/worker` and `/api/v1/worker/lease`, with start, heartbeat, completion, failure and cancellation-acknowledgement routes for individual jobs.
+
+`VECTOR_WORKER_API_TOKEN` is mandatory and distinct from the ordinary API token. Lease tokens are returned only on acquisition. Generated bodies are not accepted or returned. Object transfer, queue delivery and remote execution remain unavailable. See [`docs/WORKER-API.md`](docs/WORKER-API.md).
+
+''',
+          )
+
+          workflow = Path(".github/workflows/quality.yml")
+          source = workflow.read_text(encoding="utf-8")
+          anchor = '''      - name: Install dependencies
+          run: pnpm install --no-frozen-lockfile
+'''
+          section = '''      - name: Verify worker control API contract
+          if: ${{ !cancelled() }}
+          shell: bash
+          run: |
+            mkdir -p .ci
+            set -o pipefail
+            node scripts/check-worker-api-contract.mjs 2>&1 | tee .ci/worker-api-contract.log
+
+'''
+          if "Verify worker control API contract" not in source:
+              if source.count(anchor) != 1:
+                  raise SystemExit("QUALITY_INSTALL_ANCHOR_INVALID")
+              workflow.write_text(source.replace(anchor, section + anchor, 1), encoding="utf-8")
+          PY
+          grep -Fq '# Worker control API' docs/API.md
+          grep -Fq '## Worker control API' docs/HOSTED-JOBS.md
+          grep -Fq '## Worker control API' README.md
+          grep -Fq 'Verify worker control API contract' .github/workflows/quality.yml
+          git diff --check
+
+      - name: Commit and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-worker-api-publication.yml \
+            .github/worker-api-publication.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "docs(worker-api): publish authenticated control surface"
+          git pull --rebase origin main
+          git push origin HEAD:main
