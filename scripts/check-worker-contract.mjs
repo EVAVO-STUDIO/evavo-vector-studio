@@ -174,7 +174,7 @@ requireTokens(files.docs, sources.docs, [
   "not yet accepted",
   "immutable source-object SHA-256 verification",
   "atomic multi-object output commit",
-  "generated bodies",
+  "Generated SVG, PNG, Lottie JSON or archive bodies",
   "remoteExecutionAvailable",
 ]);
 requireTokens(files.hostedDocs, sources.hostedDocs, [
