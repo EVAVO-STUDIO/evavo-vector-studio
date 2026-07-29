@@ -33,6 +33,8 @@ export const DEFAULT_HTTP_WORKER_POLL_MS = 1_000;
 export const DEFAULT_HTTP_WORKER_COMPLETION_ATTEMPTS = 3;
 export const DEFAULT_HTTP_WORKER_COMPLETION_RETRY_MS = 500;
 
+export type HttpWorkerObjectTransport = "shared-file" | "worker-api";
+
 export type HttpWorkerConfig = Readonly<{
   workerId: string;
   leaseMs?: number;
@@ -41,6 +43,7 @@ export type HttpWorkerConfig = Readonly<{
   operations?: readonly VectorWorkerProtocolOperation[];
   completionAttempts?: number;
   completionRetryMs?: number;
+  objectTransport?: HttpWorkerObjectTransport;
 }>;
 
 export type HttpWorkOutcome =
@@ -121,6 +124,7 @@ function validateConfig(config: HttpWorkerConfig): Readonly<{
   operations: readonly VectorWorkerProtocolOperation[];
   completionAttempts: number;
   completionRetryMs: number;
+  objectTransport: HttpWorkerObjectTransport;
 }> {
   if (!WORKER_ID.test(config.workerId)) {
     throw new HttpWorkerError(
@@ -171,6 +175,14 @@ function validateConfig(config: HttpWorkerConfig): Readonly<{
     30_000,
     "completionRetryMs",
   );
+  const objectTransport = config.objectTransport ?? "shared-file";
+  if (objectTransport !== "shared-file" && objectTransport !== "worker-api") {
+    throw new HttpWorkerError(
+      "HTTP_WORKER_CONFIG_INVALID",
+      "objectTransport must be shared-file or worker-api.",
+      { details: { objectTransport } },
+    );
+  }
   const requested = config.operations ??
     (VECTOR_WORKER_SUPPORTED_OPERATIONS as readonly VectorWorkerProtocolOperation[]);
   if (!Array.isArray(requested) || requested.length < 1) {
@@ -198,6 +210,7 @@ function validateConfig(config: HttpWorkerConfig): Readonly<{
     operations: Object.freeze(operations),
     completionAttempts,
     completionRetryMs,
+    objectTransport,
   });
 }
 
@@ -392,7 +405,10 @@ export class HttpVectorWorker {
     return Object.freeze({
       contractVersion: HTTP_WORKER_CONTRACT_VERSION,
       workerId: this.#config.workerId,
-      execution: "http-coordinated-shared-object-store",
+      execution: this.#config.objectTransport === "worker-api"
+        ? "http-coordinated-object-transfer"
+        : "http-coordinated-shared-object-store",
+      objectTransport: this.#config.objectTransport,
       operations: this.#config.operations,
       leaseMs: this.#config.leaseMs,
       heartbeatMs: this.#config.heartbeatMs,
@@ -401,8 +417,10 @@ export class HttpVectorWorker {
       completionRetryMs: this.#config.completionRetryMs,
       receiptBackedCompletionReplay: true,
       persistentJobRecords: true,
-      sharedImmutableObjectStoreRequired: true,
-      objectTransferAvailable: false,
+      sharedImmutableObjectStoreRequired:
+        this.#config.objectTransport === "shared-file",
+      objectTransferAvailable:
+        this.#config.objectTransport === "worker-api",
       queueDeliveryAvailable: false,
       managedRemoteExecutionAvailable: false,
       generatedBodiesInControlResponses: false,
