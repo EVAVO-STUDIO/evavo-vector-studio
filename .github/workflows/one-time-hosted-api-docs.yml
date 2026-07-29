@@ -1,0 +1,114 @@
+name: One-time hosted API documentation patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/hosted-api-docs.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Add hosted job API contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          target = Path("docs/API.md")
+          source = target.read_text(encoding="utf-8")
+          replacements = [
+              (
+                  "Vector Studio exposes four bounded synchronous production endpoints:",
+                  "Vector Studio exposes four bounded synchronous production endpoints plus a separately configured hosted job record control plane:",
+              ),
+              (
+                  "- `POST /api/v1/motion/dotlottie` for deterministic dotLottie v2 packaging.",
+                  "- `POST /api/v1/motion/dotlottie` for deterministic dotLottie v2 packaging;\n- `POST /api/v1/jobs` for idempotent hosted job record creation when a safe store is configured;\n- `GET` and `DELETE /api/v1/jobs/{jobId}` for record inspection and cancellation requests.",
+              ),
+              (
+                  "They are intended for interactive work and agent calls that can wait for a response. They are not durable queues. Persistence, resumability, object storage, retries and long-running workers belong in a separate worker service.",
+                  "The four production endpoints are interactive processing surfaces. The hosted job route can retain records when configured, but record creation does not schedule execution. Object storage, queue delivery and workers remain a separate deployment phase.",
+              ),
+          ]
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise SystemExit(f"HOSTED_API_ANCHOR_INVALID:{old[:40]}")
+              source = source.replace(old, new, 1)
+          anchor = "# Shared approval boundary\n"
+          section = '''# Hosted job record API
+
+## Service discovery
+
+```http
+GET /api/v1/jobs
+```
+
+The response reports hosted job contract `1.0`, supported operations, record-store availability and `remoteExecutionAvailable: false`.
+
+## Create a record
+
+```http
+POST /api/v1/jobs
+Authorization: Bearer <VECTOR_API_TOKEN>
+Content-Type: application/json
+```
+
+The request requires `workspaceId`, `idempotencyKey`, `operation` and a bounded JSON `payload`. Optional `priority` is 0 to 9 and `maxAttempts` is 1 to 10. Raw source or generated asset bodies do not belong in this record request.
+
+A new record returns `201`. An exact replay returns `200`. A changed request under the same workspace and key returns `HOSTED_JOB_IDEMPOTENCY_CONFLICT`.
+
+Record creation retains:
+
+```text
+executionScheduled: false
+remoteExecutionAvailable: false
+```
+
+## Inspect or cancel
+
+```http
+GET /api/v1/jobs/{jobId}
+DELETE /api/v1/jobs/{jobId}
+```
+
+Queued work cancels immediately. Leased or running work becomes `cancel-requested` for cooperative acknowledgement by a future worker.
+
+The store fails closed with `HOSTED_JOB_STORE_NOT_CONFIGURED` until a safe adapter is configured. Production file mode additionally requires `VECTOR_JOB_FILE_STORE_PERSISTENT=true` and a genuinely persistent mounted volume.
+
+The current API does not expose worker leasing and does not claim hosted execution. See `docs/HOSTED-JOBS.md`.
+
+'''
+          if source.count(anchor) != 1 or "# Hosted job record API" in source:
+              raise SystemExit("HOSTED_API_SECTION_INVALID")
+          target.write_text(source.replace(anchor, section + anchor, 1), encoding="utf-8")
+          PY
+          grep -Fq '# Hosted job record API' docs/API.md
+          grep -Fq 'executionScheduled: false' docs/API.md
+          grep -Fq 'HOSTED_JOB_STORE_NOT_CONFIGURED' docs/API.md
+          git diff --check
+
+      - name: Commit and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-hosted-api-docs.yml \
+            .github/hosted-api-docs.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "docs(api): publish hosted job record contract"
+          git pull --rebase origin main
+          git push origin HEAD:main
