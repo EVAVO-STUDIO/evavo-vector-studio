@@ -436,51 +436,57 @@ export class HostedJobController {
   }
 
   async succeed(
-    jobId: string,
-    leaseToken: string,
-    completion: HostedJobCompletion = {},
-  ): Promise<HostedJobRecord> {
-    const outputs = validateHostedJobOutputReceipts(completion.outputs);
-    const evidence = completion.evidence ?? {};
-    const evidenceJson = canonicalHostedJobJson(evidence);
-    if (Buffer.byteLength(evidenceJson, "utf8") > HOSTED_JOB_MAX_PAYLOAD_BYTES) {
+  jobId: string,
+  leaseToken: string,
+  completion: HostedJobCompletion = {},
+): Promise<HostedJobRecord> {
+  const outputs = validateHostedJobOutputReceipts(completion.outputs);
+  const evidence = completion.evidence ?? {};
+  const evidenceJson = canonicalHostedJobJson(evidence);
+  if (Buffer.byteLength(evidenceJson, "utf8") > HOSTED_JOB_MAX_PAYLOAD_BYTES) {
+    throw new HostedJobError(
+      "HOSTED_JOB_REQUEST_INVALID",
+      "completion.evidence exceeds the hosted job JSON limit.",
+      { status: 422 },
+    );
+  }
+  return this.#mutate(jobId, (current, now) => {
+    assertLease(current, leaseToken, now);
+    if (current.status === "cancel-requested" && outputs.length === 0) {
       throw new HostedJobError(
-        "HOSTED_JOB_REQUEST_INVALID",
-        "completion.evidence exceeds the hosted job JSON limit.",
-        { status: 422 },
+        "HOSTED_JOB_CANCELLATION_REQUESTED",
+        "The hosted job cannot succeed after cancellation was requested unless immutable output receipts already exist.",
+        { status: 409, details: { jobId } },
       );
     }
-    return this.#mutate(jobId, (current, now) => {
-      assertLease(current, leaseToken, now);
-      if (current.status === "cancel-requested") {
-        throw new HostedJobError(
-          "HOSTED_JOB_CANCELLATION_REQUESTED",
-          "The hosted job cannot succeed after cancellation was requested.",
-          { status: 409, details: { jobId } },
-        );
-      }
-      if (current.status !== "running") {
-        throw new HostedJobError(
-          "HOSTED_JOB_TRANSITION_INVALID",
-          "Only a running hosted job can succeed.",
-          { status: 409, details: { jobId, status: current.status } },
-        );
-      }
-      return nextRecord(current, {
-        status: "succeeded",
-        lease: null,
-        result: Object.freeze({
-          outputs,
-          evidence: Object.freeze({ ...evidence }),
-          completedAt: iso(now),
+    if (current.status !== "running" && current.status !== "cancel-requested") {
+      throw new HostedJobError(
+        "HOSTED_JOB_TRANSITION_INVALID",
+        "Only a running or cancellation-raced hosted job can succeed.",
+        { status: 409, details: { jobId, status: current.status } },
+      );
+    }
+    const cancellationRaced = current.status === "cancel-requested";
+    return nextRecord(current, {
+      status: "succeeded",
+      lease: null,
+      result: Object.freeze({
+        outputs,
+        evidence: Object.freeze({
+          ...evidence,
+          ...(cancellationRaced
+            ? { cancellationRaceResolution: "committed-success-retained" }
+            : {}),
         }),
-        failure: null,
-        finishedAt: iso(now),
-      }, now);
-    });
-  }
+        completedAt: iso(now),
+      }),
+      failure: null,
+      finishedAt: iso(now),
+    }, now);
+  });
+}
 
-  async fail(
+async fail(
     jobId: string,
     leaseToken: string,
     input: HostedJobFailureInput,
