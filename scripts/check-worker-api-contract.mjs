@@ -47,6 +47,7 @@ const files = {
   validation: "packages/worker-protocol/src/validation.ts",
   tests: "packages/worker-protocol/src/validation.test.ts",
   index: "packages/worker-protocol/src/index.ts",
+  completionReplay: "packages/job-control/src/completion-replay.ts",
   security: "apps/web/lib/api-security.ts",
   adapter: "apps/web/lib/worker-api.ts",
   discovery: "apps/web/app/api/v1/worker/route.ts",
@@ -132,6 +133,12 @@ requireTokens(files.index, sources.index, [
   'export * from "./types.js"',
   'export * from "./validation.js"',
 ]);
+requireTokens(files.completionReplay, sources.completionReplay, [
+  "completeHostedJobIdempotently",
+  "replayIfRetained",
+  "completionIdentity",
+  '"HOSTED_JOB_COMPLETION_CONFLICT"',
+]);
 
 requireTokens(files.security, sources.security, [
   "workerApiAuthorisationFailure",
@@ -163,12 +170,14 @@ for (const route of [
   files.fail,
   files.cancel,
 ]) {
-  requireTokens(route, sources[Object.keys(files).find((key) => files[key] === route)], [
+  const sourceKey = Object.keys(files).find((key) => files[key] === route);
+  const routeSource = sourceKey ? sources[sourceKey] : "";
+  requireTokens(route, routeSource, [
     "workerApiAuthorisationFailure(request)",
     'runtime = "nodejs"',
     'dynamic = "force-dynamic"',
   ]);
-  forbidTokens(route, sources[Object.keys(files).find((key) => files[key] === route)], [
+  forbidTokens(route, routeSource, [
     "request.formData()",
     "request.arrayBuffer()",
     "Buffer.from(await",
@@ -198,9 +207,13 @@ requireTokens(files.heartbeat, sources.heartbeat, [
 ]);
 requireTokens(files.complete, sources.complete, [
   "validateWorkerCompleteRequest",
-  ".succeed(",
+  "completeHostedJobIdempotently",
+  "idempotentReplay: completed.replayed",
   "generatedBodiesAccepted: false",
   'approval: "human-review-required"',
+]);
+forbidTokens(files.complete, sources.complete, [
+  ".succeed(",
 ]);
 requireTokens(files.fail, sources.fail, [
   "validateWorkerFailRequest",
@@ -269,6 +282,7 @@ process.stdout.write(`${JSON.stringify({
     "/api/v1/worker/jobs/{jobId}/fail",
     "/api/v1/worker/jobs/{jobId}/acknowledge-cancellation",
   ],
+  idempotentCompletionReplay: true,
   objectTransferAvailable: false,
   queueDeliveryAvailable: false,
   remoteExecutionAvailable: false,
