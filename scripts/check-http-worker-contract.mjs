@@ -192,7 +192,7 @@ requireTokens(files.cli, sources.cli, [
   "FileVectorObjectStore.open",
   "new HttpVectorObjectStore",
   "requireObjectTransfer",
-  'objectStoreMode must be file or http',
+  'object-store-mode must be file or http',
   'objectTransport: objects.transport',
   'objectTransferAvailable !== true',
   '"object-download-attempts"',
@@ -275,7 +275,7 @@ requireTokens(files.completeRoute, sources.completeRoute, [
 ]);
 requireTokens(files.workerClient, sources.workerClient, [
   "createVectorWorkerObjectClient",
-  "downloadSha256Verification",
+  "actualSha256 !== digest",
 ]);
 requireTokens(files.docs, sources.docs, [
   "HTTP worker contract `1.0`",
