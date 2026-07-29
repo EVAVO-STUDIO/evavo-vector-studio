@@ -35,12 +35,12 @@ const client: VectorWorkerClient = Object.freeze({
   },
 });
 
-const executor: VectorWorkerExecutor = Object.freeze({
-  supportedOperations: Object.freeze(["optimise-svg"]),
+const executor = Object.freeze({
+  supportedOperations: Object.freeze(["optimise-svg"] as const),
   async execute(): Promise<never> {
     throw new Error("Unexpected execution.");
   },
-});
+}) satisfies VectorWorkerExecutor;
 
 function create(objectTransport?: "shared-file" | "worker-api") {
   return new HttpVectorWorker(client, executor, {
