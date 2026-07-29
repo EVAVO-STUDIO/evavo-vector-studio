@@ -91,16 +91,20 @@ Generated SVG markup is not injected into the application document. Browser evid
 
 ### Authenticated API
 
-The current API exposes bounded synchronous routes:
+The API exposes bounded synchronous production routes plus a separately configured hosted job control plane:
 
 ```text
 POST /api/v1/trace
 POST /api/v1/motion/svg
 POST /api/v1/motion/lottie
 POST /api/v1/motion/dotlottie
+GET  /api/v1/jobs
+POST /api/v1/jobs
+GET  /api/v1/jobs/{jobId}
+DELETE /api/v1/jobs/{jobId}
 ```
 
-Production requests require a bearer token. Responses use `no-store`. These endpoints are interactive processing surfaces, not durable queues.
+Production requests require a bearer token and responses use `no-store`. The hosted job routes can retain idempotent records when a safe store is configured, but they do not schedule execution or claim a deployed worker.
 
 ### Single-file CLI
 
@@ -108,7 +112,7 @@ The CLI is the direct local automation surface for inspection, tracing, optimisa
 
 ### MCP
 
-The stdio MCP server exposes raster, SVG, motion, Lottie and dotLottie operations through canonical allowed roots. Generated bodies are written to files and represented in model context by path, MIME type, byte count and SHA-256 receipts.
+The stdio MCP server exposes raster, SVG, motion, Lottie, dotLottie and durable batch operations through canonical allowed roots. Generated bodies are written to files and represented in model context by path, MIME type, byte count and SHA-256 receipts.
 
 ### Durable batch
 
@@ -139,6 +143,23 @@ A completed item is reused only when its input revision and every output receipt
 
 The local runner resumes when invoked again. It does not execute after its process or machine has stopped and is not a distributed queue.
 
+### Hosted job control plane
+
+`@evavo/job-control` separates record durability from execution. It provides:
+
+- workspace-scoped idempotency;
+- canonical request SHA-256;
+- optimistic record versions;
+- queued, leased, running, cancellation and terminal states;
+- worker lease acquisition and heartbeat renewal;
+- bounded retries and expired-lease recovery;
+- output receipts and terminal evidence;
+- a durable local file adapter and in-memory test adapter.
+
+The API fails closed unless `VECTOR_JOB_STORE_MODE` selects a deliberate adapter. Production file mode additionally requires `VECTOR_JOB_FILE_STORE_PERSISTENT=true` to acknowledge a genuinely persistent mounted volume.
+
+Creating a hosted job record does not enqueue or execute work. Responses retain `executionScheduled: false` and `remoteExecutionAvailable: false` until a worker and queue are deployed.
+
 ## Evidence and approval
 
 Machine completion, structural validity, measured render quality, archive loading and professional approval are separate states.
@@ -154,7 +175,8 @@ The system can establish that:
 - Lottie JSON passed the governed structural subset;
 - dotLottie passed archive and embedded-Lottie inspection;
 - a browser player accepted exact verified archive bytes;
-- a durable item retained the same input revision and output receipts.
+- a durable item retained the same input revision and output receipts;
+- a hosted job record preserved canonical intent, idempotency and state transitions.
 
 It cannot establish automatically that:
 
@@ -163,7 +185,8 @@ It cannot establish automatically that:
 - optical brand corrections are preserved perfectly;
 - layers are ideal for every future editing workflow;
 - motion direction and rhythm are creatively appropriate;
-- one browser player is pixel-equivalent to the source or every other player.
+- one browser player is pixel-equivalent to the source or every other player;
+- a hosted worker ran merely because a job record exists.
 
 Production auto-approval is unavailable. Outputs remain `review-required` or `human-review-required`.
 
@@ -175,6 +198,9 @@ Production auto-approval is unavailable. Outputs remain `review-required` or `hu
 - filesystem outputs are new-file-only;
 - MCP paths stay within canonical allowed roots;
 - batch operation paths stay beneath the declared root;
+- hosted job requests use strict bounded canonical JSON;
+- hosted record mutation uses optimistic compare-and-swap versions;
+- hosted file records use exclusive locks and atomic replacement;
 - related files commit atomically;
 - archive entry names, counts and sizes are checked before decompression;
 - durable manifest drift and completed output drift are rejected.
@@ -183,12 +209,13 @@ These controls are application boundaries, not an operating-system sandbox.
 
 ## Deployment boundary
 
-The repository now has restartable local batch execution, but a hosted EVAVO application still needs:
+The repository now has restartable local batch execution and a provider-neutral hosted job record control plane. A released hosted EVAVO application still needs:
 
-- database-backed job records and idempotency keys;
-- object storage for source and generated artefacts;
-- queue leases, worker heartbeats and visibility timeouts;
-- bounded retry and backoff policy;
+- database-backed job and event storage for multi-instance deployment;
+- object storage for immutable source and generated artefacts;
+- queue delivery guarantees and visibility timeouts;
+- distributed leases and worker heartbeats;
+- bounded retry, backoff and dead-letter policy;
 - remote cancellation and progress streaming;
 - workspace-scoped authorisation;
 - signed EVAVO hub launch;
