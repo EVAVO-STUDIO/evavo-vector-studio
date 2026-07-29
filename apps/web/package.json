@@ -15,6 +15,7 @@
     "@evavo/motion-engine": "workspace:*",
     "@evavo/raster-engine": "workspace:*",
     "@evavo/vector-core": "workspace:*",
+    "@evavo/worker-engine": "workspace:*",
     "@evavo/worker-protocol": "workspace:*",
     "@lottiefiles/dotlottie-react": "0.19.12",
     "next": "14.2.4",
