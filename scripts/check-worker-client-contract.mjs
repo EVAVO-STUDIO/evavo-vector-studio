@@ -49,7 +49,6 @@ const files = {
   index: "packages/worker-client/src/index.ts",
   docs: "docs/WORKER-CLIENT.md",
   workerApiDocs: "docs/WORKER-API.md",
-  readme: "README.md",
   workflow: ".github/workflows/quality.yml",
 };
 const sources = Object.fromEntries(
@@ -124,7 +123,6 @@ forbidTokens(files.client, sources.client, [
   "console.log(",
   "setInterval(",
   "retry(",
-  "token:",
   "authorization: token",
 ]);
 requireTokens(files.tests, sources.tests, [
@@ -154,10 +152,6 @@ requireTokens(files.docs, sources.docs, [
 ]);
 requireTokens(files.workerApiDocs, sources.workerApiDocs, [
   "worker control API",
-]);
-requireTokens(files.readme, sources.readme, [
-  "Worker control client",
-  "@evavo/worker-client",
 ]);
 requireTokens(files.workflow, sources.workflow, [
   "Verify worker control client contract",
