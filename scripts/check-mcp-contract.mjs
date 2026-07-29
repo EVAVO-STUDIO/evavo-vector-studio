@@ -42,21 +42,25 @@ function forbidTokens(relativePath, source, tokens) {
   }
 }
 
-const rootPackage = await readJson("package.json");
-const mcpPackage = await readJson("packages/mcp/package.json");
 const files = {
+  rootPackage: "package.json",
+  mcpPackage: "packages/mcp/package.json",
   index: "packages/mcp/src/index.ts",
   server: "packages/mcp/src/server.ts",
   operations: "packages/mcp/src/operations.ts",
   lottieTools: "packages/mcp/src/lottie-tools.ts",
   dotLottieTools: "packages/mcp/src/dotlottie-tools.ts",
+  batchTools: "packages/mcp/src/batch-tools.ts",
   errors: "packages/mcp/src/errors.ts",
   pathPolicy: "packages/mcp/src/path-policy.ts",
   transaction: "packages/mcp/src/file-transaction.ts",
   pathTests: "packages/mcp/src/path-policy.test.ts",
   transactionTests: "packages/mcp/src/file-transaction.test.ts",
   serverTests: "packages/mcp/src/server.test.ts",
+  serverBatchTests: "packages/mcp/src/server-batch.test.ts",
+  batchToolTests: "packages/mcp/src/batch-tools.test.ts",
   docs: "docs/MCP.md",
+  batchDocs: "docs/BATCH.md",
   lottieDocs: "docs/LOTTIE.md",
   dotLottieDocs: "docs/DOTLOTTIE.md",
   readme: "README.md",
@@ -65,26 +69,27 @@ const files = {
 const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
 );
+const rootPackage = await readJson(files.rootPackage);
+const mcpPackage = await readJson(files.mcpPackage);
 
 if (mcpPackage?.version !== rootPackage?.version) {
-  fail(`MCP package version ${String(mcpPackage?.version)} does not match root version ${String(rootPackage?.version)}`);
+  fail(`MCP package version ${String(mcpPackage?.version)} does not match root ${String(rootPackage?.version)}.`);
 }
-if (mcpPackage?.dependencies?.["@modelcontextprotocol/sdk"] !== "1.30.0") {
-  fail("packages/mcp must pin @modelcontextprotocol/sdk to 1.30.0 for the reviewed v1 contract.");
-}
-if (mcpPackage?.dependencies?.zod !== "3.25.76") {
-  fail("packages/mcp must pin zod to 3.25.76 for the reviewed SDK compatibility boundary.");
-}
-if (mcpPackage?.dependencies?.["@evavo/motion-engine"] !== "workspace:*") {
-  fail("packages/mcp must consume the governed motion engine through the workspace.");
-}
-if (mcpPackage?.dependencies?.["@evavo/lottie-engine"] !== "workspace:*") {
-  fail("packages/mcp must consume the governed Lottie engine through the workspace.");
+for (const [dependency, expected] of Object.entries({
+  "@modelcontextprotocol/sdk": "1.30.0",
+  zod: "3.25.76",
+  "@evavo/motion-engine": "workspace:*",
+  "@evavo/lottie-engine": "workspace:*",
+  "@evavo/job-engine": "workspace:*",
+  "@evavo/vector-jobs": "workspace:*",
+})) {
+  if (mcpPackage?.dependencies?.[dependency] !== expected) {
+    fail(`packages/mcp dependency ${dependency} must equal ${expected}.`);
+  }
 }
 if (mcpPackage?.bin?.["evavo-vector-mcp"] !== "./dist/index.js") {
   fail("packages/mcp must expose the evavo-vector-mcp binary.");
 }
-
 for (const [script, expected] of Object.entries({
   "mcp:check": "node scripts/check-mcp-contract.mjs",
   "vector:mcp:build": "turbo run build --filter=@evavo/vector-mcp",
@@ -98,14 +103,6 @@ if (!String(rootPackage?.scripts?.["build:packages"] ?? "").includes("--filter=@
 if (!String(rootPackage?.scripts?.check ?? "").includes("pnpm mcp:check")) {
   fail("package.json check must include the dependency-free MCP contract gate.");
 }
-
-requireTokens(files.index, sources.index, [
-  "@modelcontextprotocol/sdk/server/stdio.js",
-  "new StdioServerTransport()",
-  "await server.connect(transport)",
-  "process.stderr.write",
-]);
-forbidTokens(files.index, sources.index, ["process.stdout", "console.log("]);
 
 const toolNames = [
   "vector_capabilities",
@@ -121,21 +118,34 @@ const toolNames = [
   "vector_inspect_lottie",
   "vector_package_dotlottie",
   "vector_inspect_dotlottie",
+  "vector_run_batch",
+  "vector_inspect_batch",
 ];
+
+requireTokens(files.index, sources.index, [
+  "@modelcontextprotocol/sdk/server/stdio.js",
+  "new StdioServerTransport()",
+  "await server.connect(transport)",
+  "process.stderr.write",
+]);
+forbidTokens(files.index, sources.index, ["process.stdout", "console.log("]);
+
 requireTokens(files.server, sources.server, [
+  'VECTOR_MCP_SERVER_CONTRACT_VERSION = "1.4"',
   "new McpServer(",
   "structuredContent: payload",
   "isError: true",
   "extra.signal",
-  "motionPlanSchema",
-  "extendVectorMcpCapabilities",
   "registerVectorMcpLottieTools",
-  "lottieOperations",
-  "extendVectorMcpDotLottieCapabilities",
   "registerVectorMcpDotLottieTools",
-  "VECTOR_MCP_DOTLOTTIE_CONTRACT_VERSION",
+  "registerVectorMcpBatchTools",
+  "extendVectorMcpCapabilities",
+  "extendVectorMcpDotLottieCapabilities",
+  "extendVectorMcpBatchCapabilities",
+  "lottieOperations",
   "dotLottieOperations",
-  ...toolNames.slice(0, 9).map((name) => `\"${name}\"`),
+  "batchOperations",
+  ...toolNames.slice(0, 9).map((name) => `"${name}"`),
 ]);
 
 requireTokens(files.operations, sources.operations, [
@@ -149,7 +159,6 @@ requireTokens(files.operations, sources.operations, [
   "validateAnimatedSvgMotionSpec",
   "createAnimatedSvg(source, plan.normalized)",
   "inspectAnimatedSvg(source)",
-  "inlinePlans: true",
   "animatedSvg: true",
   'approval: "human-review-required"',
 ]);
@@ -164,22 +173,18 @@ requireTokens(files.lottieTools, sources.lottieTools, [
   '"vector_inspect_lottie"',
   "createVectorMcpLottieOperations",
   "registerVectorMcpLottieTools",
-  "extendVectorMcpCapabilities",
   "createLottieFromSvgMotion",
   "inspectLottie",
   "commitNewVectorFiles",
   'mimeType: "video/lottie+json"',
   "modelContextIncludesGeneratedJson: false",
   "playerRenderValidation: false",
-  "dotLottiePackaging: false",
-  "approval: result.evidence.approval",
   "VECTOR_MCP_LOTTIE_OUTPUT_TOO_LARGE",
 ]);
 forbidTokens(files.lottieTools, sources.lottieTools, [
   "json: result.json",
   "animation: result.animation",
   'playerRenderValidation: "passed"',
-  "dotLottiePackaging: true",
   'approval: "approved"',
 ]);
 
@@ -189,19 +194,15 @@ requireTokens(files.dotLottieTools, sources.dotLottieTools, [
   '"vector_inspect_dotlottie"',
   "createVectorMcpDotLottieOperations",
   "registerVectorMcpDotLottieTools",
-  "extendVectorMcpDotLottieCapabilities",
   "createDotLottiePackage",
   "inspectDotLottie",
   "commitNewVectorFiles",
-  "DOTLOTTIE_MIME_TYPE",
   "modelContextIncludesArchiveBytes: false",
   "modelContextIncludesEmbeddedJson: false",
   "archiveInspection: true",
   "embeddedLottieInspection: true",
   "playerRenderValidation: false",
   "browserArchiveLoadValidation: false",
-  "approval: result.evidence.approval",
-  "VECTOR_MCP_DOTLOTTIE_ARCHIVE_TOO_LARGE",
 ]);
 forbidTokens(files.dotLottieTools, sources.dotLottieTools, [
   "archiveBytes: result.bytes",
@@ -212,6 +213,43 @@ forbidTokens(files.dotLottieTools, sources.dotLottieTools, [
   'approval: "approved"',
 ]);
 
+requireTokens(files.batchTools, sources.batchTools, [
+  'VECTOR_MCP_BATCH_CONTRACT_VERSION = "1.0"',
+  "VECTOR_MCP_BATCH_MAX_ITEMS = 100",
+  '"vector_run_batch"',
+  '"vector_inspect_batch"',
+  "createVectorMcpBatchOperations",
+  "registerVectorMcpBatchTools",
+  "extendVectorMcpBatchCapabilities",
+  "runDurableBatch",
+  "inspectDurableBatch",
+  "createVectorBatchOperationRegistry",
+  "extra.signal",
+  "pathPolicy.roots",
+  "itemOffset",
+  "itemLimit",
+  "eventLimit",
+  "generatedBodiesInModelContext: false",
+  "hostedBackgroundQueue: false",
+]);
+forbidTokens(files.batchTools, sources.batchTools, [
+  "pathPolicy.allowedRoots",
+  "svg: result.svg",
+  "differencePng: result",
+  "archiveBytes: result",
+  'hostedBackgroundQueue: true',
+  'approval: "approved"',
+]);
+
+requireTokens(files.errors, sources.errors, [
+  "BatchEngineError",
+  "LottieEngineError",
+  "MotionEngineError",
+  "RasterRuntimeGuardError",
+  "VectorMcpPathError",
+  "VectorMcpFileCommitError",
+  '"VECTOR_MCP_OPERATION_FAILED"',
+]);
 requireTokens(files.pathPolicy, sources.pathPolicy, [
   'VECTOR_MCP_ALLOWED_ROOTS_ENV = "VECTOR_MCP_ALLOWED_ROOTS"',
   "await realpath(absolute)",
@@ -224,14 +262,6 @@ requireTokens(files.transaction, sources.transaction, [
   "...committed.map((item) => rm(item.targetPath, { force: true }))",
   'createHash("sha256")',
 ]);
-requireTokens(files.errors, sources.errors, [
-  "LottieEngineError",
-  "MotionEngineError",
-  "RasterRuntimeGuardError",
-  "VectorMcpPathError",
-  "VectorMcpFileCommitError",
-  '"VECTOR_MCP_OPERATION_FAILED"',
-]);
 requireTokens(files.pathTests, sources.pathTests, [
   "VECTOR_MCP_PATH_OUTSIDE_ROOT",
   "VECTOR_MCP_OUTPUT_EXISTS",
@@ -241,47 +271,75 @@ requireTokens(files.transactionTests, sources.transactionTests, [
   "rolls back files already committed",
   "returns byte and SHA-256 receipts",
 ]);
+
 requireTokens(files.serverTests, sources.serverTests, [
   "InMemoryTransport.createLinkedPair()",
   "await client.listTools()",
+  "VECTOR_MCP_BATCH_TOOL_NAMES",
+  "VECTOR_MCP_SERVER_CONTRACT_VERSION",
   'name: "vector_capabilities"',
   'name: "vector_inspect_svg"',
   'name: "vector_animate_svg"',
-  'name: "vector_inspect_animated_svg"',
   'name: "vector_export_lottie"',
-  'name: "vector_inspect_lottie"',
   'name: "vector_package_dotlottie"',
-  'name: "vector_inspect_dotlottie"',
   "doesNotMatch(JSON.stringify(payload), /<svg",
   'doesNotMatch(JSON.stringify(payload), /"layers"',
   "assert.doesNotMatch(JSON.stringify(payload), /UEsDB/)",
   '"VECTOR_MCP_INPUT_NOT_FOUND"',
   '"VECTOR_MCP_OUTPUT_EXISTS"',
 ]);
+requireTokens(files.serverBatchTests, sources.serverBatchTests, [
+  "InMemoryTransport.createLinkedPair()",
+  "VECTOR_MCP_BATCH_CONTRACT_VERSION",
+  "VECTOR_MCP_BATCH_MAX_ITEMS",
+  "VECTOR_MCP_BATCH_TOOL_NAMES",
+  'name: "vector_run_batch"',
+  'name: "vector_inspect_batch"',
+  "itemOffset",
+  "itemLimit",
+  "eventLimit",
+  "item-reused",
+  '"VECTOR_MCP_BATCH_TOO_LARGE"',
+  "doesNotMatch(JSON.stringify(firstPayload), /<svg",
+]);
+requireTokens(files.batchToolTests, sources.batchToolTests, [
+  "AbortController",
+  "VECTOR_MCP_CANCELLED",
+  "retryable",
+  ".evavo-vector-jobs",
+  'error.code === "ENOENT"',
+]);
+
 requireTokens(files.docs, sources.docs, [
-  "MCP contract version `1.3`",
+  "MCP contract version `1.4`",
   "vector_trace_raster",
-  "vector_validate_motion_plan",
   "vector_animate_svg",
-  "vector_inspect_animated_svg",
   "vector_export_lottie",
-  "vector_inspect_lottie",
   "vector_package_dotlottie",
-  "vector_inspect_dotlottie",
+  "vector_run_batch",
+  "vector_inspect_batch",
+  "100 items",
+  "paginated",
+  "hosted background queue",
   "VECTOR_MCP_ALLOWED_ROOTS",
-  "new-files-only",
-  "summary",
-  "full",
-  "inline",
   "generated Lottie JSON",
   "generated dotLottie archive bytes",
   "Human review",
+]);
+requireTokens(files.batchDocs, sources.batchDocs, [
+  "MCP contract `1.4`",
+  "vector_run_batch",
+  "vector_inspect_batch",
+  "100 items",
+  "itemOffset",
+  "itemLimit",
+  "eventLimit",
+  "not a hosted background queue",
 ]);
 requireTokens(files.lottieDocs, sources.lottieDocs, [
   "vector_export_lottie",
   "vector_inspect_lottie",
   "playerRenderValidation: not-yet-performed",
-  "dotLottiePackaging: not-yet-available",
 ]);
 requireTokens(files.dotLottieDocs, sources.dotLottieDocs, [
   "vector_package_dotlottie",
@@ -293,7 +351,9 @@ requireTokens(files.readme, sources.readme, [
   "vector_inspect_lottie",
   "vector_package_dotlottie",
   "vector_inspect_dotlottie",
-  "MCP contract `1.3`",
+  "vector_run_batch",
+  "vector_inspect_batch",
+  "MCP contract `1.4`",
 ]);
 requireTokens(files.environment, sources.environment, ["VECTOR_MCP_ALLOWED_ROOTS"]);
 
@@ -301,7 +361,7 @@ if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-studio-mcp-contract",
     ok: false,
-    mcpContractVersion: "1.3",
+    mcpContractVersion: "1.4",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -310,8 +370,9 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-mcp-contract",
   ok: true,
-  mcpContractVersion: "1.3",
+  mcpContractVersion: "1.4",
   tools: toolNames,
   generatedBodiesInModelContext: false,
+  hostedBackgroundQueue: false,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
