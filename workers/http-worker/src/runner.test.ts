@@ -174,12 +174,12 @@ function worker(client: VectorWorkerClient, executor: VectorWorkerExecutor) {
 
 test("returns idle without starting execution when no lease is available", async () => {
   const fixture = fakeClient({ payload: {}, noLease: true });
-  const executor: VectorWorkerExecutor = Object.freeze({
+  const executor: VectorWorkerExecutor = {
     supportedOperations: Object.freeze(["optimise-svg"]),
     async execute(): Promise<never> {
       throw new Error("The idle worker must not execute.");
     },
-  });
+  };
   const result = await worker(fixture.client, executor).runOne();
   assert.equal(result.outcome, "idle");
   assert.equal(result.record, null);
@@ -213,7 +213,7 @@ test("executes against the shared object store and safely replays a lost complet
 
 test("acknowledges a cancellation observed by heartbeat before output commit", async () => {
   const fixture = fakeClient({ payload: {}, cancellationOnHeartbeat: true });
-  const executor: VectorWorkerExecutor = Object.freeze({
+  const executor: VectorWorkerExecutor = {
     supportedOperations: Object.freeze(["optimise-svg"]),
     async execute(_job, context): Promise<never> {
       return new Promise((_resolve, reject) => {
@@ -225,7 +225,7 @@ test("acknowledges a cancellation observed by heartbeat before output commit", a
         signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
       });
     },
-  });
+  };
   const result = await worker(fixture.client, executor).runOne();
   assert.equal(result.outcome, "cancelled");
   assert.equal(result.record?.status, "cancelled");
