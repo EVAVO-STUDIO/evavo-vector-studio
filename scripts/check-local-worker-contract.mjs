@@ -47,7 +47,7 @@ const files = {
   runnerTests: "workers/local-worker/src/runner.test.ts",
   cliTests: "workers/local-worker/src/index.test.ts",
   controller: "packages/job-control/src/controller.ts",
-  controllerTests: "packages/job-control/src/controller.test.ts",
+  cancellationRaceTests: "packages/job-control/src/cancellation-race.test.ts",
   workerTypes: "packages/worker-engine/src/types.ts",
   docs: "docs/LOCAL-WORKER.md",
   hostedDocs: "docs/HOSTED-JOBS.md",
@@ -115,18 +115,18 @@ requireTokens(files.runner, sources.runner, [
   "acquireLease({",
   "this.#controller.start(",
   "this.#controller.heartbeat(",
-  "this.#controller.succeedCommitted(",
+  "this.#controller.succeed(",
   "this.#controller.acknowledgeCancellation(",
   "this.#controller.fail(",
   "hostedBackgroundQueue: false",
   "remoteExecutionAvailable: false",
   'stoppedBy: "signal" | "max-jobs" | "idle-timeout"',
-  "worker-result",
+  "onResult",
 ]);
 forbidTokens(files.runner, sources.runner, [
   "remoteExecutionAvailable: true",
   "hostedBackgroundQueue: true",
-  "this.#controller.succeed(\n",
+  "this.#controller.succeedCommitted(",
 ]);
 requireTokens(files.cli, sources.cli, [
   "#!/usr/bin/env node",
@@ -175,13 +175,14 @@ requireTokens(files.cliTests, sources.cliTests, [
   "Superseded fixture",
 ]);
 requireTokens(files.controller, sources.controller, [
-  "async succeedCommitted(",
-  "Committed worker success requires at least one immutable output receipt.",
+  'current.status === "cancel-requested" && outputs.length === 0',
   'current.status !== "running" && current.status !== "cancel-requested"',
+  'cancellationRaceResolution: "committed-success-retained"',
 ]);
-requireTokens(files.controllerTests, sources.controllerTests, [
-  "records committed success when cancellation races after immutable output commit",
+requireTokens(files.cancellationRaceTests, sources.cancellationRaceTests, [
+  "records receipt-backed success when cancellation arrives after immutable commit",
   "committed-success-retained",
+  "Arrived after immutable object commit",
 ]);
 requireTokens(files.workerTypes, sources.workerTypes, [
   "outputs: readonly HostedJobOutputReceipt[]",
