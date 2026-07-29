@@ -163,6 +163,14 @@ jobs:
           set -o pipefail
           node scripts/check-worker-client-contract.mjs 2>&1 | tee .ci/worker-client-contract.log
 
+      - name: Verify HTTP-coordinated worker contract
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          node scripts/check-http-worker-contract.mjs 2>&1 | tee .ci/http-worker-contract.log
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
