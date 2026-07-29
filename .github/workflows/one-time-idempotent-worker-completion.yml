@@ -1,0 +1,165 @@
+name: One-time idempotent worker completion patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/idempotent-worker-completion.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-idempotent-worker-completion
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Make receipt-backed completion replay-safe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          target = Path("packages/job-control/src/controller.ts")
+          source = target.read_text(encoding="utf-8")
+          pattern = re.compile(r"  async succeed\([\s\S]*?\n  async fail\(", re.MULTILINE)
+          matches = list(pattern.finditer(source))
+          if len(matches) != 1:
+              raise SystemExit(f"SUCCEED_METHOD_MATCH_COUNT_INVALID:{len(matches)}")
+
+          replacement = '''  async succeed(
+            jobId: string,
+            leaseToken: string,
+            completion: HostedJobCompletion = {},
+          ): Promise<HostedJobRecord> {
+            const outputs = validateHostedJobOutputReceipts(completion.outputs);
+            const evidence = completion.evidence ?? {};
+            const evidenceJson = canonicalHostedJobJson(evidence);
+            if (Buffer.byteLength(evidenceJson, "utf8") > HOSTED_JOB_MAX_PAYLOAD_BYTES) {
+              throw new HostedJobError(
+                "HOSTED_JOB_REQUEST_INVALID",
+                "completion.evidence exceeds the hosted job JSON limit.",
+                { status: 422 },
+              );
+            }
+            return this.#mutate(jobId, (current, now) => {
+              if (current.status === "succeeded") {
+                if (!current.result) {
+                  throw new HostedJobError(
+                    "HOSTED_JOB_TRANSITION_INVALID",
+                    "A succeeded hosted job is missing its retained completion result.",
+                    { status: 500, details: { jobId } },
+                  );
+                }
+                const replayEvidence = Object.freeze({
+                  ...evidence,
+                  ...(current.cancellation
+                    ? { cancellationRaceResolution: "committed-success-retained" }
+                    : {}),
+                });
+                const requestedIdentity = canonicalHostedJobJson({
+                  outputs,
+                  evidence: replayEvidence,
+                });
+                const retainedIdentity = canonicalHostedJobJson({
+                  outputs: current.result.outputs,
+                  evidence: current.result.evidence,
+                });
+                if (requestedIdentity === retainedIdentity) return current;
+                throw new HostedJobError(
+                  "HOSTED_JOB_COMPLETION_CONFLICT",
+                  "The hosted job already succeeded with different immutable output receipts or evidence.",
+                  {
+                    status: 409,
+                    details: {
+                      jobId,
+                      retainedCompletedAt: current.result.completedAt,
+                    },
+                  },
+                );
+              }
+              assertLease(current, leaseToken, now);
+              if (current.status === "cancel-requested" && outputs.length === 0) {
+                throw new HostedJobError(
+                  "HOSTED_JOB_CANCELLATION_REQUESTED",
+                  "The hosted job cannot succeed after cancellation was requested unless immutable output receipts already exist.",
+                  { status: 409, details: { jobId } },
+                );
+              }
+              if (current.status !== "running" && current.status !== "cancel-requested") {
+                throw new HostedJobError(
+                  "HOSTED_JOB_TRANSITION_INVALID",
+                  "Only a running or cancellation-raced hosted job can succeed.",
+                  { status: 409, details: { jobId, status: current.status } },
+                );
+              }
+              const cancellationRaced = current.status === "cancel-requested";
+              return nextRecord(current, {
+                status: "succeeded",
+                lease: null,
+                result: Object.freeze({
+                  outputs,
+                  evidence: Object.freeze({
+                    ...evidence,
+                    ...(cancellationRaced
+                      ? { cancellationRaceResolution: "committed-success-retained" }
+                      : {}),
+                  }),
+                  completedAt: iso(now),
+                }),
+                failure: null,
+                finishedAt: iso(now),
+              }, now);
+            });
+          }
+
+          async fail('''
+          source = pattern.sub(replacement, source, count=1)
+          target.write_text(source, encoding="utf-8")
+
+          docs = Path("docs/WORKER-API.md")
+          text = docs.read_text(encoding="utf-8")
+          anchor = '''Completion requires at least one valid output receipt. Generated bodies are rejected by the bounded JSON contract and are not accepted as a replacement for object storage.\n'''
+          addition = anchor + '''\nAn exact replay of a previously accepted completion is idempotent and returns the retained terminal record without increasing its version. A replay with different receipts or evidence fails with `HOSTED_JOB_COMPLETION_CONFLICT`. This permits an HTTP worker to reconcile a lost completion response without duplicating immutable output.\n'''
+          if text.count(anchor) != 1:
+              raise SystemExit("WORKER_API_COMPLETION_ANCHOR_INVALID")
+          docs.write_text(text.replace(anchor, addition, 1), encoding="utf-8")
+
+          hosted = Path("docs/HOSTED-JOBS.md")
+          text = hosted.read_text(encoding="utf-8")
+          anchor = '''This prevents committed output objects from becoming orphaned.\n'''
+          addition = anchor + '''\nReceipt-backed completion is also replay-safe. The same completion can be submitted again after a lost HTTP response and returns the retained record unchanged; changed receipts or evidence are rejected as `HOSTED_JOB_COMPLETION_CONFLICT`.\n'''
+          if text.count(anchor) != 1:
+              raise SystemExit("HOSTED_JOB_REPLAY_ANCHOR_INVALID")
+          hosted.write_text(text.replace(anchor, addition, 1), encoding="utf-8")
+          PY
+          grep -Fq 'HOSTED_JOB_COMPLETION_CONFLICT' packages/job-control/src/controller.ts
+          grep -Fq 'requestedIdentity === retainedIdentity' packages/job-control/src/controller.ts
+          grep -Fq 'exact replay' docs/WORKER-API.md
+          git diff --check
+
+      - name: Commit patch and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-idempotent-worker-completion.yml \
+            .github/idempotent-worker-completion.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "fix(job-control): make committed completion replay-safe"
+          git pull --rebase origin main
+          git push origin HEAD:main
