@@ -139,6 +139,14 @@ jobs:
           set -o pipefail
           node scripts/check-worker-contract.mjs 2>&1 | tee .ci/worker-contract.log
 
+      - name: Verify local worker process contract
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          node scripts/check-local-worker-contract.mjs 2>&1 | tee .ci/local-worker-contract.log
+
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
