@@ -18,6 +18,7 @@ on:
       - "apps/web/app/api/health/route.ts"
       - "apps/web/public/hub/evavo-vector-studio.deployment.json"
       - "scripts/check-vercel-deployment-contract.mjs"
+      - "scripts/check-vercel-project-provisioning-contract.mjs"
       - "scripts/check-private-response-contract.mjs"
       - "scripts/provision-vector-studio-vercel.mjs"
       - "scripts/verify-live-private-response.mjs"
@@ -42,6 +43,7 @@ on:
       - "apps/web/app/api/health/route.ts"
       - "apps/web/public/hub/evavo-vector-studio.deployment.json"
       - "scripts/check-vercel-deployment-contract.mjs"
+      - "scripts/check-vercel-project-provisioning-contract.mjs"
       - "scripts/check-private-response-contract.mjs"
       - "scripts/provision-vector-studio-vercel.mjs"
       - "scripts/verify-live-private-response.mjs"
@@ -80,6 +82,9 @@ jobs:
 
       - name: Verify source deployment contract
         run: node scripts/check-vercel-deployment-contract.mjs
+
+      - name: Verify Vercel project provisioning contract
+        run: node scripts/check-vercel-project-provisioning-contract.mjs
 
       - name: Verify Vercel provisioner self-test
         run: node scripts/provision-vector-studio-vercel.mjs --self-test
