@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evavo.com.au/schemas/vector-studio/deployment-proof-v1.schema.json",
+  "title": "EVAVO Vector Studio Deployment Proof v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "service",
+    "repository",
+    "commit",
+    "origin",
+    "startedAt",
+    "completedAt",
+    "durationMs",
+    "releaseDecision",
+    "checks",
+    "sensitiveValuesRecorded"
+  ],
+  "properties": {
+    "version": { "const": "1.0" },
+    "service": { "const": "evavo-vector-studio" },
+    "repository": { "const": "EVAVO-STUDIO/evavo-vector-studio" },
+    "commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "origin": { "const": "https://vector.evavo.com.au" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "durationMs": { "type": "integer", "minimum": 0, "maximum": 1800000 },
+    "releaseDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceChecksPassed",
+        "publicRuntimePassed",
+        "signedLaunchPassed",
+        "replayRejectionPassed",
+        "clientReleaseEligible",
+        "reason"
+      ],
+      "properties": {
+        "sourceChecksPassed": { "type": "boolean" },
+        "publicRuntimePassed": { "type": "boolean" },
+        "signedLaunchPassed": { "type": "boolean" },
+        "replayRejectionPassed": { "type": "boolean" },
+        "clientReleaseEligible": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 320 }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "category",
+          "requiredForRelease",
+          "status",
+          "method",
+          "path",
+          "httpStatus",
+          "durationMs",
+          "responseBytes",
+          "responseSha256",
+          "contentType",
+          "cacheControl",
+          "referrerPolicy",
+          "location",
+          "setCookieNames",
+          "evidence"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          "category": {
+            "enum": ["public-runtime", "capability", "signed-launch", "private-workspace", "replay"]
+          },
+          "requiredForRelease": { "type": "boolean" },
+          "status": { "enum": ["passed", "failed", "not-performed"] },
+          "method": { "enum": ["GET", "POST"] },
+          "path": { "type": "string", "pattern": "^/" },
+          "httpStatus": { "type": ["integer", "null"], "minimum": 100, "maximum": 599 },
+          "durationMs": { "type": "integer", "minimum": 0, "maximum": 300000 },
+          "responseBytes": { "type": "integer", "minimum": 0, "maximum": 5000000 },
+          "responseSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+          "contentType": { "type": ["string", "null"], "maxLength": 160 },
+          "cacheControl": { "type": ["string", "null"], "maxLength": 320 },
+          "referrerPolicy": { "type": ["string", "null"], "maxLength": 160 },
+          "location": { "type": ["string", "null"], "maxLength": 512 },
+          "setCookieNames": {
+            "type": "array",
+            "maxItems": 8,
+            "items": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,80}$" },
+            "uniqueItems": true
+          },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": {
+              "type": ["string", "number", "boolean", "null"]
+            },
+            "maxProperties": 32
+          }
+        }
+      }
+    },
+    "sensitiveValuesRecorded": { "const": false }
+  }
+}
