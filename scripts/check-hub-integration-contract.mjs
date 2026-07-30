@@ -173,7 +173,7 @@ requireTokens(files.launchRoute, sources.launchRoute, [
   "replayStore.consume",
   "vectorWorkspaceSessionCookieHeader",
   'accessPath("used")',
-  'accessPath("temporarily-unavailable")',
+  'temporary ? "temporarily-unavailable" : "invalid"',
   '"x-vector-hub-launch": "consumed"',
 ]);
 forbidTokens(files.launchRoute, sources.launchRoute, ["console.log(", "clearVectorWorkspaceSessionCookieHeader"]);
@@ -207,7 +207,7 @@ requireTokens(files.docs, sources.docs, [
   "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
   "SET <derived-key> 1 EX <ttl> NX",
   "__Host-evavo-vector-session",
-  "next-website compatibility fixture",
+  "The independent next-website compatibility fixture lives at",
   "clientReleaseEligible",
   "pnpm hub:check",
 ]);
