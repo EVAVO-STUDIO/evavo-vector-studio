@@ -54,6 +54,29 @@ The check can be rerun manually with `workflow_dispatch` or by updating:
 .github/vector-vercel-preflight.trigger
 ```
 
+## Governed project provisioning
+
+The manual workflow:
+
+```text
+.github/workflows/vector-vercel-project-provisioning.yml
+```
+
+has two explicit modes:
+
+- `plan` validates all seven credentials, reads the EVAVO Vercel team, inspects the expected project and domain, and writes a bounded receipt without mutation;
+- `apply` creates or safely reconciles the project, upserts the production environment, and assigns `vector.evavo.com.au`.
+
+Both modes require an exact current `main` commit. Apply additionally requires the protected `vector-studio-production` GitHub environment, a complete exact-commit source proof, and the literal confirmation:
+
+```text
+provision-evavo-vector-studio
+```
+
+The transaction is idempotent. An existing project is reused only when its GitHub link belongs to `EVAVO-STUDIO/evavo-vector-studio`; a same-name project linked elsewhere fails closed. Build settings are reconciled to the committed monorepo contract, environment values are upserted only for production, the four signing/API authorities must remain distinct, and receipts contain only key names and bounded state.
+
+This provisioner does not deploy. Exact production deployment, deployment readiness polling, live private-response proof, durable replay proof, and one-time owner/client launch evidence remain separate governed transactions. A newly assigned but unverified domain leaves apply incomplete rather than claiming release readiness. Client release remains withheld throughout.
+
 ## Project settings
 
 Create the future project with:
@@ -119,6 +142,7 @@ Source verification:
 
 ```powershell
 pnpm vercel:check
+pnpm vercel-provision:check
 pnpm hub:check
 pnpm check
 pnpm --filter @evavo/vector-web build
@@ -129,6 +153,7 @@ The dedicated Vercel workflow additionally proves:
 ```text
 frozen workspace install
 Vercel deployment contract
+Vercel project provisioning contract and self-test
 private-response security contract
 web TypeScript validation
 Turbo dependency build and web production build
