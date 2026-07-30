@@ -17,7 +17,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - name: Check out current main
         uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Create two byte-identical workspace lockfiles
+      - name: Create two isolated byte-identical workspace lockfiles
         id: generation
         continue-on-error: true
         shell: bash
@@ -45,20 +45,38 @@ jobs:
           {
             set -euo pipefail
             test ! -f pnpm-lock.yaml
-            pnpm install --lockfile-only --ignore-scripts
+            candidate_a="$(mktemp -d /tmp/vector-lock-a.XXXXXX)"
+            candidate_b="$(mktemp -d /tmp/vector-lock-b.XXXXXX)"
+            cleanup() {
+              git worktree remove --force "$candidate_a" >/dev/null 2>&1 || true
+              git worktree remove --force "$candidate_b" >/dev/null 2>&1 || true
+              rm -rf "$candidate_a" "$candidate_b"
+            }
+            trap cleanup EXIT
+
+            git worktree add --detach "$candidate_a" HEAD
+            git worktree add --detach "$candidate_b" HEAD
+
+            (
+              cd "$candidate_a"
+              pnpm install --lockfile-only --ignore-scripts
+              test -s pnpm-lock.yaml
+            )
+            (
+              cd "$candidate_b"
+              pnpm install --lockfile-only --ignore-scripts
+              test -s pnpm-lock.yaml
+            )
+
+            sha256sum "$candidate_a/pnpm-lock.yaml" "$candidate_b/pnpm-lock.yaml"
+            cmp --silent "$candidate_a/pnpm-lock.yaml" "$candidate_b/pnpm-lock.yaml"
+            cp "$candidate_a/pnpm-lock.yaml" pnpm-lock.yaml
             test -s pnpm-lock.yaml
-            cp pnpm-lock.yaml /tmp/pnpm-lock.first.yaml
-            sha256sum /tmp/pnpm-lock.first.yaml
-            rm pnpm-lock.yaml
-            pnpm install --lockfile-only --ignore-scripts
-            test -s pnpm-lock.yaml
-            sha256sum pnpm-lock.yaml
-            cmp --silent /tmp/pnpm-lock.first.yaml pnpm-lock.yaml
           } 2>&1 | tee .ci/lockfile-generation.log
 
       - name: Verify frozen install and complete repository
         id: verification
-        if: ${{ steps.generation.outcome == 'success' }}
+        if: ${{ always() && steps.generation.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -72,7 +90,7 @@ jobs:
 
       - name: Publish lockfile directly to main and retire workflow
         id: publication
-        if: ${{ steps.generation.outcome == 'success' && steps.verification.outcome == 'success' }}
+        if: ${{ always() && steps.generation.outcome == 'success' && steps.verification.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -82,7 +100,10 @@ jobs:
             .github/pnpm-lockfile.trigger
           git config user.name "EVAVO Repository Automation"
           git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
-          git add -A
+          git add pnpm-lock.yaml
+          git add -u -- \
+            .github/workflows/one-time-pnpm-lockfile.yml \
+            .github/pnpm-lockfile.trigger
           git diff --cached --check
           git commit -m "build(release): publish deterministic pnpm lockfile"
           git pull --rebase origin main
