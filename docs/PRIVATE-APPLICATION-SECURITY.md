@@ -57,6 +57,20 @@ The middleware deliberately does not authenticate. It contains no:
 
 The `/launch` route verifies and consumes the short-lived EVAVO hub token. Server components verify the app-private workspace session. Browser mutations require exact same-origin evidence. Machine and worker routes retain their separate bearer authorities.
 
+## Live private-response proof
+
+Source assertions alone do not prove that Vercel returned the governed headers. The bounded verifier:
+
+```text
+node scripts/verify-live-private-response.mjs \
+  --commit <exact-deployed-main-sha> \
+  --out artifacts/deployment-proof/<sha>.private-response.json
+```
+
+probes the public access page, unauthenticated workspace redirects, health, trace capabilities, and the worker-control boundary at `https://vector.evavo.com.au`. It requires the complete private-response contract, the three `Vary` authorities, API `no-store`, same-origin redirects, and no unexpected workspace-session cookie.
+
+The verifier accepts only the canonical HTTPS origin, follows no redirects, requests identity encoding, records no response bodies or secret values, writes a bounded new-file-only JSON proof, and fails when any required live header is absent. The public deployment-proof workflow publishes success only when exact source proof, live private-response proof, and the existing public runtime proof all pass for the requested commit.
+
 ## Content security policy
 
 A global Content-Security-Policy is not added blindly because Next.js runtime scripts, Blob-backed SVG/Lottie previews, and future provider-direct private uploads need a reviewed nonce and source inventory. A CSP must be introduced as a separate measured change with browser smoke evidence; weakening it with broad `unsafe-*` allowances would not improve the security posture.
