@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  statuses: write
 
 concurrency:
   group: one-time-vector-pnpm-lockfile
@@ -16,7 +17,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Check out current main
         uses: actions/checkout@v4
@@ -34,36 +35,103 @@ jobs:
         with:
           node-version: 22
 
-      - name: Create deterministic workspace lockfile
+      - name: Create two byte-identical workspace lockfiles
+        id: generation
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          {
+            set -euo pipefail
+            test ! -f pnpm-lock.yaml
+            pnpm install --lockfile-only --ignore-scripts
+            test -s pnpm-lock.yaml
+            cp pnpm-lock.yaml /tmp/pnpm-lock.first.yaml
+            sha256sum /tmp/pnpm-lock.first.yaml
+            rm pnpm-lock.yaml
+            pnpm install --lockfile-only --ignore-scripts
+            test -s pnpm-lock.yaml
+            sha256sum pnpm-lock.yaml
+            cmp --silent /tmp/pnpm-lock.first.yaml pnpm-lock.yaml
+          } 2>&1 | tee .ci/lockfile-generation.log
+
+      - name: Verify frozen install and complete repository
+        id: verification
+        if: ${{ steps.generation.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          {
+            set -euo pipefail
+            pnpm install --frozen-lockfile
+            pnpm check
+          } 2>&1 | tee .ci/lockfile-verification.log
+
+      - name: Publish lockfile directly to main and retire workflow
+        id: publication
+        if: ${{ steps.generation.outcome == 'success' && steps.verification.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
-          test ! -f pnpm-lock.yaml
-          pnpm install --lockfile-only --ignore-scripts
           test -s pnpm-lock.yaml
-          cp pnpm-lock.yaml /tmp/pnpm-lock.first.yaml
-          rm pnpm-lock.yaml
-          pnpm install --lockfile-only --ignore-scripts
-          cmp --silent /tmp/pnpm-lock.first.yaml pnpm-lock.yaml
-
-      - name: Verify frozen install and repository
-        shell: bash
-        run: |
-          set -euo pipefail
-          pnpm install --frozen-lockfile
-          pnpm check
-
-      - name: Commit lockfile and retire workflow
-        shell: bash
-        run: |
-          set -euo pipefail
           rm -f \
             .github/workflows/one-time-pnpm-lockfile.yml \
             .github/pnpm-lockfile.trigger
           git config user.name "EVAVO Repository Automation"
           git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
-          git add pnpm-lock.yaml .github/workflows/one-time-pnpm-lockfile.yml .github/pnpm-lockfile.trigger
+          git add -A
           git diff --cached --check
           git commit -m "build(release): publish deterministic pnpm lockfile"
           git pull --rebase origin main
           git push origin HEAD:main
+
+      - name: Preserve lockfile publisher diagnostics
+        if: ${{ always() && (steps.generation.outcome != 'success' || steps.verification.outcome != 'success' || steps.publication.outcome == 'failure') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vector-pnpm-lockfile-${{ github.sha }}
+          path: .ci/*.log
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Publish lockfile publisher status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          GENERATION_OUTCOME: ${{ steps.generation.outcome }}
+          VERIFICATION_OUTCOME: ${{ steps.verification.outcome }}
+          PUBLICATION_OUTCOME: ${{ steps.publication.outcome }}
+        with:
+          script: |
+            const outcomes = [
+              process.env.GENERATION_OUTCOME,
+              process.env.VERIFICATION_OUTCOME,
+              process.env.PUBLICATION_OUTCOME,
+            ];
+            const passed = outcomes.every((value) => value === "success");
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? "success" : "failure",
+              context: "release/pnpm-lockfile",
+              description: passed
+                ? "deterministic lockfile published after frozen verification"
+                : `generation=${outcomes[0]} verification=${outcomes[1]} publication=${outcomes[2]}`.slice(0, 140),
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Enforce publication result
+        if: always()
+        shell: bash
+        env:
+          GENERATION_OUTCOME: ${{ steps.generation.outcome }}
+          VERIFICATION_OUTCOME: ${{ steps.verification.outcome }}
+          PUBLICATION_OUTCOME: ${{ steps.publication.outcome }}
+        run: |
+          if [ "$GENERATION_OUTCOME" != "success" ] || [ "$VERIFICATION_OUTCOME" != "success" ] || [ "$PUBLICATION_OUTCOME" != "success" ]; then
+            exit 1
+          fi
