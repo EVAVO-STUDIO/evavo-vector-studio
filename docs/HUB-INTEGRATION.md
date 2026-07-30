@@ -16,6 +16,7 @@ One-time replay adapters        memory test + Upstash REST
 Central issuer fixture          available
 Production deployment evidence  unavailable
 Client release eligibility      false
+Deployment release flag         clientReleaseEligible: false
 ```
 
 The hub entry is deliberately staged. Metadata, source code and a passing local build do not prove that the production domain, environment, shared launch key, replay store or browser redemption flow are working.
