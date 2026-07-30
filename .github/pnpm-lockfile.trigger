@@ -1,1 +1,1 @@
-publish deterministic pnpm lockfile with explicit generation, frozen-install, verification and publication diagnostics
+publish deterministic pnpm lockfile after current hub-contract guard repair
