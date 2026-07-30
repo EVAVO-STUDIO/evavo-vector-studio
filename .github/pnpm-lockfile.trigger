@@ -1,1 +1,1 @@
-publish deterministic pnpm lockfile after current hub-contract guard repair
+publish deterministic pnpm lockfile after exact launch failure reason and release-ineligible documentation repair
