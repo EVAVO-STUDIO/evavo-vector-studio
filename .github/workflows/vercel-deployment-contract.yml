@@ -23,6 +23,7 @@ on:
       - "scripts/check-private-response-contract.mjs"
       - "scripts/provision-vector-studio-vercel.mjs"
       - "scripts/deploy-vector-studio-vercel.mjs"
+      - "scripts/create-vector-live-launch-token.mjs"
       - "scripts/verify-live-private-response.mjs"
       - "scripts/verify-live-deployment.mjs"
       - "docs/VERCEL-DEPLOYMENT.md"
@@ -51,6 +52,7 @@ on:
       - "scripts/check-private-response-contract.mjs"
       - "scripts/provision-vector-studio-vercel.mjs"
       - "scripts/deploy-vector-studio-vercel.mjs"
+      - "scripts/create-vector-live-launch-token.mjs"
       - "scripts/verify-live-private-response.mjs"
       - "scripts/verify-live-deployment.mjs"
       - "docs/VERCEL-DEPLOYMENT.md"
@@ -100,6 +102,9 @@ jobs:
 
       - name: Verify exact Vercel deployer self-test
         run: node scripts/deploy-vector-studio-vercel.mjs --self-test
+
+      - name: Verify live launch token self-test
+        run: node scripts/create-vector-live-launch-token.mjs --self-test
 
       - name: Verify private response security
         run: node scripts/check-private-response-contract.mjs
