@@ -1,1 +1,1 @@
-publish deterministic pnpm lockfile after the corrected Vercel contract passes on exact current main
+publish deterministic pnpm lockfile after the live private-response and Vercel contract repairs on exact current main
