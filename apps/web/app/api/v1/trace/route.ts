@@ -1,6 +1,11 @@
 import { createJobId } from "@evavo/vector-core";
 import { apiAuthorisationFailure } from "../../../../lib/api-security";
 import {
+  encodedJsonBytes,
+  encodedTextBytes,
+  resolveVectorInteractivePayloadPolicy,
+} from "../../../../lib/deployment-profile";
+import {
   DEFAULT_DIFFERENCE_MAX_DIMENSION,
   DEFAULT_MAX_INPUT_BYTES,
   MAX_DIFFERENCE_DIMENSION,
@@ -15,11 +20,16 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const PROFILES = new Set<RasterTraceProfileSelection>(["auto", "logo", "icon", "line-art", "illustration", "photo"]);
 const CANDIDATE_MODES = new Set<RasterCandidateMode>(["adaptive", "single"]);
 const MULTIPART_OVERHEAD_ALLOWANCE = 1024 * 1024;
 const TRACE_RUNTIME_GUARD = createRasterRuntimeGuard(resolveRasterRuntimeGuardConfigFromEnvironment());
+const TRACE_PAYLOAD_POLICY = resolveVectorInteractivePayloadPolicy({
+  localMaxFileBytes: DEFAULT_MAX_INPUT_BYTES,
+  localMaxRequestBytes: DEFAULT_MAX_INPUT_BYTES + MULTIPART_OVERHEAD_ALLOWANCE,
+});
 
 function noStoreHeaders(extra: HeadersInit = {}): Headers {
   const headers = new Headers(extra);
@@ -33,6 +43,31 @@ function json(value: unknown, status = 200, extraHeaders: HeadersInit = {}): Res
   return Response.json(value, { status, headers: noStoreHeaders(extraHeaders) });
 }
 
+function payloadLimitResponse(
+  kind: "request" | "file" | "svg-response" | "json-response",
+  actualBytes: number,
+): Response {
+  return json(
+    {
+      error: kind === "request" || kind === "file"
+        ? "VECTOR_INTERACTIVE_PAYLOAD_TOO_LARGE"
+        : "VECTOR_INTERACTIVE_RESPONSE_TOO_LARGE",
+      message:
+        "This synchronous hosted transfer exceeds the current interactive payload boundary. Use the local CLI or MCP surface, a self-hosted worker, or a provider-direct private object upload once configured.",
+      kind,
+      actualBytes,
+      limits: TRACE_PAYLOAD_POLICY,
+      retryable: false,
+      recommendedTransports: [
+        "evavo-vector CLI",
+        "EVAVO Vector Studio MCP",
+        "self-hosted HTTP worker",
+        "provider-direct private object upload",
+      ],
+    },
+    413,
+  );
+}
 
 function stringField(form: FormData, name: string): string | undefined {
   const value = form.get(name);
@@ -84,7 +119,14 @@ export function GET(): Response {
     supportedProfiles: [...PROFILES],
     candidateModes: [...CANDIDATE_MODES],
     adaptiveCandidateBudget: { threeCandidatesThroughPixels: 4_000_000, twoCandidatesThroughPixels: 12_000_000, otherwise: 1 },
-    limits: { maxInputBytes: DEFAULT_MAX_INPUT_BYTES, maxDecodedPixels: 40_000_000 },
+    limits: {
+      maxInputBytes: DEFAULT_MAX_INPUT_BYTES,
+      maxInteractiveInputBytes: TRACE_PAYLOAD_POLICY.maxFileBytes,
+      maxInteractiveRequestBytes: TRACE_PAYLOAD_POLICY.maxRequestBytes,
+      maxInteractiveResponseBytes: TRACE_PAYLOAD_POLICY.maxResponseBytes,
+      maxDecodedPixels: 40_000_000,
+    },
+    hosting: TRACE_PAYLOAD_POLICY,
     runtimeGuard: TRACE_RUNTIME_GUARD.snapshot(),
     differenceArtifacts: {
       available: true,
@@ -92,9 +134,10 @@ export function GET(): Response {
       maximumDimensionField: "differenceMaxDimension",
       defaultMaximumDimension: DEFAULT_DIFFERENCE_MAX_DIMENSION,
       maximumDimension: MAX_DIFFERENCE_DIMENSION,
-      transport: "base64-encoded PNG in JSON responses",
+      transport: "base64-encoded PNG in JSON responses within the active response boundary",
     },
     authentication: "same-origin Vector workspace session or Bearer VECTOR_API_TOKEN",
+    largeObjectTransport: "local CLI, MCP, self-hosted worker, or provider-direct private storage",
     visualEvidence: "alpha-aware multi-scale source-versus-SVG render comparison",
     approval: "human review required even when render comparison passes",
   });
@@ -105,8 +148,8 @@ export async function POST(request: Request): Promise<Response> {
   if (authFailure) return authFailure;
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > DEFAULT_MAX_INPUT_BYTES + MULTIPART_OVERHEAD_ALLOWANCE) {
-    return json({ error: "RASTER_INPUT_TOO_LARGE", maxInputBytes: DEFAULT_MAX_INPUT_BYTES }, 413);
+  if (Number.isFinite(contentLength) && contentLength > TRACE_PAYLOAD_POLICY.maxRequestBytes) {
+    return payloadLimitResponse("request", contentLength);
   }
 
   let lease;
@@ -137,7 +180,7 @@ export async function POST(request: Request): Promise<Response> {
     const file = form.get("file");
     if (!(file instanceof File)) return json({ error: "VECTOR_FILE_REQUIRED", field: "file" }, 400);
     if (file.size === 0) return json({ error: "RASTER_INPUT_EMPTY" }, 400);
-    if (file.size > DEFAULT_MAX_INPUT_BYTES) return json({ error: "RASTER_INPUT_TOO_LARGE", maxInputBytes: DEFAULT_MAX_INPUT_BYTES }, 413);
+    if (file.size > TRACE_PAYLOAD_POLICY.maxFileBytes) return payloadLimitResponse("file", file.size);
 
     const rawProfile = stringField(form, "profile") ?? "auto";
     if (!PROFILES.has(rawProfile as RasterTraceProfileSelection)) {
@@ -193,7 +236,12 @@ export async function POST(request: Request): Promise<Response> {
 
     const runtimeState = TRACE_RUNTIME_GUARD.snapshot();
     if (format === "svg") {
-      return new Response(`${result.svg}\n`, {
+      const body = `${result.svg}\n`;
+      const responseBytes = encodedTextBytes(body);
+      if (responseBytes > TRACE_PAYLOAD_POLICY.maxResponseBytes) {
+        return payloadLimitResponse("svg-response", responseBytes);
+      }
+      return new Response(body, {
         status: 200,
         headers: noStoreHeaders({
           "content-type": "image/svg+xml; charset=utf-8",
@@ -207,6 +255,7 @@ export async function POST(request: Request): Promise<Response> {
           "x-vector-candidate-count": String(result.evidence.selection.attemptedCandidateCount),
           "x-vector-runtime-timeout-ms": String(runtimeState.timeoutMs),
           "x-vector-runtime-max-concurrent": String(runtimeState.maxConcurrent),
+          "x-vector-response-bytes": String(responseBytes),
         }),
       });
     }
@@ -230,10 +279,10 @@ export async function POST(request: Request): Promise<Response> {
         }
       : {};
 
-    return json({
+    const payload = {
       id: jobId,
-      status: "complete",
-      approval: "review-required",
+      status: "complete" as const,
+      approval: "review-required" as const,
       runtime: {
         timeoutMs: runtimeState.timeoutMs,
         maxConcurrent: runtimeState.maxConcurrent,
@@ -248,7 +297,12 @@ export async function POST(request: Request): Promise<Response> {
       inspection: result.inspection,
       evidence: result.evidence,
       artifacts,
-    });
+    };
+    const responseBytes = encodedJsonBytes(payload);
+    if (responseBytes > TRACE_PAYLOAD_POLICY.maxResponseBytes) {
+      return payloadLimitResponse("json-response", responseBytes);
+    }
+    return json(payload, 200, { "x-vector-response-bytes": String(responseBytes) });
   } catch (error) {
     if (lease.timedOut()) return runtimeTimeoutResponse();
     if (error instanceof RasterEngineError) {
