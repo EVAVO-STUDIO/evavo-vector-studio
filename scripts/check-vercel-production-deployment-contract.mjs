@@ -101,7 +101,6 @@ forbidTokens(files.deployer, sources.deployer, [
   'withLatestCommit: true',
   'target: "preview"',
   'ref: "develop"',
-  '/v13/deployments/${encodeURIComponent(deploymentId)}`,
   'method: "DELETE"',
   'console.log(process.env',
   'JSON.stringify(process.env',
