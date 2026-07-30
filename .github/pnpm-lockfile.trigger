@@ -1,1 +1,1 @@
-publish deterministic pnpm lockfile after the live private-response and Vercel contract repairs on exact current main
+publish the converged idempotent pnpm lockfile after complete frozen verification on exact current main
