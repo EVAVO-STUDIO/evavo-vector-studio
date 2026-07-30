@@ -1,0 +1,69 @@
+name: One-time pnpm lockfile publisher
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/pnpm-lockfile.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-vector-pnpm-lockfile
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Create deterministic workspace lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -f pnpm-lock.yaml
+          pnpm install --lockfile-only --ignore-scripts
+          test -s pnpm-lock.yaml
+          cp pnpm-lock.yaml /tmp/pnpm-lock.first.yaml
+          rm pnpm-lock.yaml
+          pnpm install --lockfile-only --ignore-scripts
+          cmp --silent /tmp/pnpm-lock.first.yaml pnpm-lock.yaml
+
+      - name: Verify frozen install and repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm check
+
+      - name: Commit lockfile and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-pnpm-lockfile.yml \
+            .github/pnpm-lockfile.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add pnpm-lock.yaml .github/workflows/one-time-pnpm-lockfile.yml .github/pnpm-lockfile.trigger
+          git diff --cached --check
+          git commit -m "build(release): publish deterministic pnpm lockfile"
+          git pull --rebase origin main
+          git push origin HEAD:main
