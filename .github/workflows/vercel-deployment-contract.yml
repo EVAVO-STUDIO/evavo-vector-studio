@@ -19,11 +19,13 @@ on:
       - "apps/web/public/hub/evavo-vector-studio.deployment.json"
       - "scripts/check-vercel-deployment-contract.mjs"
       - "scripts/check-private-response-contract.mjs"
+      - "scripts/provision-vector-studio-vercel.mjs"
       - "scripts/verify-live-private-response.mjs"
       - "scripts/verify-live-deployment.mjs"
       - "docs/VERCEL-DEPLOYMENT.md"
       - "docs/PRIVATE-APPLICATION-SECURITY.md"
       - ".github/workflows/public-deployment-proof.yml"
+      - ".github/workflows/vector-vercel-project-provisioning.yml"
       - ".github/workflows/vercel-deployment-contract.yml"
   pull_request:
     paths:
@@ -41,11 +43,13 @@ on:
       - "apps/web/public/hub/evavo-vector-studio.deployment.json"
       - "scripts/check-vercel-deployment-contract.mjs"
       - "scripts/check-private-response-contract.mjs"
+      - "scripts/provision-vector-studio-vercel.mjs"
       - "scripts/verify-live-private-response.mjs"
       - "scripts/verify-live-deployment.mjs"
       - "docs/VERCEL-DEPLOYMENT.md"
       - "docs/PRIVATE-APPLICATION-SECURITY.md"
       - ".github/workflows/public-deployment-proof.yml"
+      - ".github/workflows/vector-vercel-project-provisioning.yml"
       - ".github/workflows/vercel-deployment-contract.yml"
 
 permissions:
@@ -76,6 +80,9 @@ jobs:
 
       - name: Verify source deployment contract
         run: node scripts/check-vercel-deployment-contract.mjs
+
+      - name: Verify Vercel provisioner self-test
+        run: node scripts/provision-vector-studio-vercel.mjs --self-test
 
       - name: Verify private response security
         run: node scripts/check-private-response-contract.mjs
