@@ -1,0 +1,97 @@
+name: Vector Studio source release proof
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - "apps/web/**"
+      - "packages/hub-auth/**"
+      - "scripts/create-source-proof.mjs"
+      - "scripts/verify-live-deployment.mjs"
+      - "scripts/check-release-proof-contract.mjs"
+      - "schemas/source-proof-v1.schema.json"
+      - "schemas/deployment-proof-v1.schema.json"
+      - "docs/RELEASE-PROOF.md"
+      - ".github/workflows/source-release-proof.yml"
+      - ".github/workflows/public-deployment-proof.yml"
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: vector-source-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify proof source contract
+        run: node scripts/check-release-proof-contract.mjs
+
+      - name: Create exact source proof
+        id: proof
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/create-source-proof.mjs \
+            --commit "${GITHUB_SHA}" \
+            --out .ci/vector-source-proof.json
+
+      - name: Upload source proof
+        if: ${{ steps.proof.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vector-source-proof-${{ github.sha }}
+          path: .ci/vector-source-proof.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish source proof status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          PROOF_OUTCOME: ${{ steps.proof.outcome }}
+        with:
+          script: |
+            const passed = process.env.PROOF_OUTCOME === "success";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? "success" : "failure",
+              context: "release/vector-source-proof",
+              description: passed
+                ? "frozen exact source proof created"
+                : "Vector Studio source proof failed",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Enforce proof result
+        if: always()
+        shell: bash
+        env:
+          PROOF_OUTCOME: ${{ steps.proof.outcome }}
+        run: |
+          if [ "$PROOF_OUTCOME" != "success" ]; then
+            exit 1
+          fi
