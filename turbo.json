@@ -1,9 +1,15 @@
-﻿{
+{
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "dist/**", "build/**"]
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**",
+        "build/**",
+        ".vercel/output/**"
+      ]
     },
     "dev": {
       "cache": false,
