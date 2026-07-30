@@ -8,6 +8,8 @@ const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio";
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const PROFILE_NAMES = Object.freeze(["owner", "client"]);
 const MAX_RECEIPT_BYTES = 64 * 1024;
+const LAUNCH_SECRET_ENV = "EVAVO_CLIENT_APP_LAUNCH_SECRET";
+const PRIVATE_SIGNING_SECRET_ENV = "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET";
 
 const PROFILE_CLAIMS = Object.freeze({
   owner: Object.freeze({
@@ -127,6 +129,8 @@ async function runSelfTest() {
   assert.notEqual(owner.subject, client.subject);
   assert.notEqual(owner.workspaceId, client.workspaceId);
   assert.equal(owner.email, owner.email.toLowerCase());
+  assert.equal(LAUNCH_SECRET_ENV, "EVAVO_CLIENT_APP_LAUNCH_SECRET");
+  assert.equal(PRIVATE_SIGNING_SECRET_ENV, "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET");
   process.stdout.write(`${JSON.stringify({
     ok: true,
     check: "vector-live-launch-token-self-test",
@@ -144,8 +148,8 @@ async function main() {
     return;
   }
 
-  const launchSecret = String(process.env.EVAVO_CLIENT_APP_LAUNCH_SECRET ?? "");
-  const privateSecret = String(process.env.EVAVO_VECTOR_PRIVATE_SIGNING_SECRET ?? "");
+  const launchSecret = String(process.env[LAUNCH_SECRET_ENV] ?? "");
+  const privateSecret = String(process.env[PRIVATE_SIGNING_SECRET_ENV] ?? "");
   const hubAuth = await import("../packages/hub-auth/dist/index.js");
   hubAuth.assertVectorHubSecretsSeparated(launchSecret, privateSecret);
 
