@@ -30,6 +30,7 @@ function forbidTokens(relativePath, source, tokens) {
 const files = {
   package: "package.json",
   deployer: "scripts/deploy-vector-studio-vercel.mjs",
+  launchToken: "scripts/create-vector-live-launch-token.mjs",
   workflow: ".github/workflows/vector-vercel-production-deployment.yml",
   provisioningWorkflow: ".github/workflows/vector-vercel-project-provisioning.yml",
   deploymentWorkflow: ".github/workflows/vercel-deployment-contract.yml",
@@ -107,6 +108,32 @@ forbidTokens(files.deployer, sources.deployer, [
   'authorization: token',
 ]);
 
+requireTokens(files.launchToken, sources.launchToken, [
+  'const CONTRACT_VERSION = "1.0"',
+  'const PROFILE_NAMES = Object.freeze(["owner", "client"])',
+  '"EVAVO_CLIENT_APP_LAUNCH_SECRET"',
+  '"EVAVO_VECTOR_PRIVATE_SIGNING_SECRET"',
+  'randomBytes(24).toString("base64url")',
+  'await import("../packages/hub-auth/dist/index.js")',
+  'hubAuth.assertVectorHubSecretsSeparated(launchSecret, privateSecret)',
+  'hubAuth.createVectorHubLaunchFixtureToken({',
+  'hubAuth.verifyVectorHubLaunchToken({',
+  'profileClaims("owner"',
+  'profileClaims("client"',
+  'writeFile(absolute, source, { encoding: "utf8", flag: "wx", mode })',
+  'tokenBodyRecorded: false',
+  'sensitiveValuesRecorded: false',
+  '"VECTOR_LIVE_LAUNCH_SECRET_LEAK"',
+]);
+
+forbidTokens(files.launchToken, sources.launchToken, [
+  'process.stdout.write(token)',
+  'console.log(token)',
+  'tokenBodyRecorded: true',
+  'sensitiveValuesRecorded: true',
+  'mode = 0o644',
+]);
+
 requireTokens(files.workflow, sources.workflow, [
   "Vector Studio exact production deployment",
   "workflow_dispatch:",
@@ -136,6 +163,21 @@ requireTokens(files.workflow, sources.workflow, [
   "node scripts/verify-live-private-response.mjs",
   "node scripts/verify-live-deployment.mjs",
   'VECTOR_DEPLOYMENT_SOURCE_PROOF: .ci/vector-source-proof.json',
+  "Verify one-time owner signed launch and replay rejection",
+  "Verify one-time client signed launch and replay rejection",
+  "node scripts/create-vector-live-launch-token.mjs",
+  "--profile owner",
+  "--profile client",
+  'echo "::add-mask::$token"',
+  'VECTOR_DEPLOYMENT_PROOF_LAUNCH_TOKEN="$token"',
+  "--require-launch",
+  "trap 'rm -f \"$token_file\"' EXIT",
+  ".ci/vector-owner-live-launch-token.json",
+  ".ci/vector-owner-live-launch-proof.json",
+  ".ci/vector-client-live-launch-token.json",
+  ".ci/vector-client-live-launch-proof.json",
+  'OWNER_LAUNCH_OUTCOME: ${{ steps.owner_launch.outcome }}',
+  'CLIENT_LAUNCH_OUTCOME: ${{ steps.client_launch.outcome }}',
   'context: "deploy/vector-studio-production-plan"',
   'context: "deploy/vector-studio-production-exact"',
   "include-hidden-files: true",
@@ -151,7 +193,8 @@ forbidTokens(files.workflow, sources.workflow, [
   "withLatestCommit",
   "echo $VERCEL_TOKEN",
   "printenv",
-  "--require-launch",
+  "path: .ci/vector-owner-live-launch.token",
+  "path: .ci/vector-client-live-launch.token",
 ]);
 
 requireTokens(files.provisioningWorkflow, sources.provisioningWorkflow, [
@@ -163,9 +206,11 @@ requireTokens(files.provisioningWorkflow, sources.provisioningWorkflow, [
 requireTokens(files.deploymentWorkflow, sources.deploymentWorkflow, [
   '"scripts/check-vercel-production-deployment-contract.mjs"',
   '"scripts/deploy-vector-studio-vercel.mjs"',
+  '"scripts/create-vector-live-launch-token.mjs"',
   '".github/workflows/vector-vercel-production-deployment.yml"',
   "node scripts/check-vercel-production-deployment-contract.mjs",
   "node scripts/deploy-vector-studio-vercel.mjs --self-test",
+  "node scripts/create-vector-live-launch-token.mjs --self-test",
 ]);
 
 requireTokens(files.docs, sources.docs, [
@@ -175,7 +220,10 @@ requireTokens(files.docs, sources.docs, [
   "READY",
   "production alias",
   "live private-response",
-  "does not perform signed owner or client launch proof",
+  "one-time owner signed launch",
+  "one-time client signed launch",
+  "rejects replay",
+  "token body is never uploaded",
   "Client release remains withheld",
 ]);
 
@@ -198,7 +246,10 @@ process.stdout.write(`${JSON.stringify({
   exactCommitRequired: true,
   productionAliasRequired: true,
   livePublicProofRequired: true,
-  signedLaunchProofPerformed: false,
+  ownerLaunchProofRequired: true,
+  clientLaunchProofRequired: true,
+  replayRejectionRequired: true,
+  tokenBodiesRetained: false,
   clientReleaseEligible: false,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
