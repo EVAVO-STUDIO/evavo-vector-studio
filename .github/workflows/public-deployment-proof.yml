@@ -1,0 +1,124 @@
+name: Vector Studio public deployment proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Exact deployed 40-character main commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: vector-public-deployment-proof-${{ inputs.commit }}
+  cancel-in-progress: false
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Validate requested commit
+        shell: bash
+        run: |
+          if [[ ! "${{ inputs.commit }}" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "The deployment proof commit must be a lowercase 40-character SHA." >&2
+            exit 1
+          fi
+
+      - name: Checkout exact deployed source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 1
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify proof source contract
+        run: node scripts/check-release-proof-contract.mjs
+
+      - name: Create exact source proof
+        id: source
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/create-source-proof.mjs \
+            --commit "${{ inputs.commit }}" \
+            --out .ci/vector-source-proof.json
+
+      - name: Verify public deployed runtime
+        id: live
+        if: ${{ steps.source.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          VECTOR_DEPLOYMENT_SOURCE_PROOF: .ci/vector-source-proof.json
+        run: |
+          set -euo pipefail
+          node scripts/verify-live-deployment.mjs \
+            --commit "${{ inputs.commit }}" \
+            --out .ci/vector-public-deployment-proof.json
+
+      - name: Record signed-launch boundary
+        if: always()
+        shell: bash
+        run: |
+          echo "This public workflow records health and capability evidence only; signed launch is not performed."
+
+      - name: Upload bounded proofs
+        if: ${{ steps.source.outcome == 'success' || steps.live.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vector-public-deployment-proof-${{ inputs.commit }}
+          path: |
+            .ci/vector-source-proof.json
+            .ci/vector-public-deployment-proof.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish public runtime status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          LIVE_OUTCOME: ${{ steps.live.outcome }}
+          PROOF_COMMIT: ${{ inputs.commit }}
+        with:
+          script: |
+            const passed =
+              process.env.SOURCE_OUTCOME === "success" &&
+              process.env.LIVE_OUTCOME === "success";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: process.env.PROOF_COMMIT,
+              state: passed ? "success" : "failure",
+              context: "release/vector-public-runtime",
+              description: passed
+                ? "exact source and public runtime proof passed"
+                : "Vector Studio public deployment proof failed",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Enforce public proof result
+        if: always()
+        shell: bash
+        env:
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          LIVE_OUTCOME: ${{ steps.live.outcome }}
+        run: |
+          if [ "$SOURCE_OUTCOME" != "success" ] || [ "$LIVE_OUTCOME" != "success" ]; then
+            exit 1
+          fi
