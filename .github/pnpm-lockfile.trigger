@@ -1,1 +1,1 @@
-publish deterministic pnpm lockfile after full frozen-install verification
+publish deterministic pnpm lockfile with explicit generation, frozen-install, verification and publication diagnostics
