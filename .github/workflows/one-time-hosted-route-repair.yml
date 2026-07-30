@@ -1,0 +1,298 @@
+name: One-time resilient hosted route repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/hosted-route-repair.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: one-time-vector-hosted-route-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply idempotent hosted route limits
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import re
+
+          routes = [
+              {
+                  "path": "apps/web/app/api/v1/motion/svg/route.ts",
+                  "policy": "MOTION_PAYLOAD_POLICY",
+                  "local_response": "16 * 1024 * 1024",
+                  "request_error": "MOTION_INTERACTIVE_PAYLOAD_TOO_LARGE",
+                  "response_error": "MOTION_INTERACTIVE_RESPONSE_TOO_LARGE",
+                  "constructor": r"const result = createAnimatedSvg\(source, normalizedMotion\);",
+                  "output_expression": "encodedTextBytes(`${result.svg}\\n`)",
+              },
+              {
+                  "path": "apps/web/app/api/v1/motion/lottie/route.ts",
+                  "policy": "LOTTIE_PAYLOAD_POLICY",
+                  "local_response": "MAX_LOTTIE_OUTPUT_BYTES",
+                  "request_error": "LOTTIE_INTERACTIVE_PAYLOAD_TOO_LARGE",
+                  "response_error": "LOTTIE_INTERACTIVE_RESPONSE_TOO_LARGE",
+                  "constructor": r"const result = createLottieFromSvgMotion\([\s\S]*?\n\s*\}\);",
+                  "output_expression": "encodedTextBytes(result.json)",
+              },
+              {
+                  "path": "apps/web/app/api/v1/motion/dotlottie/route.ts",
+                  "policy": "DOTLOTTIE_PAYLOAD_POLICY",
+                  "local_response": "MAX_DOTLOTTIE_ARCHIVE_BYTES",
+                  "request_error": "DOTLOTTIE_INTERACTIVE_PAYLOAD_TOO_LARGE",
+                  "response_error": "DOTLOTTIE_INTERACTIVE_RESPONSE_TOO_LARGE",
+                  "constructor": r"const packaged = createDotLottiePackage\(lottie\.json,[\s\S]*?\n\s*\}\);",
+                  "output_expression": "packaged.bytes.byteLength",
+              },
+          ]
+
+          for route in routes:
+              target = Path(route["path"])
+              source = target.read_text(encoding="utf-8")
+              policy = route["policy"]
+
+              if "../../../../../lib/deployment-profile" not in source:
+                  anchor = 'import { apiAuthorisationFailure } from "../../../../../lib/api-security";\n'
+                  addition = anchor + '''import {
+            encodedJsonBytes,
+            encodedTextBytes,
+            resolveVectorInteractivePayloadPolicy,
+          } from "../../../../../lib/deployment-profile";
+          '''
+                  if source.count(anchor) != 1:
+                      raise SystemExit(f"HOSTED_IMPORT_ANCHOR_INVALID:{route['path']}:{source.count(anchor)}")
+                  source = source.replace(anchor, addition, 1)
+
+              if "export const maxDuration = 60;" not in source:
+                  anchor = 'export const dynamic = "force-dynamic";\n'
+                  if source.count(anchor) != 1:
+                      raise SystemExit(f"HOSTED_DURATION_ANCHOR_INVALID:{route['path']}:{source.count(anchor)}")
+                  source = source.replace(anchor, anchor + "export const maxDuration = 60;\n", 1)
+
+              if f"const {policy} =" not in source:
+                  match = re.search(r"const MAX_REQUEST_BYTES\s*=\s*[\s\S]*?MULTIPART_OVERHEAD_ALLOWANCE;\n", source)
+                  if not match:
+                      raise SystemExit(f"HOSTED_POLICY_ANCHOR_INVALID:{route['path']}")
+                  block = match.group(0) + (
+                      f"const {policy} = resolveVectorInteractivePayloadPolicy({{\n"
+                      "  localMaxFileBytes: MAX_SVG_INPUT_BYTES,\n"
+                      "  localMaxRequestBytes: MAX_REQUEST_BYTES,\n"
+                      f"  localMaxResponseBytes: {route['local_response']},\n"
+                      "});\n"
+                  )
+                  source = source[:match.start()] + block + source[match.end():]
+
+              helper_pattern = re.compile(r"function json\([\s\S]*?\n}\n\nfunction stringField", re.MULTILINE)
+              helper_match = helper_pattern.search(source)
+              if not helper_match:
+                  raise SystemExit(f"HOSTED_JSON_ANCHOR_INVALID:{route['path']}")
+              helper = f'''function interactivePayloadLimitResponse(
+            kind: "request" | "file" | "response",
+            actualBytes: number,
+          ): Response {{
+            return Response.json(
+              {{
+                error: kind === "response" ? "{route['response_error']}" : "{route['request_error']}",
+                message:
+                  "This synchronous hosted transfer exceeds the active interactive payload boundary. Use the local CLI or MCP surface, a durable batch, a self-hosted worker, or provider-direct private storage once configured.",
+                kind,
+                actualBytes,
+                limits: {policy},
+                retryable: false,
+              }},
+              {{ status: 413, headers: noStoreHeaders() }},
+            );
+          }}
+
+          function json(
+            value: unknown,
+            status = 200,
+            extraHeaders: HeadersInit = {{}},
+          ): Response {{
+            const responseBytes = encodedJsonBytes(value);
+            if (status >= 200 && status < 300 && responseBytes > {policy}.maxResponseBytes) {{
+              return interactivePayloadLimitResponse("response", responseBytes);
+            }}
+            const headers = noStoreHeaders(extraHeaders);
+            if (status >= 200 && status < 300) headers.set("x-vector-response-bytes", String(responseBytes));
+            return Response.json(value, {{ status, headers }});
+          }}
+
+          function stringField'''
+              source = source[:helper_match.start()] + helper + source[helper_match.end():]
+
+              source = source.replace("contentLength > MAX_REQUEST_BYTES", f"contentLength > {policy}.maxRequestBytes")
+              source = source.replace("maxRequestBytes: MAX_REQUEST_BYTES", f"maxRequestBytes: {policy}.maxRequestBytes")
+              source = source.replace("file.size > MAX_SVG_INPUT_BYTES", f"file.size > {policy}.maxFileBytes")
+              source = source.replace("maxInputBytes: MAX_SVG_INPUT_BYTES", f"maxInputBytes: {policy}.maxFileBytes")
+
+              if f"hosting: {policy}," not in source:
+                  anchor = '    execution: "bounded-synchronous",\n'
+                  if source.count(anchor) != 1:
+                      raise SystemExit(f"HOSTED_DISCOVERY_ANCHOR_INVALID:{route['path']}:{source.count(anchor)}")
+                  source = source.replace(anchor, anchor + f"    hosting: {policy},\n", 1)
+
+              if "const interactiveOutputBytes =" not in source:
+                  match = re.search(route["constructor"], source)
+                  if not match:
+                      raise SystemExit(f"HOSTED_OUTPUT_ANCHOR_INVALID:{route['path']}")
+                  addition = (
+                      match.group(0)
+                      + f"\n    const interactiveOutputBytes = {route['output_expression']};\n"
+                      + f"    if (interactiveOutputBytes > {policy}.maxResponseBytes) {{\n"
+                      + '      return interactivePayloadLimitResponse("response", interactiveOutputBytes);\n'
+                      + "    }"
+                  )
+                  source = source[:match.start()] + addition + source[match.end():]
+
+              if route["path"].endswith("dotlottie/route.ts"):
+                  source = source.replace(
+                      "packaged.bytes.byteLength > MAX_BASE64_ARCHIVE_BYTES",
+                      "packaged.bytes.byteLength > Math.min(MAX_BASE64_ARCHIVE_BYTES, DOTLOTTIE_PAYLOAD_POLICY.maxBase64BinaryBytes)",
+                  )
+                  source = source.replace(
+                      "maxBase64ArchiveBytes: MAX_BASE64_ARCHIVE_BYTES",
+                      "maxBase64ArchiveBytes: Math.min(MAX_BASE64_ARCHIVE_BYTES, DOTLOTTIE_PAYLOAD_POLICY.maxBase64BinaryBytes)",
+                  )
+
+              target.write_text(source, encoding="utf-8")
+
+          contract_path = Path("scripts/check-interactive-hosting-contract.mjs")
+          contract_path.write_text('''import fs from "node:fs/promises";
+          import path from "node:path";
+          const root = process.cwd();
+          const errors = [];
+          const checkedFiles = new Set();
+          async function read(file) {
+            checkedFiles.add(file);
+            try { return (await fs.readFile(path.join(root, file), "utf8")).replace(/^\\uFEFF/, ""); }
+            catch (error) { errors.push(`Missing or unreadable file: ${file} (${error instanceof Error ? error.message : String(error)})`); return ""; }
+          }
+          function requireTokens(file, source, tokens) { for (const token of tokens) if (!source.includes(token)) errors.push(`${file} is missing hosted-interactive token: ${token}`); }
+          function forbidTokens(file, source, tokens) { for (const token of tokens) if (source.includes(token)) errors.push(`${file} contains stale hosted-interactive token: ${token}`); }
+          const files = {
+            profile: "apps/web/lib/deployment-profile.ts",
+            trace: "apps/web/app/api/v1/trace/route.ts",
+            motion: "apps/web/app/api/v1/motion/svg/route.ts",
+            lottie: "apps/web/app/api/v1/motion/lottie/route.ts",
+            dotlottie: "apps/web/app/api/v1/motion/dotlottie/route.ts",
+            docs: "docs/VERCEL-DEPLOYMENT.md",
+            workflow: ".github/workflows/vercel-deployment-contract.yml",
+          };
+          const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, file]) => [key, await read(file)])));
+          requireTokens(files.profile, sources.profile, ["VERCEL_FUNCTION_BODY_LIMIT_BYTES = 4_500_000", "VERCEL_SAFE_REQUEST_BYTES = 4_000_000", "VERCEL_SAFE_RESPONSE_BYTES = 4_000_000", "VERCEL_SAFE_MULTIPART_FILE_BYTES = 3_250_000", "VERCEL_SAFE_BASE64_BINARY_BYTES = 2_750_000", "providerDirectPrivateStorageConfigured: false"]);
+          requireTokens(files.trace, sources.trace, ["TRACE_PAYLOAD_POLICY.maxRequestBytes", "TRACE_PAYLOAD_POLICY.maxFileBytes", "TRACE_PAYLOAD_POLICY.maxResponseBytes", "VECTOR_INTERACTIVE_RESPONSE_TOO_LARGE"]);
+          for (const [file, source, policy, requestError, responseError] of [
+            [files.motion, sources.motion, "MOTION_PAYLOAD_POLICY", "MOTION_INTERACTIVE_PAYLOAD_TOO_LARGE", "MOTION_INTERACTIVE_RESPONSE_TOO_LARGE"],
+            [files.lottie, sources.lottie, "LOTTIE_PAYLOAD_POLICY", "LOTTIE_INTERACTIVE_PAYLOAD_TOO_LARGE", "LOTTIE_INTERACTIVE_RESPONSE_TOO_LARGE"],
+            [files.dotlottie, sources.dotlottie, "DOTLOTTIE_PAYLOAD_POLICY", "DOTLOTTIE_INTERACTIVE_PAYLOAD_TOO_LARGE", "DOTLOTTIE_INTERACTIVE_RESPONSE_TOO_LARGE"],
+          ]) {
+            requireTokens(file, source, ["../../../../../lib/deployment-profile", "export const maxDuration = 60", `${policy}.maxRequestBytes`, `${policy}.maxFileBytes`, `${policy}.maxResponseBytes`, `hosting: ${policy}`, requestError, responseError, "encodedJsonBytes(value)", "const interactiveOutputBytes ="]);
+            forbidTokens(file, source, ["contentLength > MAX_REQUEST_BYTES", "file.size > MAX_SVG_INPUT_BYTES"]);
+          }
+          requireTokens(files.dotlottie, sources.dotlottie, ["DOTLOTTIE_PAYLOAD_POLICY.maxBase64BinaryBytes", "Math.min(MAX_BASE64_ARCHIVE_BYTES"]);
+          requireTokens(files.docs, sources.docs, ["Maximum synchronous request", "Maximum browser multipart source", "Maximum synchronous response", "Maximum base64 binary before wrapper", "local CLI", "self-hosted HTTP worker"]);
+          requireTokens(files.workflow, sources.workflow, ["node scripts/check-interactive-hosting-contract.mjs", "pnpm install --frozen-lockfile"]);
+          if (errors.length) { process.stderr.write(`${JSON.stringify({ check: "evavo-vector-interactive-hosting", ok: false, contractVersion: "1.0", errors }, null, 2)}\\n`); process.exit(1); }
+          process.stdout.write(`${JSON.stringify({ check: "evavo-vector-interactive-hosting", ok: true, contractVersion: "1.0", providerBodyLimitBytes: 4_500_000, providerDirectPrivateStorageConfigured: false, checkedFiles: [...checkedFiles].sort() }, null, 2)}\\n`);
+          ''', encoding="utf-8")
+
+          package_path = Path("package.json")
+          package = json.loads(package_path.read_text(encoding="utf-8"))
+          scripts = package.setdefault("scripts", {})
+          scripts["interactive-hosting:check"] = "node scripts/check-interactive-hosting-contract.mjs"
+          check = scripts.get("check", "")
+          anchor = "pnpm vercel:check &&"
+          if "pnpm interactive-hosting:check" not in check:
+              if check.count(anchor) != 1:
+                  raise SystemExit(f"HOSTED_PACKAGE_CHECK_ANCHOR_INVALID:{check.count(anchor)}")
+              check = check.replace(anchor, anchor + " pnpm interactive-hosting:check &&", 1)
+          scripts["check"] = check
+          package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+
+          workflow = Path(".github/workflows/vercel-deployment-contract.yml")
+          source = workflow.read_text(encoding="utf-8")
+          anchor = '      - "apps/web/app/api/v1/trace/route.ts"\n'
+          additions = [
+              '      - "apps/web/app/api/v1/motion/svg/route.ts"\n',
+              '      - "apps/web/app/api/v1/motion/lottie/route.ts"\n',
+              '      - "apps/web/app/api/v1/motion/dotlottie/route.ts"\n',
+              '      - "scripts/check-interactive-hosting-contract.mjs"\n',
+          ]
+          for addition in additions:
+              if addition not in source:
+                  if source.count(anchor) != 2:
+                      raise SystemExit(f"HOSTED_WORKFLOW_PATH_ANCHOR_INVALID:{source.count(anchor)}")
+                  source = source.replace(anchor, anchor + addition)
+          step = "      - name: Install frozen workspace\n"
+          if "node scripts/check-interactive-hosting-contract.mjs" not in source:
+              if source.count(step) != 1:
+                  raise SystemExit(f"HOSTED_WORKFLOW_STEP_ANCHOR_INVALID:{source.count(step)}")
+              source = source.replace(step, "      - name: Verify hosted interactive transfers\n        run: node scripts/check-interactive-hosting-contract.mjs\n\n" + step, 1)
+          workflow.write_text(source, encoding="utf-8")
+
+          docs = Path("docs/VERCEL-DEPLOYMENT.md")
+          source = docs.read_text(encoding="utf-8")
+          heading = "## Motion and Lottie route limits"
+          if heading not in source:
+              source += '''
+
+          ## Motion and Lottie route limits
+
+          The same hosting profile applies to `/api/v1/trace`, `/api/v1/motion/svg`, `/api/v1/motion/lottie`, and `/api/v1/motion/dotlottie`. Each route checks the declared request size, parsed source file, exact direct output, and exact JSON wrapper. dotLottie also caps the binary archive before base64 encoding. Local CLI, MCP, durable batch, and self-hosted worker limits remain unchanged.
+          '''
+          docs.write_text(source, encoding="utf-8")
+          PY
+
+          node scripts/check-interactive-hosting-contract.mjs
+          node scripts/check-vercel-deployment-contract.mjs
+          git diff --check
+
+      - name: Frozen install and complete verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm check
+
+      - name: Commit repair and retire conflicting workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-hosted-motion-limits.yml \
+            .github/hosted-motion-limits.trigger \
+            .github/workflows/one-time-hosted-route-repair.yml \
+            .github/hosted-route-repair.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(deploy): apply resilient hosted route limits"
+          git pull --rebase origin main
+          git push origin HEAD:main
