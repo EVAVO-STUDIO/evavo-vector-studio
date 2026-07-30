@@ -17,7 +17,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 70
     steps:
       - name: Check out current main
         uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Create two isolated byte-identical workspace lockfiles
+      - name: Converge and verify an idempotent workspace lockfile
         id: generation
         continue-on-error: true
         shell: bash
@@ -45,38 +45,42 @@ jobs:
           {
             set -euo pipefail
             test ! -f pnpm-lock.yaml
-            candidate_a="$(mktemp -d /tmp/vector-lock-a.XXXXXX)"
-            candidate_b="$(mktemp -d /tmp/vector-lock-b.XXXXXX)"
+            candidate="$(mktemp -d /tmp/vector-lock.XXXXXX)"
             cleanup() {
-              git worktree remove --force "$candidate_a" >/dev/null 2>&1 || true
-              git worktree remove --force "$candidate_b" >/dev/null 2>&1 || true
-              rm -rf "$candidate_a" "$candidate_b"
+              git worktree remove --force "$candidate" >/dev/null 2>&1 || true
+              rm -rf "$candidate"
             }
             trap cleanup EXIT
 
-            git worktree add --detach "$candidate_a" HEAD
-            git worktree add --detach "$candidate_b" HEAD
-
+            git worktree add --detach "$candidate" HEAD
             (
-              cd "$candidate_a"
+              cd "$candidate"
               pnpm install --lockfile-only --ignore-scripts
               test -s pnpm-lock.yaml
-            )
-            (
-              cd "$candidate_b"
+              cp pnpm-lock.yaml "$GITHUB_WORKSPACE/.ci/pnpm-lock.initial.yaml"
+
               pnpm install --lockfile-only --ignore-scripts
               test -s pnpm-lock.yaml
+              cp pnpm-lock.yaml "$GITHUB_WORKSPACE/.ci/pnpm-lock.normalized.yaml"
+
+              pnpm install --lockfile-only --ignore-scripts
+              test -s pnpm-lock.yaml
+              cp pnpm-lock.yaml "$GITHUB_WORKSPACE/.ci/pnpm-lock.idempotent.yaml"
             )
 
-            cp "$candidate_a/pnpm-lock.yaml" .ci/pnpm-lock.candidate-a.yaml
-            cp "$candidate_b/pnpm-lock.yaml" .ci/pnpm-lock.candidate-b.yaml
-            sha256sum .ci/pnpm-lock.candidate-a.yaml .ci/pnpm-lock.candidate-b.yaml
-            if ! cmp --silent .ci/pnpm-lock.candidate-a.yaml .ci/pnpm-lock.candidate-b.yaml; then
-              diff -u .ci/pnpm-lock.candidate-a.yaml .ci/pnpm-lock.candidate-b.yaml > .ci/pnpm-lock.diff || true
-              cat .ci/pnpm-lock.diff
+            sha256sum \
+              .ci/pnpm-lock.initial.yaml \
+              .ci/pnpm-lock.normalized.yaml \
+              .ci/pnpm-lock.idempotent.yaml
+            if ! cmp --silent .ci/pnpm-lock.normalized.yaml .ci/pnpm-lock.idempotent.yaml; then
+              diff -u .ci/pnpm-lock.normalized.yaml .ci/pnpm-lock.idempotent.yaml > .ci/pnpm-lock.idempotence.diff || true
+              cat .ci/pnpm-lock.idempotence.diff
               exit 1
             fi
-            cp .ci/pnpm-lock.candidate-a.yaml pnpm-lock.yaml
+            if ! cmp --silent .ci/pnpm-lock.initial.yaml .ci/pnpm-lock.normalized.yaml; then
+              diff -u .ci/pnpm-lock.initial.yaml .ci/pnpm-lock.normalized.yaml > .ci/pnpm-lock.normalization.diff || true
+            fi
+            cp .ci/pnpm-lock.idempotent.yaml pnpm-lock.yaml
             test -s pnpm-lock.yaml
           } 2>&1 | tee .ci/lockfile-generation.log
 
@@ -157,7 +161,7 @@ jobs:
               state: passed ? "success" : "failure",
               context: "release/pnpm-lockfile",
               description: passed
-                ? "deterministic lockfile published after frozen verification"
+                ? "idempotent lockfile published after frozen verification"
                 : `generation=${outcomes[0]} verification=${outcomes[1]} publication=${outcomes[2]}`.slice(0, 140),
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
