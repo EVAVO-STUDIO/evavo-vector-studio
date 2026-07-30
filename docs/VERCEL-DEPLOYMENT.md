@@ -95,7 +95,9 @@ Before deployment, the workflow performs a no-mutation project plan with all sev
 
 After the alias is proven, the workflow runs the live private-response verifier and the public runtime verifier against the canonical HTTPS origin. It preserves bounded source, deployment, header and runtime receipts without storing secret values. A READY deployment alone is not release evidence if the commit, production alias, response headers or public capabilities are unproven.
 
-This workflow does not perform signed owner or client launch proof. It also does not prove durable replay, large-object provider storage or independent player-render equivalence. Client release remains withheld until those separate boundaries pass and are reviewed.
+The same apply transaction then creates a fresh one-time owner signed launch and a separate one-time client signed launch using the shared `evavo-client-app-launch-v1` receiver contract. Each token is masked before use, stored only in a mode-0600 temporary file, removed by a shell trap, accepted once by `/launch`, rejected on replay, and used to render both protected workspaces. Only token SHA-256 and bounded claim identifiers are retained; the token body is never uploaded.
+
+These two profiles prove the deployed Vector Studio receiver, durable replay boundary and app-private session exchange. They do not by themselves prove that the central `next-website` owner and client UI issued the token from a real authenticated hub session. That final cross-application issuance and assignment proof remains separate. Client release remains withheld until it passes with the exact deployed commit.
 
 ## Project settings
 
@@ -176,6 +178,7 @@ frozen workspace install
 Vercel deployment contract
 Vercel project provisioning contract and self-test
 exact production deployment contract and self-test
+live owner/client token generator self-test
 private-response security contract
 web TypeScript validation
 Turbo dependency build and web production build
@@ -191,7 +194,7 @@ Client release remains withheld until all of these are recorded against an exact
 4. `vector.evavo.com.au` is assigned and HTTPS verified;
 5. required production environment variables are configured without secret reuse;
 6. durable replay succeeds once and rejects replay;
-7. owner and client signed launches each pass exactly once;
+7. central hub-issued owner and client signed launches each pass exactly once;
 8. wrong-host, wrong-app, expiry, and provider-failure tests fail closed;
 9. hosted trace and motion requests remain inside transfer and duration limits;
 10. larger objects use a verified private transport rather than function bodies;
