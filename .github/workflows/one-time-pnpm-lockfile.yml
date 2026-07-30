@@ -68,9 +68,15 @@ jobs:
               test -s pnpm-lock.yaml
             )
 
-            sha256sum "$candidate_a/pnpm-lock.yaml" "$candidate_b/pnpm-lock.yaml"
-            cmp --silent "$candidate_a/pnpm-lock.yaml" "$candidate_b/pnpm-lock.yaml"
-            cp "$candidate_a/pnpm-lock.yaml" pnpm-lock.yaml
+            cp "$candidate_a/pnpm-lock.yaml" .ci/pnpm-lock.candidate-a.yaml
+            cp "$candidate_b/pnpm-lock.yaml" .ci/pnpm-lock.candidate-b.yaml
+            sha256sum .ci/pnpm-lock.candidate-a.yaml .ci/pnpm-lock.candidate-b.yaml
+            if ! cmp --silent .ci/pnpm-lock.candidate-a.yaml .ci/pnpm-lock.candidate-b.yaml; then
+              diff -u .ci/pnpm-lock.candidate-a.yaml .ci/pnpm-lock.candidate-b.yaml > .ci/pnpm-lock.diff || true
+              cat .ci/pnpm-lock.diff
+              exit 1
+            fi
+            cp .ci/pnpm-lock.candidate-a.yaml pnpm-lock.yaml
             test -s pnpm-lock.yaml
           } 2>&1 | tee .ci/lockfile-generation.log
 
@@ -114,7 +120,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vector-pnpm-lockfile-${{ github.sha }}
-          path: .ci/*.log
+          path: .ci/*
           if-no-files-found: warn
           retention-days: 3
 
