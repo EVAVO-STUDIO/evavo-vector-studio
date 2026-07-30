@@ -1,0 +1,90 @@
+name: One-time finalise Vector Studio Vercel contract
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/finalise-vercel-contract.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: one-time-finalise-vector-vercel-contract
+  cancel-in-progress: true
+
+jobs:
+  finalise:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Finalise deterministic source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          target = Path("scripts/check-vercel-deployment-contract.mjs")
+          source = target.read_text(encoding="utf-8")
+          old = '  "client release remains withheld",'
+          new = '  "Client release remains withheld",'
+          if source.count(old) != 1:
+              raise SystemExit(f"VERCEL_DOC_TOKEN_ANCHOR_INVALID:{source.count(old)}")
+          target.write_text(source.replace(old, new, 1), encoding="utf-8")
+          PY
+
+          if [ ! -s pnpm-lock.yaml ]; then
+            pnpm install --lockfile-only --ignore-scripts
+            test -s pnpm-lock.yaml
+            cp pnpm-lock.yaml /tmp/pnpm-lock.first.yaml
+            rm pnpm-lock.yaml
+            pnpm install --lockfile-only --ignore-scripts
+            cmp --silent /tmp/pnpm-lock.first.yaml pnpm-lock.yaml
+          fi
+
+          rm -f \
+            .github/workflows/one-time-pnpm-lockfile.yml \
+            .github/pnpm-lockfile.trigger
+
+          node scripts/check-hub-integration-contract.mjs
+          node scripts/check-vercel-deployment-contract.mjs
+          git diff --check
+
+      - name: Frozen install
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify web source
+        run: |
+          pnpm --filter @evavo/hub-auth test
+          pnpm --filter @evavo/vector-web typecheck
+          pnpm --filter @evavo/vector-web build
+
+      - name: Commit final contract and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-finalise-vercel-contract.yml \
+            .github/finalise-vercel-contract.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(deploy): finalise frozen Vercel source contract"
+          git pull --rebase origin main
+          git push origin HEAD:main
