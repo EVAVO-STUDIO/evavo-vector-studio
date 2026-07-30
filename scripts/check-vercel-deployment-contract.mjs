@@ -133,8 +133,8 @@ requireTokens(files.docs, sources.docs, [
   "4.5 MB",
   "3,250,000",
   "pnpm install --frozen-lockfile",
-  "provider-direct private storage",
-  "client release remains withheld",
+  "Provider-direct private storage",
+  "Client release remains withheld",
 ]);
 requireTokens(files.workflow, sources.workflow, [
   "Vector Studio Vercel deployment contract",
@@ -143,7 +143,10 @@ requireTokens(files.workflow, sources.workflow, [
   "pnpm --filter @evavo/vector-web typecheck",
   "pnpm --filter @evavo/vector-web build",
 ]);
-forbidTokens(files.vercelConfig, sources.vercelConfig, ["npm install", "pnpm install --no-frozen-lockfile"]);
+forbidTokens(files.vercelConfig, sources.vercelConfig, [
+  '"installCommand": "npm install"',
+  '"installCommand": "pnpm install --no-frozen-lockfile"',
+]);
 
 if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
