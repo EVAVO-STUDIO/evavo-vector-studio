@@ -80,10 +80,19 @@ forbidTokens(files.middleware, sources.middleware, [
 ]);
 
 requireTokens(files.layout, sources.layout, [
-  'robots: { index: false, follow: false',
+  "export const metadata: Metadata",
+  "robots: {",
+  "index: false",
+  "follow: false",
   'referrer: "no-referrer"',
 ]);
-requireTokens(files.access, sources.access, ["Return to EVAVO hub", "noindex"]);
+requireTokens(files.access, sources.access, [
+  "export const metadata: Metadata",
+  "Return to EVAVO hub",
+  "robots: {",
+  "index: false",
+  "follow: false",
+]);
 requireTokens(files.launch, sources.launch, ["verifyVectorHubLaunchToken", "replayStore.consume"]);
 requireTokens(files.health, sources.health, ["privateApplication: true", "clientReleaseEligible: false"]);
 requireTokens(files.liveProof, sources.liveProof, [
@@ -94,7 +103,7 @@ requireTokens(files.liveProof, sources.liveProof, [
   '"cache-control"',
   '"authorization", "cookie", "origin"',
   '"__Host-evavo-vector-session"',
-  "redirect: \"manual\"",
+  'redirect: "manual"',
   '"accept-encoding": "identity"',
   "sensitiveValuesRecorded: false",
   "atomicNewFile",
@@ -127,13 +136,14 @@ requireTokens(files.publicProofWorkflow, sources.publicProofWorkflow, [
   "source, private response and public runtime proof passed",
 ]);
 
-if (sources.liveProof) {
+for (const relativePath of [files.liveProof, "scripts/check-private-response-contract.mjs"]) {
+  if (!sources.liveProof && relativePath === files.liveProof) continue;
   try {
-    execFileSync(process.execPath, ["--check", path.join(root, files.liveProof)], {
+    execFileSync(process.execPath, ["--check", path.join(root, relativePath)], {
       stdio: "pipe",
     });
   } catch (error) {
-    errors.push(`${files.liveProof} failed node --check (${error instanceof Error ? error.message : String(error)})`);
+    errors.push(`${relativePath} failed node --check (${error instanceof Error ? error.message : String(error)})`);
   }
 }
 
