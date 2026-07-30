@@ -9,11 +9,20 @@ on:
       - "turbo.json"
       - "apps/web/vercel.json"
       - "apps/web/lib/deployment-profile.ts"
+      - "apps/web/middleware.ts"
+      - "apps/web/app/layout.tsx"
+      - "apps/web/app/access/page.tsx"
+      - "apps/web/app/launch/route.ts"
       - "apps/web/app/api/v1/trace/route.ts"
       - "apps/web/app/api/health/route.ts"
       - "apps/web/public/hub/evavo-vector-studio.deployment.json"
       - "scripts/check-vercel-deployment-contract.mjs"
+      - "scripts/check-private-response-contract.mjs"
+      - "scripts/verify-live-private-response.mjs"
+      - "scripts/verify-live-deployment.mjs"
       - "docs/VERCEL-DEPLOYMENT.md"
+      - "docs/PRIVATE-APPLICATION-SECURITY.md"
+      - ".github/workflows/public-deployment-proof.yml"
       - ".github/workflows/vercel-deployment-contract.yml"
   pull_request:
     paths:
@@ -22,11 +31,20 @@ on:
       - "turbo.json"
       - "apps/web/vercel.json"
       - "apps/web/lib/deployment-profile.ts"
+      - "apps/web/middleware.ts"
+      - "apps/web/app/layout.tsx"
+      - "apps/web/app/access/page.tsx"
+      - "apps/web/app/launch/route.ts"
       - "apps/web/app/api/v1/trace/route.ts"
       - "apps/web/app/api/health/route.ts"
       - "apps/web/public/hub/evavo-vector-studio.deployment.json"
       - "scripts/check-vercel-deployment-contract.mjs"
+      - "scripts/check-private-response-contract.mjs"
+      - "scripts/verify-live-private-response.mjs"
+      - "scripts/verify-live-deployment.mjs"
       - "docs/VERCEL-DEPLOYMENT.md"
+      - "docs/PRIVATE-APPLICATION-SECURITY.md"
+      - ".github/workflows/public-deployment-proof.yml"
       - ".github/workflows/vercel-deployment-contract.yml"
 
 permissions:
@@ -57,6 +75,9 @@ jobs:
 
       - name: Verify source deployment contract
         run: node scripts/check-vercel-deployment-contract.mjs
+
+      - name: Verify private response security
+        run: node scripts/check-private-response-contract.mjs
 
       - name: Install frozen workspace
         run: pnpm install --frozen-lockfile
