@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -34,8 +35,10 @@ const files = {
   access: "apps/web/app/access/page.tsx",
   launch: "apps/web/app/launch/route.ts",
   health: "apps/web/app/api/health/route.ts",
+  liveProof: "scripts/verify-live-private-response.mjs",
   docs: "docs/PRIVATE-APPLICATION-SECURITY.md",
   workflow: ".github/workflows/vercel-deployment-contract.yml",
+  publicProofWorkflow: ".github/workflows/public-deployment-proof.yml",
 };
 const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
@@ -83,11 +86,32 @@ requireTokens(files.layout, sources.layout, [
 requireTokens(files.access, sources.access, ["Return to EVAVO hub", "noindex"]);
 requireTokens(files.launch, sources.launch, ["verifyVectorHubLaunchToken", "replayStore.consume"]);
 requireTokens(files.health, sources.health, ["privateApplication: true", "clientReleaseEligible: false"]);
+requireTokens(files.liveProof, sources.liveProof, [
+  'const CANONICAL_ORIGIN = "https://vector.evavo.com.au"',
+  'const CONTRACT_VERSION = "1.0"',
+  '"x-vector-private-response-contract": CONTRACT_VERSION',
+  '"x-robots-tag"',
+  '"cache-control"',
+  '"authorization", "cookie", "origin"',
+  '"__Host-evavo-vector-session"',
+  "redirect: \"manual\"",
+  '"accept-encoding": "identity"',
+  "sensitiveValuesRecorded: false",
+  "atomicNewFile",
+]);
+forbidTokens(files.liveProof, sources.liveProof, [
+  "VECTOR_DEPLOYMENT_PROOF_LAUNCH_TOKEN",
+  "EVAVO_CLIENT_APP_LAUNCH_SECRET",
+  "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
+  "VECTOR_API_TOKEN",
+  "VECTOR_WORKER_API_TOKEN",
+]);
 requireTokens(files.docs, sources.docs, [
   "X-Robots-Tag",
   "Referrer-Policy",
   "Permissions-Policy",
   "Cross-Origin-Opener-Policy",
+  "verify-live-private-response.mjs",
   "does not authenticate",
   "client release remains withheld",
 ]);
@@ -95,6 +119,23 @@ requireTokens(files.workflow, sources.workflow, [
   "node scripts/check-private-response-contract.mjs",
   "pnpm install --frozen-lockfile",
 ]);
+requireTokens(files.publicProofWorkflow, sources.publicProofWorkflow, [
+  "Verify live private response boundary",
+  "node scripts/verify-live-private-response.mjs",
+  ".ci/vector-private-response-proof.json",
+  "PRIVATE_OUTCOME",
+  "source, private response and public runtime proof passed",
+]);
+
+if (sources.liveProof) {
+  try {
+    execFileSync(process.execPath, ["--check", path.join(root, files.liveProof)], {
+      stdio: "pipe",
+    });
+  } catch (error) {
+    errors.push(`${files.liveProof} failed node --check (${error instanceof Error ? error.message : String(error)})`);
+  }
+}
 
 if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
@@ -113,6 +154,7 @@ process.stdout.write(`${JSON.stringify({
   indexing: "forbidden",
   framing: "forbidden",
   referrerPolicy: "no-referrer",
+  liveDeploymentProof: true,
   authenticationImplementedInMiddleware: false,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
