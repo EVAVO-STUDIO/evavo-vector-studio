@@ -77,6 +77,26 @@ The transaction is idempotent. An existing project is reused only when its GitHu
 
 This provisioner does not deploy. Exact production deployment, deployment readiness polling, live private-response proof, durable replay proof, and one-time owner/client launch evidence remain separate governed transactions. A newly assigned but unverified domain leaves apply incomplete rather than claiming release readiness. Client release remains withheld throughout.
 
+## Governed exact production deployment
+
+The separate manual workflow:
+
+```text
+.github/workflows/vector-vercel-production-deployment.yml
+```
+
+also has `plan` and `apply` modes. Both require an exact current `main` commit and refuse to use a moved branch head. Apply additionally requires the protected `vector-studio-production` environment and the literal confirmation:
+
+```text
+deploy-evavo-vector-studio
+```
+
+Before deployment, the workflow performs a no-mutation project plan with all seven separated credentials and creates a complete exact-source proof. The deployer then creates or reuses only a production deployment associated with the requested 40-character Git SHA. It polls bounded Vercel state until the deployment is `READY`, fails closed on `ERROR`, `CANCELED` or `BLOCKED`, proves the exact commit again from deployment metadata, and requires `vector.evavo.com.au` as the production alias.
+
+After the alias is proven, the workflow runs the live private-response verifier and the public runtime verifier against the canonical HTTPS origin. It preserves bounded source, deployment, header and runtime receipts without storing secret values. A READY deployment alone is not release evidence if the commit, production alias, response headers or public capabilities are unproven.
+
+This workflow does not perform signed owner or client launch proof. It also does not prove durable replay, large-object provider storage or independent player-render equivalence. Client release remains withheld until those separate boundaries pass and are reviewed.
+
 ## Project settings
 
 Create the future project with:
@@ -143,6 +163,7 @@ Source verification:
 ```powershell
 pnpm vercel:check
 pnpm vercel-provision:check
+pnpm vercel-deploy:check
 pnpm hub:check
 pnpm check
 pnpm --filter @evavo/vector-web build
@@ -154,6 +175,7 @@ The dedicated Vercel workflow additionally proves:
 frozen workspace install
 Vercel deployment contract
 Vercel project provisioning contract and self-test
+exact production deployment contract and self-test
 private-response security contract
 web TypeScript validation
 Turbo dependency build and web production build
