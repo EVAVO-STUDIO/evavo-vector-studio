@@ -1,1 +1,1 @@
-publish deterministic pnpm lockfile after exact launch failure reason and release-ineligible documentation repair
+publish deterministic pnpm lockfile from two isolated worktrees after frozen full verification
