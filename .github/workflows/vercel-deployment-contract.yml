@@ -86,8 +86,8 @@ jobs:
       - name: Typecheck private web application
         run: pnpm --filter @evavo/vector-web typecheck
 
-      - name: Build private web application
-        run: pnpm --filter @evavo/vector-web build
+      - name: Build private web application through Turbo
+        run: pnpm exec turbo run build --filter=@evavo/vector-web
 
       - name: Publish deployment proof status
         if: always()
