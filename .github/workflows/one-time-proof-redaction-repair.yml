@@ -1,0 +1,166 @@
+name: One-time deployment proof diagnostic redaction repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/proof-redaction-repair.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: one-time-vector-proof-redaction-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Remove launch material from network diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          target = Path("scripts/verify-live-deployment.mjs")
+          source = target.read_text(encoding="utf-8")
+
+          if "const safeEvidencePath =" not in source:
+              anchor = '''async function request(origin, pathname, options = {}) {
+            const started = Date.now();
+          '''
+              replacement = '''async function request(origin, pathname, options = {}) {
+            const safeEvidencePath = options.evidencePath ?? pathname.split("?", 1)[0] ?? "/";
+            if (!safeEvidencePath.startsWith("/") || safeEvidencePath.includes("?")) {
+              fail("DEPLOYMENT_PROOF_EVIDENCE_PATH_INVALID", "A bounded evidence path is required.");
+            }
+            const started = Date.now();
+          '''
+              if source.count(anchor) != 1:
+                  raise SystemExit(f"PROOF_SAFE_PATH_ANCHOR_INVALID:{source.count(anchor)}")
+              source = source.replace(anchor, replacement, 1)
+
+          source = source.replace(
+              'fail("DEPLOYMENT_PROOF_REQUEST_TIMEOUT", `The live request timed out: ${pathname}`);',
+              'fail("DEPLOYMENT_PROOF_REQUEST_TIMEOUT", `The live request timed out: ${safeEvidencePath}`);',
+          )
+
+          old_catch = '''    throw error;
+            } finally {
+          '''
+          new_catch = '''    fail(
+              "DEPLOYMENT_PROOF_REQUEST_FAILED",
+              `The live request failed: ${safeEvidencePath}`,
+              { cause: error instanceof Error ? error.name : "unknown" },
+            );
+            } finally {
+          '''
+          if "DEPLOYMENT_PROOF_REQUEST_FAILED" not in source:
+              if source.count(old_catch) != 1:
+                  raise SystemExit(f"PROOF_REQUEST_CATCH_ANCHOR_INVALID:{source.count(old_catch)}")
+              source = source.replace(old_catch, new_catch, 1)
+
+          source = source.replace(
+              '''    if (url.origin !== origin || url.username || url.password || url.hash) return null;
+                return `${url.pathname}${url.search}`;
+          ''',
+              '''    if (
+                  url.origin !== origin ||
+                  url.username ||
+                  url.password ||
+                  url.hash ||
+                  url.searchParams.has("token")
+                ) return null;
+                return `${url.pathname}${url.search}`;
+          ''',
+          )
+
+          source = source.replace(
+              '''    const firstLaunch = await request(origin, `/launch?token=${encodeURIComponent(token)}`, {
+                accept: "text/html",
+                maximumBytes: 256 * 1024,
+              });
+          ''',
+              '''    const firstLaunch = await request(origin, `/launch?token=${encodeURIComponent(token)}`, {
+                accept: "text/html",
+                maximumBytes: 256 * 1024,
+                evidencePath: "/launch",
+              });
+          ''',
+          )
+          source = source.replace(
+              '''    const replay = await request(origin, `/launch?token=${encodeURIComponent(token)}`, {
+                accept: "text/html",
+                maximumBytes: 256 * 1024,
+              });
+          ''',
+              '''    const replay = await request(origin, `/launch?token=${encodeURIComponent(token)}`, {
+                accept: "text/html",
+                maximumBytes: 256 * 1024,
+                evidencePath: "/launch",
+              });
+          ''',
+          )
+          target.write_text(source, encoding="utf-8")
+
+          contract = Path("scripts/check-release-proof-contract.mjs")
+          source = contract.read_text(encoding="utf-8")
+          anchor = '''  "readBoundedBody",
+            "workspaceCookie",
+          '''
+          replacement = '''  "readBoundedBody",
+            "workspaceCookie",
+            "const safeEvidencePath =",
+            'evidencePath: "/launch"',
+            "DEPLOYMENT_PROOF_REQUEST_FAILED",
+            'url.searchParams.has("token")',
+          '''
+          if "const safeEvidencePath =" not in source:
+              if source.count(anchor) != 1:
+                  raise SystemExit(f"PROOF_REDACTION_CONTRACT_ANCHOR_INVALID:{source.count(anchor)}")
+              source = source.replace(anchor, replacement, 1)
+          contract.write_text(source, encoding="utf-8")
+          PY
+
+          node --check scripts/verify-live-deployment.mjs
+          node scripts/check-release-proof-contract.mjs
+          git diff --check
+
+      - name: Frozen install and complete verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm check
+
+      - name: Commit repair and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-proof-redaction-repair.yml \
+            .github/proof-redaction-repair.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(release): redact launch material from proof diagnostics"
+          git pull --rebase origin main
+          git push origin HEAD:main
