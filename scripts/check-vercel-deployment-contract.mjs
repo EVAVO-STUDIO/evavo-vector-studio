@@ -127,6 +127,9 @@ const outputs = turbo?.tasks?.build?.outputs;
 if (!Array.isArray(outputs) || !outputs.includes(".next/**") || !outputs.includes("!.next/cache/**")) {
   errors.push("turbo.json must retain Next.js output while excluding the mutable .next cache.");
 }
+if (!Array.isArray(turbo?.tasks?.build?.dependsOn) || !turbo.tasks.build.dependsOn.includes("^build")) {
+  errors.push("Turbo build must retain the workspace dependency build graph.");
+}
 
 requireTokens(files.docs, sources.docs, [
   "No `evavo-vector-studio` Vercel project exists",
@@ -139,8 +142,12 @@ requireTokens(files.docs, sources.docs, [
 requireTokens(files.workflow, sources.workflow, [
   "Vector Studio Vercel deployment contract",
   "node scripts/check-vercel-deployment-contract.mjs",
+  "node scripts/check-private-response-contract.mjs",
   "pnpm install --frozen-lockfile",
   "pnpm --filter @evavo/vector-web typecheck",
+  "pnpm exec turbo run build --filter=@evavo/vector-web",
+]);
+forbidTokens(files.workflow, sources.workflow, [
   "pnpm --filter @evavo/vector-web build",
 ]);
 forbidTokens(files.vercelConfig, sources.vercelConfig, [
