@@ -49,6 +49,7 @@ const files = {
   turbo: "turbo.json",
   docs: "docs/VERCEL-DEPLOYMENT.md",
   workflow: ".github/workflows/vercel-deployment-contract.yml",
+  preflightWorkflow: ".github/workflows/vector-vercel-provisioning-preflight.yml",
 };
 const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
@@ -133,6 +134,9 @@ if (!Array.isArray(turbo?.tasks?.build?.dependsOn) || !turbo.tasks.build.depends
 
 requireTokens(files.docs, sources.docs, [
   "No `evavo-vector-studio` Vercel project exists",
+  "vector-vercel-provisioning-preflight.yml",
+  "all seven required repository secrets absent",
+  "performed no Vercel mutation",
   "4.5 MB",
   "3,250,000",
   "pnpm install --frozen-lockfile",
@@ -149,6 +153,30 @@ requireTokens(files.workflow, sources.workflow, [
 ]);
 forbidTokens(files.workflow, sources.workflow, [
   "pnpm --filter @evavo/vector-web build",
+]);
+requireTokens(files.preflightWorkflow, sources.preflightWorkflow, [
+  "Vector Studio Vercel provisioning preflight",
+  ".github/vector-vercel-preflight.trigger",
+  'VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}',
+  'EVAVO_CLIENT_APP_LAUNCH_SECRET: ${{ secrets.EVAVO_CLIENT_APP_LAUNCH_SECRET }}',
+  'EVAVO_VECTOR_PRIVATE_SIGNING_SECRET: ${{ secrets.EVAVO_VECTOR_PRIVATE_SIGNING_SECRET }}',
+  'UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}',
+  'UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}',
+  'VECTOR_API_TOKEN: ${{ secrets.VECTOR_API_TOKEN }}',
+  'VECTOR_WORKER_API_TOKEN: ${{ secrets.VECTOR_WORKER_API_TOKEN }}',
+  'method: "GET"',
+  'mutationPerformed: false',
+  'sensitiveValuesRecorded: false',
+  'context: "deploy/vector-studio-vercel-preflight"',
+]);
+forbidTokens(files.preflightWorkflow, sources.preflightWorkflow, [
+  "vercel project add",
+  "vercel deploy",
+  "vercel --prod",
+  'method: "POST"',
+  'method: "PATCH"',
+  'method: "DELETE"',
+  "contents: write",
 ]);
 forbidTokens(files.vercelConfig, sources.vercelConfig, [
   '"installCommand": "npm install"',
@@ -175,5 +203,6 @@ process.stdout.write(`${JSON.stringify({
   promotionStatus: "staged",
   clientReleaseEligible: false,
   providerDirectPrivateStorageConfigured: false,
+  provisioningPreflightGoverned: true,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
