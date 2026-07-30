@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evavo.com.au/schemas/vector-studio/source-proof-v1.schema.json",
+  "title": "EVAVO Vector Studio Source Proof v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "repository",
+    "commit",
+    "nodeVersion",
+    "pnpmVersion",
+    "startedAt",
+    "completedAt",
+    "durationMs",
+    "frozenInstall",
+    "fullCheck",
+    "productionBuild",
+    "commands",
+    "sensitiveValuesRecorded"
+  ],
+  "properties": {
+    "version": { "const": "1.0" },
+    "repository": { "const": "EVAVO-STUDIO/evavo-vector-studio" },
+    "commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "nodeVersion": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "pnpmVersion": { "const": "10.14.0" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "durationMs": { "type": "integer", "minimum": 0, "maximum": 7200000 },
+    "frozenInstall": { "const": true },
+    "fullCheck": { "const": true },
+    "productionBuild": { "const": true },
+    "commands": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "status", "durationMs"],
+        "properties": {
+          "command": { "type": "string", "minLength": 1, "maxLength": 240 },
+          "status": { "const": "passed" },
+          "durationMs": { "type": "integer", "minimum": 0, "maximum": 3600000 }
+        }
+      }
+    },
+    "sensitiveValuesRecorded": { "const": false }
+  }
+}
