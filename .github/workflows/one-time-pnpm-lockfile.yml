@@ -94,13 +94,24 @@ jobs:
             pnpm check
           } 2>&1 | tee .ci/lockfile-verification.log
 
-      - name: Publish lockfile directly to main and retire workflow
+      - name: Publish lockfile directly to exact verified main
         id: publication
         if: ${{ always() && steps.generation.outcome == 'success' && steps.verification.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
           test -s pnpm-lock.yaml
+          cp pnpm-lock.yaml /tmp/pnpm-lock.verified.yaml
+          git restore --worktree .
+          cp /tmp/pnpm-lock.verified.yaml pnpm-lock.yaml
+          git fetch origin main
+          verified_head="$(git rev-parse HEAD)"
+          current_main="$(git rev-parse origin/main)"
+          if [ "$verified_head" != "$current_main" ]; then
+            echo "LOCKFILE_VERIFIED_HEAD_MOVED:$verified_head:$current_main" >&2
+            exit 75
+          fi
+
           rm -f \
             .github/workflows/one-time-pnpm-lockfile.yml \
             .github/pnpm-lockfile.trigger
@@ -112,7 +123,6 @@ jobs:
             .github/pnpm-lockfile.trigger
           git diff --cached --check
           git commit -m "build(release): publish deterministic pnpm lockfile"
-          git pull --rebase origin main
           git push origin HEAD:main
 
       - name: Preserve lockfile publisher diagnostics
@@ -122,6 +132,7 @@ jobs:
           name: vector-pnpm-lockfile-${{ github.sha }}
           path: .ci/*
           if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 3
 
       - name: Publish lockfile publisher status
