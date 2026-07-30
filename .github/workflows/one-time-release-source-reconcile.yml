@@ -1,0 +1,144 @@
+name: One-time Vector Studio release source reconciliation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/release-source-reconcile.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: one-time-vector-release-source-reconcile
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Reconcile the latest integration commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in $(seq 1 24); do
+            git fetch origin main
+            git reset --hard origin/main
+            if \
+              test -s pnpm-lock.yaml && \
+              test -s scripts/check-interactive-hosting-contract.mjs && \
+              test -s scripts/check-hosted-ui-contract.mjs && \
+              test -s scripts/check-release-proof-contract.mjs; then
+              ready=true
+              break
+            fi
+            sleep 5
+          done
+          if [ "$ready" != "true" ]; then
+            echo "The expected hosted and release-proof integrations did not converge on main." >&2
+            exit 1
+          fi
+
+      - name: Verify complete source contracts
+        id: verification
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          {
+            set -euo pipefail
+            node --check scripts/create-source-proof.mjs
+            node --check scripts/verify-live-deployment.mjs
+            node scripts/check-hub-integration-contract.mjs
+            node scripts/check-vercel-deployment-contract.mjs
+            node scripts/check-interactive-hosting-contract.mjs
+            node scripts/check-hosted-ui-contract.mjs
+            node scripts/check-release-proof-contract.mjs
+            pnpm install --frozen-lockfile
+            pnpm check
+          } 2>&1 | tee .ci/release-source-reconciliation.log
+
+      - name: Preserve failed reconciliation diagnostics
+        if: ${{ steps.verification.outcome != 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vector-release-source-reconciliation-${{ github.sha }}
+          path: .ci/release-source-reconciliation.log
+          if-no-files-found: error
+          retention-days: 5
+
+      - name: Publish reconciliation status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          VERIFICATION_OUTCOME: ${{ steps.verification.outcome }}
+        with:
+          script: |
+            const passed = process.env.VERIFICATION_OUTCOME === "success";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? "success" : "failure",
+              context: "release/vector-source-reconciled",
+              description: passed
+                ? "frozen source, hosted limits, and proof contracts reconciled"
+                : "Vector Studio source reconciliation failed",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Retire temporary workflows and commit reconciliation
+        if: ${{ steps.verification.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-pnpm-lockfile.yml \
+            .github/pnpm-lockfile.trigger \
+            .github/workflows/one-time-finalise-vercel-contract.yml \
+            .github/finalise-vercel-contract.trigger \
+            .github/workflows/one-time-hosted-motion-limits.yml \
+            .github/hosted-motion-limits.trigger \
+            .github/workflows/one-time-hosted-ui-capabilities.yml \
+            .github/hosted-ui-capabilities.trigger \
+            .github/workflows/one-time-release-proof-integration.yml \
+            .github/release-proof-integration.trigger \
+            .github/workflows/one-time-release-source-reconcile.yml \
+            .github/release-source-reconcile.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore(release): reconcile frozen deployment source"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Enforce reconciliation result
+        if: always()
+        shell: bash
+        env:
+          VERIFICATION_OUTCOME: ${{ steps.verification.outcome }}
+        run: |
+          if [ "$VERIFICATION_OUTCOME" != "success" ]; then
+            exit 1
+          fi
