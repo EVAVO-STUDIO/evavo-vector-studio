@@ -17,6 +17,43 @@ Client release          withheld
 
 No `evavo-vector-studio` Vercel project exists in the connected team. The repository must therefore remain a `federated-candidate`, and the hub must not issue a Vector Studio launch token.
 
+## Provisioning credential preflight
+
+The read-only workflow:
+
+```text
+.github/workflows/vector-vercel-provisioning-preflight.yml
+```
+
+checks deployment readiness without creating a project, writing environment variables, assigning a domain, or deploying code. It verifies only:
+
+- required GitHub Actions secret names are populated;
+- minimum secret lengths and URL form;
+- the hub handoff, Vector session, machine API, and worker-control authorities are distinct;
+- `VERCEL_TOKEN` can read the expected EVAVO team;
+- whether `evavo-vector-studio` already exists;
+- no secret value is written to the report or logs.
+
+The preflight run against commit `3b6f3604c9abfcfaebb6d2507f5d709b128c7e8b` found all seven required repository secrets absent:
+
+```text
+VERCEL_TOKEN
+EVAVO_CLIENT_APP_LAUNCH_SECRET
+EVAVO_VECTOR_PRIVATE_SIGNING_SECRET
+UPSTASH_REDIS_REST_URL
+UPSTASH_REDIS_REST_TOKEN
+VECTOR_API_TOKEN
+VECTOR_WORKER_API_TOKEN
+```
+
+That run performed no Vercel mutation and recorded no sensitive values. Project provisioning must remain blocked until the credentials are added through GitHub repository or environment secrets and the preflight passes. Reusing one secret for multiple authorities is not permitted.
+
+The check can be rerun manually with `workflow_dispatch` or by updating:
+
+```text
+.github/vector-vercel-preflight.trigger
+```
+
 ## Project settings
 
 Create the future project with:
@@ -92,8 +129,9 @@ The dedicated Vercel workflow additionally proves:
 ```text
 frozen workspace install
 Vercel deployment contract
+private-response security contract
 web TypeScript validation
-web production build
+Turbo dependency build and web production build
 ```
 
 ## Promotion evidence
