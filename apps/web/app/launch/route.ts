@@ -89,9 +89,7 @@ export async function GET(request: Request): Promise<Response> {
       ? error.code === "VECTOR_HUB_AUTH_CONFIGURATION_INVALID" ||
         error.code === "VECTOR_HUB_LAUNCH_REPLAY_UNAVAILABLE"
       : true;
-    const fallbackPath = temporary
-      ? accessPath("temporarily-unavailable")
-      : accessPath("invalid");
-    return redirectResponse(origin, fallbackPath);
+    const failureReason = temporary ? "temporarily-unavailable" : "invalid";
+    return redirectResponse(origin, accessPath(failureReason));
   }
 }
