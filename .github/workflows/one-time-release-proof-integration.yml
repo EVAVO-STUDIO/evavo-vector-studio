@@ -1,0 +1,218 @@
+name: One-time release proof integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/release-proof-integration.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: one-time-vector-release-proof-integration
+  cancel-in-progress: true
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Integrate exact source and live proof contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          profile = Path("apps/web/lib/deployment-profile.ts")
+          source = profile.read_text(encoding="utf-8")
+          if "function canonicalDeploymentCommit" not in source:
+              anchor = '''function isVercelRuntime(environment: NodeJS.ProcessEnv): boolean {
+            return environment.VERCEL === "1" || environment.VERCEL_ENV !== undefined;
+          }
+          '''
+              addition = anchor + '''
+          function canonicalDeploymentCommit(environment: NodeJS.ProcessEnv): string | null {
+            const candidate = environment.VERCEL_GIT_COMMIT_SHA?.trim().toLowerCase();
+            return candidate && /^[a-f0-9]{40}$/.test(candidate) ? candidate : null;
+          }
+          '''
+              if source.count(anchor) != 1:
+                  raise SystemExit(f"DEPLOYMENT_COMMIT_HELPER_ANCHOR_INVALID:{source.count(anchor)}")
+              source = source.replace(anchor, addition, 1)
+          if "sourceCommit: string | null;" not in source:
+              anchor = '''  provider: "local-node" | "vercel-functions";
+            providerBodyLimitBytes: number | null;
+          '''
+              replacement = '''  provider: "local-node" | "vercel-functions";
+            providerBodyLimitBytes: number | null;
+            sourceCommit: string | null;
+          '''
+              if source.count(anchor) != 1:
+                  raise SystemExit(f"DEPLOYMENT_COMMIT_TYPE_ANCHOR_INVALID:{source.count(anchor)}")
+              source = source.replace(anchor, replacement, 1)
+          if "sourceCommit: canonicalDeploymentCommit(environment)," not in source:
+              anchor = '''    providerBodyLimitBytes: policy.providerBodyLimitBytes,
+            synchronousRequestBytes: policy.maxRequestBytes,
+          '''
+              replacement = '''    providerBodyLimitBytes: policy.providerBodyLimitBytes,
+            sourceCommit: canonicalDeploymentCommit(environment),
+            synchronousRequestBytes: policy.maxRequestBytes,
+          '''
+              if source.count(anchor) != 1:
+                  raise SystemExit(f"DEPLOYMENT_COMMIT_RETURN_ANCHOR_INVALID:{source.count(anchor)}")
+              source = source.replace(anchor, replacement, 1)
+          profile.write_text(source, encoding="utf-8")
+
+          live = Path("scripts/verify-live-deployment.mjs")
+          source = live.read_text(encoding="utf-8")
+          health_anchor = '''    healthJson?.deployment?.profile?.provider === "vercel-functions" &&
+            healthJson?.deployment?.profile?.providerDirectPrivateStorageConfigured === false;
+          '''
+          health_replacement = '''    healthJson?.deployment?.profile?.provider === "vercel-functions" &&
+            healthJson?.deployment?.profile?.sourceCommit === commit &&
+            healthJson?.deployment?.profile?.providerDirectPrivateStorageConfigured === false;
+          '''
+          if "profile?.sourceCommit === commit" not in source:
+              if source.count(health_anchor) != 1:
+                  raise SystemExit(f"LIVE_COMMIT_ANCHOR_INVALID:{source.count(health_anchor)}")
+              source = source.replace(health_anchor, health_replacement, 1)
+          evidence_anchor = '''      provider: typeof healthJson?.deployment?.profile?.provider === "string" ? healthJson.deployment.profile.provider : null,
+            providerDirectPrivateStorageConfigured: healthJson?.deployment?.profile?.providerDirectPrivateStorageConfigured === true,
+          '''
+          evidence_replacement = '''      provider: typeof healthJson?.deployment?.profile?.provider === "string" ? healthJson.deployment.profile.provider : null,
+            sourceCommit: typeof healthJson?.deployment?.profile?.sourceCommit === "string" ? healthJson.deployment.profile.sourceCommit : null,
+            exactCommitMatched: healthJson?.deployment?.profile?.sourceCommit === commit,
+            providerDirectPrivateStorageConfigured: healthJson?.deployment?.profile?.providerDirectPrivateStorageConfigured === true,
+          '''
+          if "exactCommitMatched" not in source:
+              if source.count(evidence_anchor) != 1:
+                  raise SystemExit(f"LIVE_COMMIT_EVIDENCE_ANCHOR_INVALID:{source.count(evidence_anchor)}")
+              source = source.replace(evidence_anchor, evidence_replacement, 1)
+          live.write_text(source, encoding="utf-8")
+
+          source_proof = Path("scripts/create-source-proof.mjs")
+          source = source_proof.read_text(encoding="utf-8")
+          if "function executableName" not in source:
+              anchor = '''function commandOutput(command, args) {
+            try {
+              return execFileSync(command, args, {
+          '''
+              replacement = '''function executableName(command) {
+            return process.platform === "win32" && command === "pnpm" ? "pnpm.cmd" : command;
+          }
+
+          function commandOutput(command, args) {
+            try {
+              return execFileSync(executableName(command), args, {
+          '''
+              if source.count(anchor) != 1:
+                  raise SystemExit(f"SOURCE_PROOF_EXEC_ANCHOR_INVALID:{source.count(anchor)}")
+              source = source.replace(anchor, replacement, 1)
+          source = source.replace(
+              "  const result = spawnSync(command, args, {",
+              "  const result = spawnSync(executableName(command), args, {",
+          )
+          source_proof.write_text(source, encoding="utf-8")
+
+          package_path = Path("package.json")
+          package = json.loads(package_path.read_text(encoding="utf-8"))
+          scripts = package.setdefault("scripts", {})
+          scripts["release-proof:check"] = "node scripts/check-release-proof-contract.mjs"
+          scripts["release:source-proof"] = "node scripts/create-source-proof.mjs"
+          scripts["release:live-proof"] = "node scripts/verify-live-deployment.mjs"
+          check = scripts.get("check", "")
+          anchor = "pnpm vercel:check &&"
+          if "pnpm release-proof:check" not in check:
+              if check.count(anchor) != 1:
+                  raise SystemExit(f"RELEASE_PROOF_PACKAGE_CHECK_ANCHOR_INVALID:{check.count(anchor)}")
+              check = check.replace(anchor, anchor + " pnpm release-proof:check &&", 1)
+          scripts["check"] = check
+          package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+
+          release_contract = Path("scripts/check-release-proof-contract.mjs")
+          source = release_contract.read_text(encoding="utf-8")
+          if '"sourceCommit: string | null"' not in source:
+              anchor = '''requireTokens(files.liveProof, sources.liveProof, [
+          '''
+              addition = '''requireTokens("apps/web/lib/deployment-profile.ts", await read("apps/web/lib/deployment-profile.ts"), [
+            "canonicalDeploymentCommit",
+            "VERCEL_GIT_COMMIT_SHA",
+            "sourceCommit: string | null",
+            "sourceCommit: canonicalDeploymentCommit(environment)",
+          ]);
+          requireTokens(files.liveProof, sources.liveProof, [
+            "profile?.sourceCommit === commit",
+            "exactCommitMatched",
+          '''
+              if source.count(anchor) != 1:
+                  raise SystemExit(f"RELEASE_PROOF_COMMIT_CONTRACT_ANCHOR_INVALID:{source.count(anchor)}")
+              source = source.replace(anchor, addition, 1)
+          source = source.replace(
+              '  "SOURCE_PROOF_REPOSITORY_DIRTY",\n',
+              '  "SOURCE_PROOF_REPOSITORY_DIRTY",\n  "function executableName",\n  \'process.platform === "win32" && command === "pnpm" ? "pnpm.cmd" : command\',\n',
+          )
+          release_contract.write_text(source, encoding="utf-8")
+
+          vercel_contract = Path("scripts/check-vercel-deployment-contract.mjs")
+          source = vercel_contract.read_text(encoding="utf-8")
+          token_anchor = '''  "providerDirectPrivateStorageConfigured: false",
+            '"provider-direct-private-storage-pending"',
+          ]);
+          '''
+          token_replacement = '''  "providerDirectPrivateStorageConfigured: false",
+            '"provider-direct-private-storage-pending"',
+            "VERCEL_GIT_COMMIT_SHA",
+            "sourceCommit: string | null",
+          ]);
+          '''
+          if "VERCEL_GIT_COMMIT_SHA" not in source:
+              if source.count(token_anchor) != 1:
+                  raise SystemExit(f"VERCEL_COMMIT_CONTRACT_ANCHOR_INVALID:{source.count(token_anchor)}")
+              source = source.replace(token_anchor, token_replacement, 1)
+          vercel_contract.write_text(source, encoding="utf-8")
+          PY
+
+          node --check scripts/create-source-proof.mjs
+          node --check scripts/verify-live-deployment.mjs
+          node scripts/check-release-proof-contract.mjs
+          node scripts/check-vercel-deployment-contract.mjs
+          git diff --check
+
+      - name: Frozen install and complete verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm check
+
+      - name: Commit integration and retire workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-release-proof-integration.yml \
+            .github/release-proof-integration.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat(release): integrate exact source and live proofs"
+          git pull --rebase origin main
+          git push origin HEAD:main
