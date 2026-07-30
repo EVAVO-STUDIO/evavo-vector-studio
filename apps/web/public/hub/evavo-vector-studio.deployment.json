@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "evavo-vector-studio",
   "productSlug": "vector-studio",
   "title": "EVAVO Vector Studio",
@@ -22,12 +22,18 @@
     "branch": "main"
   },
   "platform": {
-    "provider": "vercel-compatible-next-runtime",
-    "appPath": "apps/web",
+    "provider": "vercel",
+    "projectName": "evavo-vector-studio",
+    "projectRoot": "apps/web",
     "framework": "nextjs",
     "nodeRuntime": "nodejs",
-    "buildCommand": "pnpm --filter @evavo/vector-web build",
-    "installCommand": "pnpm install --frozen-lockfile"
+    "installCommand": "pnpm install --frozen-lockfile",
+    "buildCommand": "pnpm exec turbo run build --filter=@evavo/vector-web",
+    "functionBodyLimitBytes": 4500000,
+    "safeInteractiveRequestBytes": 4000000,
+    "safeInteractiveResponseBytes": 4000000,
+    "safeMultipartFileBytes": 3250000,
+    "safeBase64BinaryBytes": 2750000
   },
   "promotionState": {
     "status": "staged",
@@ -46,6 +52,17 @@
     "workerRuntimeSmokeVerified": false,
     "clientReleaseEligible": false,
     "lastVerifiedCommit": null
+  },
+  "largeObjectTransport": {
+    "providerDirectPrivateStorageConfigured": false,
+    "synchronousBrowserUpload": "bounded-by-hosting-profile",
+    "availableAlternatives": [
+      "local-cli",
+      "local-mcp",
+      "durable-local-batch",
+      "self-hosted-http-worker"
+    ],
+    "pendingAlternative": "provider-direct-private-storage"
   },
   "privateRuntime": {
     "robots": "noindex,nofollow",
@@ -74,6 +91,7 @@
   },
   "verification": {
     "hubContractCheck": "pnpm hub:check",
+    "vercelContractCheck": "pnpm vercel:check",
     "releaseCheck": "pnpm contract:check",
     "fullCheck": "pnpm check",
     "productionBuild": "pnpm --filter @evavo/vector-web build"
@@ -87,6 +105,8 @@
     "Invalid, replayed and unavailable launches do not destroy an existing session",
     "Workspace-session mutations require exact same-origin evidence",
     "Machine bearer authentication remains separate from browser session authentication",
+    "Synchronous Vercel requests and responses stay below the provider body ceiling",
+    "Larger objects remain on local, MCP, batch, or self-hosted worker transports until private provider-direct storage is verified",
     "No credentials or credential values appear in deployment metadata",
     "Generated outputs remain human-review-required"
   ]
