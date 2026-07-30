@@ -1,1 +1,1 @@
-capture both isolated pnpm lockfile candidates and their exact diff before publication
+publish deterministic pnpm lockfile only when the fully verified checkout is still exact current main
