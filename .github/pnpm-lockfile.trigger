@@ -1,1 +1,1 @@
-publish deterministic pnpm lockfile only when the fully verified checkout is still exact current main
+publish deterministic pnpm lockfile after the corrected Vercel contract passes on exact current main
