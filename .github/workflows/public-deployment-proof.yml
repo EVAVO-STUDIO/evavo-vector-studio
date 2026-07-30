@@ -58,6 +58,17 @@ jobs:
             --commit "${{ inputs.commit }}" \
             --out .ci/vector-source-proof.json
 
+      - name: Verify live private response boundary
+        id: private
+        if: ${{ steps.source.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/verify-live-private-response.mjs \
+            --commit "${{ inputs.commit }}" \
+            --out .ci/vector-private-response-proof.json
+
       - name: Verify public deployed runtime
         id: live
         if: ${{ steps.source.outcome == 'success' }}
@@ -75,15 +86,16 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo "This public workflow records health and capability evidence only; signed launch is not performed."
+          echo "This public workflow records source, private-response, health and capability evidence only; signed launch is not performed."
 
       - name: Upload bounded proofs
-        if: ${{ steps.source.outcome == 'success' || steps.live.outcome == 'success' }}
+        if: ${{ steps.source.outcome == 'success' || steps.private.outcome == 'success' || steps.live.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: vector-public-deployment-proof-${{ inputs.commit }}
           path: |
             .ci/vector-source-proof.json
+            .ci/vector-private-response-proof.json
             .ci/vector-public-deployment-proof.json
           if-no-files-found: error
           retention-days: 14
@@ -93,12 +105,14 @@ jobs:
         uses: actions/github-script@v7
         env:
           SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          PRIVATE_OUTCOME: ${{ steps.private.outcome }}
           LIVE_OUTCOME: ${{ steps.live.outcome }}
           PROOF_COMMIT: ${{ inputs.commit }}
         with:
           script: |
             const passed =
               process.env.SOURCE_OUTCOME === "success" &&
+              process.env.PRIVATE_OUTCOME === "success" &&
               process.env.LIVE_OUTCOME === "success";
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
@@ -107,7 +121,7 @@ jobs:
               state: passed ? "success" : "failure",
               context: "release/vector-public-runtime",
               description: passed
-                ? "exact source and public runtime proof passed"
+                ? "source, private response and public runtime proof passed"
                 : "Vector Studio public deployment proof failed",
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
@@ -117,8 +131,9 @@ jobs:
         shell: bash
         env:
           SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          PRIVATE_OUTCOME: ${{ steps.private.outcome }}
           LIVE_OUTCOME: ${{ steps.live.outcome }}
         run: |
-          if [ "$SOURCE_OUTCOME" != "success" ] || [ "$LIVE_OUTCOME" != "success" ]; then
+          if [ "$SOURCE_OUTCOME" != "success" ] || [ "$PRIVATE_OUTCOME" != "success" ] || [ "$LIVE_OUTCOME" != "success" ]; then
             exit 1
           fi
