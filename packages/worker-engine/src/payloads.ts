@@ -1,5 +1,6 @@
 import type {
   RasterCandidateMode,
+  RasterDeliveryProfile,
   RasterTraceProfileSelection,
 } from "@evavo/raster-engine";
 import { VectorWorkerError } from "./errors.js";
@@ -10,6 +11,7 @@ import type {
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const PORTABLE_ANIMATION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+const STABLE_ID_PREFIX = /^[A-Za-z_][A-Za-z0-9_.-]{0,47}$/;
 const TRACE_PROFILES = new Set<RasterTraceProfileSelection>([
   "auto",
   "logo",
@@ -19,6 +21,17 @@ const TRACE_PROFILES = new Set<RasterTraceProfileSelection>([
   "photo",
 ]);
 const CANDIDATE_MODES = new Set<RasterCandidateMode>(["adaptive", "single"]);
+const DELIVERY_PROFILES = new Set<RasterDeliveryProfile>([
+  "editable",
+  "web",
+  "motion",
+  "print",
+]);
+
+export type WorkerDeliveryOptions = Readonly<{
+  deliveryProfile: RasterDeliveryProfile;
+  stableIdPrefix?: string;
+}>;
 
 export type TraceRasterWorkerPayload = Readonly<{
   source: ObjectSourceReference;
@@ -27,7 +40,7 @@ export type TraceRasterWorkerPayload = Readonly<{
     evidenceObjectKey: string;
     differenceObjectKey?: string;
   }>;
-  options: Readonly<{
+  options: WorkerDeliveryOptions & Readonly<{
     profile?: RasterTraceProfileSelection;
     candidateMode?: RasterCandidateMode;
     maxColours?: number;
@@ -44,6 +57,7 @@ export type OptimiseSvgWorkerPayload = Readonly<{
     svgObjectKey: string;
     evidenceObjectKey: string;
   }>;
+  options: WorkerDeliveryOptions;
 }>;
 
 export type AnimateSvgWorkerPayload = Readonly<{
@@ -207,6 +221,40 @@ function motionPlan(value: unknown, label: string): Readonly<Record<string, unkn
   return Object.freeze({ ...source });
 }
 
+function deliveryOptions(
+  source: Record<string, unknown>,
+  label: string,
+): WorkerDeliveryOptions {
+  const rawProfile = optionalString(source, "deliveryProfile", label, 32) ?? "editable";
+  if (!DELIVERY_PROFILES.has(rawProfile as RasterDeliveryProfile)) {
+    fail(`${label}.deliveryProfile must be editable, web, motion or print.`, {
+      deliveryProfile: rawProfile,
+      allowed: [...DELIVERY_PROFILES],
+    });
+  }
+  const stableIdPrefix = optionalString(source, "stableIdPrefix", label, 48);
+  if (stableIdPrefix !== undefined && !STABLE_ID_PREFIX.test(stableIdPrefix)) {
+    fail(
+      `${label}.stableIdPrefix must begin with a letter or underscore and use only letters, numbers, underscores, periods or hyphens.`,
+      { stableIdPrefix },
+    );
+  }
+  if (
+    stableIdPrefix &&
+    rawProfile !== "editable" &&
+    rawProfile !== "motion"
+  ) {
+    fail(
+      `${label}.stableIdPrefix is available only for editable or motion delivery profiles.`,
+      { stableIdPrefix, deliveryProfile: rawProfile },
+    );
+  }
+  return Object.freeze({
+    deliveryProfile: rawProfile as RasterDeliveryProfile,
+    ...(stableIdPrefix ? { stableIdPrefix } : {}),
+  });
+}
+
 function parseTrace(source: Record<string, unknown>): TraceRasterWorkerPayload {
   knownKeys(source, ["source", "outputs", "options"], "payload");
   const outputs = requiredObject(source, "outputs", "payload");
@@ -223,6 +271,8 @@ function parseTrace(source: Record<string, unknown>): TraceRasterWorkerPayload {
     [
       "profile",
       "candidateMode",
+      "deliveryProfile",
+      "stableIdPrefix",
       "maxColours",
       "preservePalette",
       "optimise",
@@ -247,6 +297,7 @@ function parseTrace(source: Record<string, unknown>): TraceRasterWorkerPayload {
   ) {
     fail("payload.options.candidateMode is unsupported.", { candidateMode });
   }
+  const delivery = deliveryOptions(options, "payload.options");
   const differenceObjectKey = optionalString(
     outputs,
     "differenceObjectKey",
@@ -263,6 +314,20 @@ function parseTrace(source: Record<string, unknown>): TraceRasterWorkerPayload {
   if (differenceMaxDimension !== undefined && differenceObjectKey === undefined) {
     fail("differenceMaxDimension requires differenceObjectKey.");
   }
+  const maxColours = optionalInteger(
+    options,
+    "maxColours",
+    "payload.options",
+    1,
+    256,
+  );
+  const preservePalette = optionalBoolean(
+    options,
+    "preservePalette",
+    "payload.options",
+  );
+  const optimise = optionalBoolean(options, "optimise", "payload.options");
+  const title = optionalString(options, "title", "payload.options", 200);
   return Object.freeze({
     source: sourceReference(
       requiredObject(source, "source", "payload"),
@@ -282,55 +347,28 @@ function parseTrace(source: Record<string, unknown>): TraceRasterWorkerPayload {
       ...(differenceObjectKey ? { differenceObjectKey } : {}),
     }),
     options: Object.freeze({
+      ...delivery,
       ...(profile ? { profile: profile as RasterTraceProfileSelection } : {}),
       ...(candidateMode
         ? { candidateMode: candidateMode as RasterCandidateMode }
         : {}),
-      ...(optionalInteger(
-        options,
-        "maxColours",
-        "payload.options",
-        1,
-        256,
-      ) !== undefined
-        ? {
-            maxColours: optionalInteger(
-              options,
-              "maxColours",
-              "payload.options",
-              1,
-              256,
-            ),
-          }
-        : {}),
-      ...(optionalBoolean(
-        options,
-        "preservePalette",
-        "payload.options",
-      ) !== undefined
-        ? {
-            preservePalette: optionalBoolean(
-              options,
-              "preservePalette",
-              "payload.options",
-            ),
-          }
-        : {}),
-      ...(optionalBoolean(options, "optimise", "payload.options") !== undefined
-        ? { optimise: optionalBoolean(options, "optimise", "payload.options") }
-        : {}),
-      ...(optionalString(options, "title", "payload.options", 200)
-        ? { title: optionalString(options, "title", "payload.options", 200) }
-        : {}),
+      ...(maxColours !== undefined ? { maxColours } : {}),
+      ...(preservePalette !== undefined ? { preservePalette } : {}),
+      ...(optimise !== undefined ? { optimise } : {}),
+      ...(title ? { title } : {}),
       ...(differenceMaxDimension !== undefined ? { differenceMaxDimension } : {}),
     }),
   });
 }
 
 function parseOptimise(source: Record<string, unknown>): OptimiseSvgWorkerPayload {
-  knownKeys(source, ["source", "outputs"], "payload");
+  knownKeys(source, ["source", "outputs", "options"], "payload");
   const outputs = requiredObject(source, "outputs", "payload");
   knownKeys(outputs, ["svgObjectKey", "evidenceObjectKey"], "payload.outputs");
+  const options = source.options === undefined
+    ? {}
+    : requiredObject(source, "options", "payload");
+  knownKeys(options, ["deliveryProfile", "stableIdPrefix"], "payload.options");
   return Object.freeze({
     source: sourceReference(
       requiredObject(source, "source", "payload"),
@@ -344,6 +382,7 @@ function parseOptimise(source: Record<string, unknown>): OptimiseSvgWorkerPayloa
         "payload.outputs",
       ),
     }),
+    options: deliveryOptions(options, "payload.options"),
   });
 }
 
