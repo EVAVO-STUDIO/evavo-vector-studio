@@ -75,7 +75,7 @@ Apply mode remains a separate protected-environment transaction and continues to
 
 ## Executable validation
 
-`pnpm vercel-plan:check` removes all seven credentials, launches the real provisioning wrapper with a temporary output path and verifies:
+`pnpm vercel-provision-plan:check` removes all seven credentials, launches the real provisioning wrapper with a temporary output path and verifies:
 
 - the wrapper exits non-zero;
 - a parseable receipt exists;
@@ -86,4 +86,6 @@ Apply mode remains a separate protected-environment transaction and continues to
 - no sensitive value was recorded;
 - the command reports `diagnosticReceiptWritten: true`.
 
-The same gate statically forbids apply confirmation, apply mode and mutation APIs from the wrapper.
+The separate `pnpm vercel-plan:check` command governs the later exact-production deployment plan and its project/domain blockers. Keeping the two commands distinct prevents provisioning readiness and deployment readiness from being conflated.
+
+The provisioning gate also statically forbids apply confirmation, apply mode and mutation APIs from the wrapper.
