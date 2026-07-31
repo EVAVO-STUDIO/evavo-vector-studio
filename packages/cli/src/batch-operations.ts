@@ -15,6 +15,7 @@ import {
   MAX_DIFFERENCE_DIMENSION,
   traceRaster,
   type RasterCandidateMode,
+  type RasterDeliveryProfile,
   type RasterTraceOptions,
   type RasterTraceProfileSelection,
 } from "@evavo/raster-engine";
@@ -49,6 +50,13 @@ const CANDIDATE_MODES = new Set<RasterCandidateMode>([
   "adaptive",
   "single",
 ]);
+const DELIVERY_PROFILES = new Set<RasterDeliveryProfile>([
+  "editable",
+  "web",
+  "motion",
+  "print",
+]);
+const STABLE_ID_PREFIX = /^[A-Za-z_][A-Za-z0-9_.-]{0,47}$/;
 
 const TRACE_KEYS = new Set([
   "inputPath",
@@ -57,6 +65,8 @@ const TRACE_KEYS = new Set([
   "evidenceOutputPath",
   "profile",
   "candidateMode",
+  "deliveryProfile",
+  "stableIdPrefix",
   "maxColours",
   "preservePalette",
   "optimise",
@@ -67,6 +77,8 @@ const OPTIMISE_KEYS = new Set([
   "inputPath",
   "outputPath",
   "evidenceOutputPath",
+  "deliveryProfile",
+  "stableIdPrefix",
 ]);
 const ANIMATE_KEYS = new Set([
   "inputPath",
@@ -89,6 +101,11 @@ const DOTLOTTIE_KEYS = new Set([
   "evidenceOutputPath",
   "animationId",
 ]);
+
+type DeliveryOptions = Readonly<{
+  deliveryProfile: RasterDeliveryProfile;
+  stableIdPrefix?: string;
+}>;
 
 function fail(
   context: BatchOperationContext,
@@ -187,6 +204,42 @@ function optionalInteger(
     });
   }
   return value;
+}
+
+function deliveryOptions(context: BatchOperationContext): DeliveryOptions {
+  const rawProfile = context.item.spec.deliveryProfile ?? "editable";
+  if (
+    typeof rawProfile !== "string" ||
+    !DELIVERY_PROFILES.has(rawProfile as RasterDeliveryProfile)
+  ) {
+    fail(context, "deliveryProfile must be editable, web, motion or print.", {
+      deliveryProfile: rawProfile,
+      allowed: [...DELIVERY_PROFILES],
+    });
+  }
+  const stableIdPrefix = optionalString(context, "stableIdPrefix", 48);
+  if (stableIdPrefix !== undefined && !STABLE_ID_PREFIX.test(stableIdPrefix)) {
+    fail(
+      context,
+      "stableIdPrefix must begin with a letter or underscore and use only letters, numbers, underscores, periods or hyphens.",
+      { stableIdPrefix },
+    );
+  }
+  if (
+    stableIdPrefix &&
+    rawProfile !== "editable" &&
+    rawProfile !== "motion"
+  ) {
+    fail(
+      context,
+      "stableIdPrefix is available only for editable or motion delivery profiles.",
+      { stableIdPrefix, deliveryProfile: rawProfile },
+    );
+  }
+  return Object.freeze({
+    deliveryProfile: rawProfile as RasterDeliveryProfile,
+    stableIdPrefix,
+  });
 }
 
 function rootPath(
@@ -301,6 +354,7 @@ function traceHandler(): BatchOperationHandler {
   return Object.freeze({
     async describe(context) {
       assertKnownKeys(context, TRACE_KEYS);
+      deliveryOptions(context);
       const inputPath = rootPath(context, "inputPath");
       const outputSvgPath = rootPath(context, "outputSvgPath");
       const evidenceOutputPath = rootPath(context, "evidenceOutputPath");
@@ -348,6 +402,7 @@ function traceHandler(): BatchOperationHandler {
           candidateMode: rawCandidateMode,
         });
       }
+      const delivery = deliveryOptions(context);
       const differenceMaxDimension = optionalInteger(
         context,
         "differenceMaxDimension",
@@ -364,6 +419,7 @@ function traceHandler(): BatchOperationHandler {
         sourceName: path.basename(inputPath),
         profile: rawProfile as RasterTraceProfileSelection,
         candidateMode: rawCandidateMode as RasterCandidateMode,
+        ...delivery,
         maxColours: optionalInteger(context, "maxColours", 1, 256),
         preservePalette: optionalBoolean(context, "preservePalette"),
         optimise: optionalBoolean(context, "optimise"),
@@ -389,6 +445,7 @@ function traceHandler(): BatchOperationHandler {
         inputPath,
         outputSvgPath,
         differenceOutputPath,
+        delivery,
         inspection: result.inspection,
         evidence: result.evidence,
       });
@@ -419,6 +476,10 @@ function traceHandler(): BatchOperationHandler {
           renderComparison: result.evidence.qualityGates.renderComparison,
           selectedCandidateId: result.evidence.selection.selectedCandidateId,
           candidateCount: result.evidence.selection.attemptedCandidateCount,
+          deliveryProfile: result.evidence.output.deliveryProfile,
+          stablePathIdCount: result.evidence.output.stablePathIdCount,
+          stableIdPrefix: result.evidence.output.stableIdPrefix,
+          rootDimensions: result.evidence.output.rootDimensions,
         }),
       });
     },
@@ -429,6 +490,7 @@ function optimiseHandler(): BatchOperationHandler {
   return Object.freeze({
     async describe(context) {
       assertKnownKeys(context, OPTIMISE_KEYS);
+      deliveryOptions(context);
       const inputPath = rootPath(context, "inputPath");
       const outputPath = rootPath(context, "outputPath");
       const evidenceOutputPath = rootPath(context, "evidenceOutputPath");
@@ -444,8 +506,9 @@ function optimiseHandler(): BatchOperationHandler {
     async execute(context, planned) {
       const [inputPath] = planned.inputPaths;
       const [outputPath, evidenceOutputPath] = planned.outputPaths;
+      const delivery = deliveryOptions(context);
       const source = await readFile(inputPath!, "utf8");
-      const result = optimiseSvg(source);
+      const result = optimiseSvg(source, delivery);
       if (!result.inspection.valid) {
         fail(context, "The optimized SVG failed governed inspection.", {
           findings: result.inspection.findings,
@@ -462,6 +525,8 @@ function optimiseHandler(): BatchOperationHandler {
         beforeBytes: result.beforeBytes,
         afterBytes: result.afterBytes,
         bytesSaved: result.bytesSaved,
+        bytesDelta: result.bytesDelta,
+        delivery: result.evidence,
         inspection: result.inspection,
       });
       const receipts = await commit([
@@ -475,7 +540,15 @@ function optimiseHandler(): BatchOperationHandler {
       return Object.freeze({
         revision: planned.revision,
         outputs: receipts,
-        evidence: Object.freeze({ bytesSaved: result.bytesSaved }),
+        evidence: Object.freeze({
+          bytesSaved: result.bytesSaved,
+          bytesDelta: result.bytesDelta,
+          deliveryProfile: result.evidence.profile,
+          stablePathIdCount: result.evidence.stableIds.added,
+          stableIdPrefix: result.evidence.stableIds.prefix,
+          rootDimensions: result.evidence.rootDimensions,
+          safetyRollbackApplied: result.evidence.safetyRollbackApplied,
+        }),
       });
     },
   });
