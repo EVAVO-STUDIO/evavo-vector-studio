@@ -10,6 +10,7 @@ export type RasterFormat = "png" | "jpeg" | "webp" | "gif" | "bmp" | "tiff";
 export type RasterTraceProfile = "logo" | "icon" | "line-art" | "illustration" | "photo";
 export type RasterTraceProfileSelection = RasterTraceProfile | "auto";
 export type RasterCandidateMode = "single" | "adaptive";
+export type RasterDeliveryProfile = "editable" | "web" | "motion" | "print";
 export type TraceCandidateRole = "base" | "fidelity" | "economy";
 export type RasterWarningSeverity = "warning" | "review";
 export type RasterComparisonQuality = "excellent" | "good" | "review";
@@ -96,6 +97,8 @@ export type RasterTraceOptions = RasterInspectionOptions & Readonly<{
   optimise?: boolean;
   title?: string;
   candidateMode?: RasterCandidateMode;
+  deliveryProfile?: RasterDeliveryProfile;
+  stableIdPrefix?: string;
   includeDifferenceArtifact?: boolean;
   differenceMaxDimension?: number;
 }>;
@@ -178,6 +181,13 @@ export type TraceOutputEvidence = Readonly<{
   subpathCount: number;
   straightSegmentCount: number;
   curveSegmentCount: number;
+  deliveryProfile: RasterDeliveryProfile;
+  stablePathIdCount: number;
+  stableIdPrefix: string | null;
+  optimisationPasses: readonly string[];
+  metadataElementsRemoved: number;
+  paintValuesNormalised: number;
+  rootDimensions: "preserved" | "removed-responsive" | "not-present";
 }>;
 
 export type TraceCandidateTimings = Readonly<{
@@ -280,6 +290,8 @@ export type RasterTraceEvidence = Readonly<{
     renderComparison: "passed" | "review-required";
     visualEvidenceAvailable: true;
     differenceArtifact: "available" | "not-requested";
+    deliveryProfile: "passed";
+    motionTargetIds: "available" | "not-requested";
     productionApproval: "review-required";
     byteStableOutputGuaranteed: false;
   }>;
