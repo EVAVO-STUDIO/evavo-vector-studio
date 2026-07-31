@@ -142,9 +142,9 @@ export async function createVectorMcpServer(
       inputSchema: {},
     },
     async () => executeTool(() =>
-      extendVectorMcpBatchCapabilities(
-        extendVectorMcpDotLottieCapabilities(
-          extendVectorMcpPrintCapabilities(
+      extendVectorMcpPrintCapabilities(
+        extendVectorMcpBatchCapabilities(
+          extendVectorMcpDotLottieCapabilities(
             extendVectorMcpCapabilities(operations.capabilities()),
           ),
         ),
