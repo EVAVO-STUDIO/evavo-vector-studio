@@ -188,8 +188,16 @@ function objectRecord(value: unknown): Readonly<Record<string, unknown>> {
 export function extendVectorMcpPrintCapabilities(
   base: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
+  const baseTools = Array.isArray(base.tools)
+    ? base.tools.filter((item): item is string => typeof item === "string")
+    : [];
   return Object.freeze({
     ...base,
+    mcpContractVersion: "1.6",
+    tools: Object.freeze([
+      ...baseTools,
+      ...VECTOR_MCP_PRINT_TOOL_NAMES,
+    ]),
     printPreflight: Object.freeze({
       contractVersion: SVG_PRINT_PREFLIGHT_CONTRACT_VERSION,
       mcpContractVersion: VECTOR_MCP_PRINT_CONTRACT_VERSION,
