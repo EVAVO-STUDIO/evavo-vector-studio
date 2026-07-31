@@ -8,6 +8,7 @@ const PROJECT_NAME = "evavo-vector-studio";
 const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio";
 const REPOSITORY_ORG = "EVAVO-STUDIO";
 const REPOSITORY_NAME = "evavo-vector-studio";
+const GITHUB_REPOSITORY_VISIBILITY = "private";
 const PRODUCTION_DOMAIN = "vector.evavo.com.au";
 const ROOT_DIRECTORY = "apps/web";
 const FRAMEWORK = "nextjs";
@@ -384,7 +385,7 @@ async function createDeployment(client, projectId, commit) {
           dirty: false,
           ci: true,
           ciType: "github-actions",
-          ciGitRepoVisibility: "public",
+          ciGitRepoVisibility: GITHUB_REPOSITORY_VISIBILITY,
         },
         meta: {
           githubCommitSha: commit,
@@ -520,6 +521,7 @@ async function writeReceipt(options, receipt) {
 async function runSelfTest() {
   assert.equal(credentialState({ VERCEL_TOKEN: "v".repeat(40) }).passed, true);
   assert.equal(credentialState({ VERCEL_TOKEN: "short" }).passed, false);
+  assert.equal(GITHUB_REPOSITORY_VISIBILITY, "private");
   const deployment = safeDeployment({
     id: "dpl_test",
     url: "example.vercel.app",
@@ -553,6 +555,7 @@ async function runSelfTest() {
     ok: true,
     check: "vector-studio-vercel-deployer-self-test",
     contractVersion: CONTRACT_VERSION,
+    githubRepositoryVisibility: GITHUB_REPOSITORY_VISIBILITY,
     mutationPerformed: false,
     sensitiveValuesRecorded: false,
   }, null, 2)}\n`);
