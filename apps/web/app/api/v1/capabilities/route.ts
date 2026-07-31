@@ -16,6 +16,7 @@ import {
   MAX_LOTTIE_PRECISION,
   MIN_LOTTIE_FRAME_RATE,
 } from "@evavo/lottie-engine";
+import { SVG_PRINT_PREFLIGHT_CONTRACT_VERSION } from "@evavo/vector-core";
 import {
   VECTOR_WORKER_CONTRACT_VERSION,
   VECTOR_WORKER_SUPPORTED_OPERATIONS,
@@ -63,6 +64,7 @@ export function GET(): Response {
         }),
         api: Object.freeze({
           trace: "/api/v1/trace",
+          printPreflight: "/api/v1/print/preflight",
           animatedSvg: "/api/v1/motion/svg",
           lottie: "/api/v1/motion/lottie",
           dotLottie: "/api/v1/motion/dotlottie",
@@ -72,6 +74,7 @@ export function GET(): Response {
         }),
         cli: Object.freeze({
           singleFile: "evavo-vector",
+          printPreflight: "evavo-vector-print",
           durableBatch: "evavo-vector-batch",
           localWorker: "evavo-vector-worker",
           httpWorker: "evavo-vector-http-worker",
@@ -104,6 +107,26 @@ export function GET(): Response {
         visibleContentBounds: true,
         safetyRollbackEvidence: true,
         renderComparison: "alpha-aware-multi-scale",
+        printPreflight: Object.freeze({
+          contractVersion: SVG_PRINT_PREFLIGHT_CONTRACT_VERSION,
+          endpoint: "/api/v1/print/preflight",
+          cli: "evavo-vector-print",
+          deterministic: true,
+          readOnly: true,
+          profiles: Object.freeze([
+            "commercial",
+            "large-format",
+            "cut-vinyl",
+            "screen-print",
+          ]),
+          physicalDimensions: true,
+          trimAndBleed: true,
+          minimumLineWeight: true,
+          processColourTokenInspection: true,
+          cmykOrSpotColourProofAvailable: false,
+          productionApproval: false,
+          approval: "review-required",
+        }),
         limits: Object.freeze({
           maxInputBytes: DEFAULT_MAX_INPUT_BYTES,
           maxDecodedPixels: DEFAULT_MAX_PIXELS,
