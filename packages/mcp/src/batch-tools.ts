@@ -412,7 +412,7 @@ export function extendVectorMcpBatchCapabilities(
     : {};
   return Object.freeze({
     ...base,
-    mcpContractVersion: "1.4",
+    mcpContractVersion: "1.5",
     tools: Object.freeze([
       ...baseTools,
       ...VECTOR_MCP_BATCH_TOOL_NAMES,
