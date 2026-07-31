@@ -11,7 +11,7 @@ import { createVectorWorkerExecutor } from "./executor.js";
 import { VectorWorkerError } from "./errors.js";
 import { MemoryVectorObjectStore } from "./memory-object-store.js";
 
-const SOURCE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><title>Mark</title><g id="mark"><path id="body" fill="#ff244e" d="M10 10H90V90H10Z"/></g></svg>';
+const SOURCE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><title>Mark</title><g id="mark"><path fill="#ff244e" d="M10 10H90V90H10Z"/></g></svg>';
 const MOTION_PLAN = Object.freeze({
   version: "1.0",
   name: "Gentle entrance",
@@ -71,7 +71,7 @@ async function startJob(
   return Object.freeze({ record, leaseToken: token });
 }
 
-test("executes optimise, animated SVG, Lottie and dotLottie jobs with immutable receipts", async () => {
+test("executes delivery-aware optimise, animated SVG, Lottie and dotLottie jobs with immutable receipts", async () => {
   const controller = jobFixture();
   const objects = new MemoryVectorObjectStore();
   objects.seed("source/mark.svg", SOURCE_SVG, "image/svg+xml");
@@ -90,6 +90,10 @@ test("executes optimise, animated SVG, Lottie and dotLottie jobs with immutable 
         svgObjectKey: "output/mark.optimised.svg",
         evidenceObjectKey: "output/mark.optimised.evidence.json",
       },
+      options: {
+        deliveryProfile: "motion",
+        stableIdPrefix: "worker-shape",
+      },
     },
     "optimise:revision-01",
   );
@@ -104,7 +108,31 @@ test("executes optimise, animated SVG, Lottie and dotLottie jobs with immutable 
   assert.equal(objects.has("output/mark.optimised.svg"), true);
   assert.equal(objects.has("output/mark.optimised.evidence.json"), true);
   assert.equal(optimisedCompletion.evidence.approval, "human-review-required");
+  assert.equal(optimisedCompletion.evidence.deliveryProfile, "motion");
+  assert.equal(optimisedCompletion.evidence.stablePathIdCount, 1);
+  assert.equal(optimisedCompletion.evidence.stableIdPrefix, "worker-shape");
+  assert.equal(optimisedCompletion.evidence.rootDimensions, "removed-responsive");
   assert.doesNotMatch(JSON.stringify(optimisedCompletion), /<svg\b/i);
+
+  const optimisedSource = new TextDecoder().decode(
+    (await objects.get("output/mark.optimised.svg")).bytes,
+  );
+  assert.match(optimisedSource, /id="worker-shape-0001"/);
+  assert.doesNotMatch(optimisedSource, /\swidth=/i);
+  assert.doesNotMatch(optimisedSource, /\sheight=/i);
+  const optimisedEvidence = JSON.parse(new TextDecoder().decode(
+    (await objects.get("output/mark.optimised.evidence.json")).bytes,
+  )) as {
+    delivery?: {
+      profile?: string;
+      stableIds?: { prefix?: string; added?: number };
+      rootDimensions?: string;
+    };
+  };
+  assert.equal(optimisedEvidence.delivery?.profile, "motion");
+  assert.equal(optimisedEvidence.delivery?.stableIds?.prefix, "worker-shape");
+  assert.equal(optimisedEvidence.delivery?.stableIds?.added, 1);
+  assert.equal(optimisedEvidence.delivery?.rootDimensions, "removed-responsive");
 
   const animate = await startJob(
     controller,
