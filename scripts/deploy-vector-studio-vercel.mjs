@@ -28,6 +28,8 @@ const TERMINAL_FAILURE_STATES = new Set(["ERROR", "CANCELED", "BLOCKED"]);
 let activeOptions = null;
 let activeStartedAtMs = null;
 let activePlan = null;
+let activeMutationAttempted = false;
+let activeMutationPerformed = false;
 
 function fail(code, message, details = undefined) {
   const error = new Error(message);
@@ -609,6 +611,7 @@ async function writePlanFailureReceipt(options, error) {
       productionAliasProven: false,
     }),
     diagnosticReceipt: true,
+    mutationAttempted: false,
     mutationPerformed: false,
     sensitiveValuesRecorded: false,
   });
@@ -665,6 +668,7 @@ async function runSelfTest() {
     contractVersion: CONTRACT_VERSION,
     githubRepositoryVisibility: GITHUB_REPOSITORY_VISIBILITY,
     diagnosticPlanReceipts: true,
+    mutationAttempted: false,
     mutationPerformed: false,
     sensitiveValuesRecorded: false,
   }, null, 2)}\n`);
@@ -675,6 +679,8 @@ async function main() {
   activeOptions = options;
   activeStartedAtMs = Date.now();
   activePlan = unavailablePlan();
+  activeMutationAttempted = false;
+  activeMutationPerformed = false;
 
   if (options.selfTest) {
     await runSelfTest();
@@ -711,7 +717,9 @@ async function main() {
 
   if (options.mode === "apply") {
     if (!deployment) {
+      activeMutationAttempted = true;
       deployment = await createDeployment(client, plan.project.id, options.commit);
+      activeMutationPerformed = true;
       created = true;
     }
     deployment = await waitForReady(client, deployment, options.commit);
@@ -763,7 +771,8 @@ async function main() {
       productionAliasProven: aliases.includes(PRODUCTION_DOMAIN),
     }),
     diagnosticReceipt: false,
-    mutationPerformed: options.mode === "apply",
+    mutationAttempted: activeMutationAttempted,
+    mutationPerformed: activeMutationPerformed,
     sensitiveValuesRecorded: false,
   });
   const output = await writeReceipt(options, receipt);
@@ -779,7 +788,8 @@ async function main() {
     exactCommitProven: deployment?.commit === options.commit,
     productionAliasProven: aliases.includes(PRODUCTION_DOMAIN),
     diagnosticReceipt: false,
-    mutationPerformed: options.mode === "apply",
+    mutationAttempted: activeMutationAttempted,
+    mutationPerformed: activeMutationPerformed,
     sensitiveValuesRecorded: false,
   }, null, 2)}\n`);
   if (!passed) process.exit(1);
@@ -810,7 +820,8 @@ main().catch(async (error) => {
     diagnosticReceiptWritten: Boolean(diagnosticOutput),
     diagnosticOutput,
     diagnosticReceiptError,
-    mutationPerformed: false,
+    mutationAttempted: activeMutationAttempted,
+    mutationPerformed: activeMutationPerformed,
     sensitiveValuesRecorded: false,
   }, null, 2)}\n`);
   process.exit(1);
