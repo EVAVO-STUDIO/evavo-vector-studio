@@ -46,6 +46,13 @@ function output(anchors: number, bytes = 1024): TraceOutputEvidence {
     subpathCount: 1,
     straightSegmentCount: anchors,
     curveSegmentCount: 0,
+    deliveryProfile: "editable",
+    stablePathIdCount: Math.max(1, Math.round(anchors / 4)),
+    stableIdPrefix: "vector-shape",
+    optimisationPasses: ["document-normalisation", "stable-path-ids"],
+    metadataElementsRemoved: 0,
+    paintValuesNormalised: 0,
+    rootDimensions: "preserved",
   };
 }
 
