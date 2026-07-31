@@ -18,6 +18,7 @@ import {
   resolveRasterRuntimeGuardConfigFromEnvironment,
   traceRaster as traceRasterEngine,
   type RasterCandidateMode,
+  type RasterDeliveryProfile,
   type RasterRuntimeGuard,
   type RasterTraceProfileSelection,
   type RasterTraceResult,
@@ -28,7 +29,7 @@ import { commitNewVectorFiles, type VectorMcpFileReceipt } from "./file-transact
 import type { VectorMcpPathPolicy } from "./path-policy.js";
 
 export const VECTOR_MCP_VERSION = "0.4.0";
-export const VECTOR_MCP_CONTRACT_VERSION = "1.1";
+export const VECTOR_MCP_CONTRACT_VERSION = "1.2";
 
 export const VECTOR_MCP_TOOL_NAMES = Object.freeze([
   "vector_capabilities",
@@ -42,6 +43,9 @@ export const VECTOR_MCP_TOOL_NAMES = Object.freeze([
   "vector_inspect_animated_svg",
 ] as const);
 
+const DELIVERY_PROFILES = new Set<RasterDeliveryProfile>(["editable", "web", "motion", "print"]);
+const STABLE_ID_PREFIX = /^[A-Za-z_][A-Za-z0-9_.-]{0,47}$/;
+
 export type VectorMcpEvidenceLevel = "summary" | "full";
 
 export type VectorMcpTraceRequest = Readonly<{
@@ -50,12 +54,21 @@ export type VectorMcpTraceRequest = Readonly<{
   differenceOutputPath?: string;
   profile?: RasterTraceProfileSelection;
   candidateMode?: RasterCandidateMode;
+  deliveryProfile?: RasterDeliveryProfile;
+  stableIdPrefix?: string;
   maxColours?: number;
   preservePalette?: boolean;
   optimise?: boolean;
   title?: string;
   differenceMaxDimension?: number;
   evidenceLevel?: VectorMcpEvidenceLevel;
+}>;
+
+export type VectorMcpOptimiseRequest = Readonly<{
+  inputPath: string;
+  outputPath: string;
+  deliveryProfile?: RasterDeliveryProfile;
+  stableIdPrefix?: string;
 }>;
 
 export type VectorMcpMotionPlanSource = Readonly<{
@@ -79,10 +92,7 @@ export type VectorMcpOperations = Readonly<{
   inspectRaster: (inputPath: string, signal?: AbortSignal) => Promise<Readonly<Record<string, unknown>>>;
   traceRaster: (request: VectorMcpTraceRequest, signal?: AbortSignal) => Promise<Readonly<Record<string, unknown>>>;
   inspectSvg: (inputPath: string) => Promise<Readonly<Record<string, unknown>>>;
-  optimiseSvg: (
-    inputPath: string,
-    outputPath: string,
-  ) => Promise<Readonly<Record<string, unknown>>>;
+  optimiseSvg: (request: VectorMcpOptimiseRequest) => Promise<Readonly<Record<string, unknown>>>;
   validateMotionPlan: (
     request: VectorMcpValidateMotionRequest,
     signal?: AbortSignal,
@@ -107,6 +117,11 @@ type ResolvedMotionPlan = Readonly<{
   resolvedPath: string | null;
 }>;
 
+type ResolvedDeliveryOptions = Readonly<{
+  deliveryProfile: RasterDeliveryProfile;
+  stableIdPrefix?: string;
+}>;
+
 function assertEvidenceLevel(value: VectorMcpEvidenceLevel | undefined): VectorMcpEvidenceLevel {
   if (value === undefined || value === "summary" || value === "full") return value ?? "summary";
   throw new VectorMcpOperationError(
@@ -114,6 +129,35 @@ function assertEvidenceLevel(value: VectorMcpEvidenceLevel | undefined): VectorM
     "evidenceLevel must be summary or full.",
     { details: { evidenceLevel: value } },
   );
+}
+
+function resolveDeliveryOptions(
+  deliveryProfile: RasterDeliveryProfile | undefined,
+  stableIdPrefix: string | undefined,
+): ResolvedDeliveryOptions {
+  const resolvedProfile = deliveryProfile ?? "editable";
+  if (!DELIVERY_PROFILES.has(resolvedProfile)) {
+    throw new VectorMcpOperationError(
+      "VECTOR_MCP_OPTIONS_INVALID",
+      "deliveryProfile must be editable, web, motion or print.",
+      { details: { deliveryProfile, allowed: [...DELIVERY_PROFILES] } },
+    );
+  }
+  if (stableIdPrefix !== undefined && !STABLE_ID_PREFIX.test(stableIdPrefix)) {
+    throw new VectorMcpOperationError(
+      "VECTOR_MCP_OPTIONS_INVALID",
+      "stableIdPrefix must begin with a letter or underscore and use only letters, numbers, underscores, periods or hyphens.",
+      { details: { stableIdPrefix } },
+    );
+  }
+  if (stableIdPrefix && resolvedProfile !== "editable" && resolvedProfile !== "motion") {
+    throw new VectorMcpOperationError(
+      "VECTOR_MCP_OPTIONS_INVALID",
+      "stableIdPrefix is available only for editable or motion delivery profiles.",
+      { details: { stableIdPrefix, deliveryProfile: resolvedProfile } },
+    );
+  }
+  return Object.freeze({ deliveryProfile: resolvedProfile, stableIdPrefix });
 }
 
 function assertOutputExtension(requestedPath: string, extension: string, field: string): void {
@@ -211,6 +255,9 @@ function candidateSummaries(result: RasterTraceResult): readonly Readonly<Record
           pathCount: candidate.output.pathCount,
           commandCount: candidate.output.commandCount,
           estimatedAnchorCount: candidate.output.estimatedAnchorCount,
+          deliveryProfile: candidate.output.deliveryProfile,
+          stablePathIdCount: candidate.output.stablePathIdCount,
+          rootDimensions: candidate.output.rootDimensions,
         }),
         comparison: Object.freeze({
           quality: candidate.comparison.quality,
@@ -232,6 +279,8 @@ function summariseTraceEvidence(result: RasterTraceResult): Readonly<Record<stri
     engine: result.evidence.engine,
     source: result.evidence.analysis.source,
     analysis: Object.freeze({
+      sampling: result.evidence.analysis.sampling,
+      content: result.evidence.analysis.content,
       alpha: result.evidence.analysis.alpha,
       tone: result.evidence.analysis.tone,
       colour: result.evidence.analysis.colour,
@@ -377,6 +426,9 @@ export function createVectorMcpOperations(
         inputPolicy: RASTER_INPUT_POLICY,
         supportedProfiles: Object.freeze(["auto", "logo", "icon", "line-art", "illustration", "photo"]),
         candidateModes: Object.freeze(["adaptive", "single"]),
+        deliveryProfiles: Object.freeze(["editable", "web", "motion", "print"]),
+        deliveryDefaults: Object.freeze({ profile: "editable", stablePathIds: true }),
+        alphaAwareAnalysis: true,
         maxInputBytes: DEFAULT_MAX_INPUT_BYTES,
         maxDecodedPixels: DEFAULT_MAX_PIXELS,
         differenceArtifact: Object.freeze({
@@ -398,6 +450,10 @@ export function createVectorMcpOperations(
       runtime: runtimeGuard.snapshot(),
       outputs: Object.freeze({
         svg: true,
+        editableMasterSvg: true,
+        responsiveWebSvg: true,
+        motionReadySvg: true,
+        printSafeSvg: true,
         visualDifferencePng: true,
         animatedSvg: true,
         lottie: false,
@@ -443,6 +499,7 @@ export function createVectorMcpOperations(
     signal?: AbortSignal,
   ): Promise<Readonly<Record<string, unknown>>> {
     assertDifferenceOptions(request);
+    const delivery = resolveDeliveryOptions(request.deliveryProfile, request.stableIdPrefix);
     assertOutputExtension(request.outputSvgPath, ".svg", "outputSvgPath");
     if (request.differenceOutputPath) {
       assertOutputExtension(request.differenceOutputPath, ".png", "differenceOutputPath");
@@ -465,6 +522,7 @@ export function createVectorMcpOperations(
         sourceName: path.basename(resolvedInputPath),
         profile: request.profile ?? "auto",
         candidateMode: request.candidateMode ?? "adaptive",
+        ...delivery,
         maxColours: request.maxColours,
         preservePalette: request.preservePalette ?? true,
         optimise: request.optimise ?? true,
@@ -516,6 +574,13 @@ export function createVectorMcpOperations(
         svg: receiptByPath(receipts, commitSvgPath),
         differencePng: commitDifferencePath ? receiptByPath(receipts, commitDifferencePath) : null,
       }),
+      delivery: Object.freeze({
+        profile: result.evidence.output.deliveryProfile,
+        stablePathIdCount: result.evidence.output.stablePathIdCount,
+        stableIdPrefix: result.evidence.output.stableIdPrefix,
+        rootDimensions: result.evidence.output.rootDimensions,
+        optimisationPasses: result.evidence.output.optimisationPasses,
+      }),
       inspection: result.inspection,
       evidenceLevel,
       evidence: evidenceLevel === "full" ? result.evidence : summariseTraceEvidence(result),
@@ -537,15 +602,15 @@ export function createVectorMcpOperations(
   }
 
   async function optimiseSvgFile(
-    inputPath: string,
-    outputPath: string,
+    request: VectorMcpOptimiseRequest,
   ): Promise<Readonly<Record<string, unknown>>> {
-    assertOutputExtension(outputPath, ".svg", "outputPath");
-    const resolvedInputPath = await pathPolicy.resolveInputFile(inputPath);
-    const resolvedOutputPath = await pathPolicy.resolveOutputFile(outputPath);
+    const delivery = resolveDeliveryOptions(request.deliveryProfile, request.stableIdPrefix);
+    assertOutputExtension(request.outputPath, ".svg", "outputPath");
+    const resolvedInputPath = await pathPolicy.resolveInputFile(request.inputPath);
+    const resolvedOutputPath = await pathPolicy.resolveOutputFile(request.outputPath);
     pathPolicy.assertDistinct([resolvedInputPath, resolvedOutputPath]);
     const source = await readFile(resolvedInputPath, "utf8");
-    const result = optimiseSvg(source);
+    const result = optimiseSvg(source, delivery);
     if (!result.inspection.valid) {
       throw new VectorMcpOperationError(
         "VECTOR_MCP_SVG_REJECTED",
@@ -562,11 +627,13 @@ export function createVectorMcpOperations(
     return Object.freeze({
       ok: true,
       operation: "optimise-svg",
-      input: Object.freeze({ requestedPath: inputPath, path: resolvedInputPath }),
+      input: Object.freeze({ requestedPath: request.inputPath, path: resolvedInputPath }),
       output: receiptByPath(receipts, commitOutputPath),
       beforeBytes: result.beforeBytes,
       afterBytes: result.afterBytes,
       bytesSaved: result.bytesSaved,
+      bytesDelta: result.bytesDelta,
+      delivery: result.evidence,
       inspection: result.inspection,
     });
   }
