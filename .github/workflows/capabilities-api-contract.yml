@@ -1,0 +1,102 @@
+name: Vector Studio capability discovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "apps/web/app/api/v1/capabilities/**"
+      - "apps/web/package.json"
+      - "packages/raster-engine/**"
+      - "packages/motion-engine/**"
+      - "packages/lottie-engine/**"
+      - "packages/job-engine/**"
+      - "packages/worker-engine/**"
+      - "scripts/check-capabilities-api-contract.mjs"
+      - "docs/CAPABILITIES.md"
+      - ".github/workflows/capabilities-api-contract.yml"
+  pull_request:
+    paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "apps/web/app/api/v1/capabilities/**"
+      - "apps/web/package.json"
+      - "packages/raster-engine/**"
+      - "packages/motion-engine/**"
+      - "packages/lottie-engine/**"
+      - "packages/job-engine/**"
+      - "packages/worker-engine/**"
+      - "scripts/check-capabilities-api-contract.mjs"
+      - "docs/CAPABILITIES.md"
+      - ".github/workflows/capabilities-api-contract.yml"
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: vector-capabilities-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Verify capability discovery contract
+        id: contract
+        run: node scripts/check-capabilities-api-contract.mjs
+
+      - name: Install exact dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck Vector web
+        id: typecheck
+        run: pnpm --filter @evavo/vector-web typecheck
+
+      - name: Build Vector web
+        id: build
+        run: pnpm --filter @evavo/vector-web build
+
+      - name: Publish capability discovery statuses
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
+          TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+        with:
+          script: |
+            const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const gates = [
+              ["api/vector-capabilities-contract", process.env.CONTRACT_OUTCOME, "capability contract"],
+              ["api/vector-capabilities-typecheck", process.env.TYPECHECK_OUTCOME, "Vector web typecheck"],
+              ["api/vector-capabilities-build", process.env.BUILD_OUTCOME, "Vector web build"],
+            ];
+            for (const [name, outcome, label] of gates) {
+              const passed = outcome === "success";
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: passed ? "success" : "failure",
+                context: name,
+                description: passed ? `${label} passed` : `${label} failed`,
+                target_url: targetUrl,
+              });
+            }
