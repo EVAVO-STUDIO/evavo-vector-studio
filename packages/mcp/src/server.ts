@@ -28,7 +28,7 @@ import {
   type VectorMcpPathPolicyOptions,
 } from "./path-policy.js";
 
-export const VECTOR_MCP_SERVER_CONTRACT_VERSION = "1.4" as const;
+export const VECTOR_MCP_SERVER_CONTRACT_VERSION = "1.5" as const;
 
 export type VectorMcpServerBundle = Readonly<{
   server: McpServer;
@@ -56,6 +56,12 @@ const profileSchema = z
   .optional();
 
 const candidateModeSchema = z.enum(["adaptive", "single"]).optional();
+const deliveryProfileSchema = z.enum(["editable", "web", "motion", "print"]).optional();
+const stableIdPrefixSchema = z
+  .string()
+  .regex(/^[A-Za-z_][A-Za-z0-9_.-]{0,47}$/)
+  .describe("Optional editable or motion path-ID prefix. Rejected for web and print delivery profiles.")
+  .optional();
 const evidenceLevelSchema = z.enum(["summary", "full"]).optional();
 const motionPlanSchema = z
   .record(z.unknown())
@@ -107,7 +113,8 @@ export async function createVectorMcpServer(
       instructions: [
         `EVAVO Vector Studio MCP contract ${VECTOR_MCP_SERVER_CONTRACT_VERSION}.`,
         "Call vector_capabilities and vector_input_policy before the first raster trace in a workspace.",
-        "Raster tools accept one static image at a time and never flatten animation frames or TIFF pages.",
+        "Raster tools accept one static image at a time, ignore hidden RGB beneath fully transparent pixels and never flatten animation frames or TIFF pages.",
+        "Tracing and optimisation support editable, web, motion and print delivery profiles with governed stable IDs and responsive packaging evidence.",
         "Motion tools accept a validated inline plan or one JSON plan file and produce script-free CSS animated SVG.",
         "Lottie tools accept the governed path-based SVG subset and create or inspect Lottie JSON without placing generated animation bodies in model context.",
         "dotLottie tools package or inspect deterministic manifest-v2 archives without placing archive bytes or embedded animation JSON in model context.",
@@ -115,7 +122,7 @@ export async function createVectorMcpServer(
         "Batch execution is resumable when invoked again but is not a hosted background queue and does not continue after the MCP server process stops.",
         "All filesystem paths must remain within the configured allowed roots.",
         "Output tools create new files only, never overwrite, and commit related outputs atomically.",
-        "Trace, motion, Lottie, dotLottie and batch completion are not production approval. Inspect render, topology, editability, timing, archive safety, player compatibility and brand fidelity evidence before publication.",
+        "Trace, delivery packaging, motion, Lottie, dotLottie and batch completion are not production approval. Inspect render, topology, editability, timing, archive safety, player compatibility and brand fidelity evidence before publication.",
       ].join(" "),
     },
   );
@@ -124,7 +131,7 @@ export async function createVectorMcpServer(
     "vector_capabilities",
     {
       title: "Vector Studio Capabilities",
-      description: "Return the current MCP, filesystem, tracing, motion, Lottie, dotLottie, durable batch, output and approval contract without reading a file.",
+      description: "Return the current MCP, filesystem, tracing, delivery-profile, motion, Lottie, dotLottie, durable batch, output and approval contract without reading a file.",
       inputSchema: {},
     },
     async () => executeTool(() =>
@@ -149,7 +156,7 @@ export async function createVectorMcpServer(
     "vector_inspect_raster",
     {
       title: "Inspect Raster Source",
-      description: "Inspect one allowed static raster without creating output. Returns dimensions, hash, alpha, colour, tone, detail and profile evidence.",
+      description: "Inspect one allowed static raster without creating output. Returns alpha-aware visible bounds, dimensions, hash, colour, tone, detail and profile evidence.",
       inputSchema: {
         inputPath: pathSchema.describe("Existing raster file within an allowed root."),
       },
@@ -162,7 +169,7 @@ export async function createVectorMcpServer(
     "vector_trace_raster",
     {
       title: "Trace Raster to Governed SVG",
-      description: "Trace one static raster into a new SVG and optional new difference PNG. Returns receipts and evidence, never full SVG or binary bytes in model context.",
+      description: "Trace one static raster into a new editable, web, motion or print SVG and optional new difference PNG. Returns receipts and evidence, never full SVG or binary bytes in model context.",
       inputSchema: {
         inputPath: pathSchema.describe("Existing raster source within an allowed root."),
         outputSvgPath: pathSchema.describe("New SVG output path. Existing files are rejected."),
@@ -171,6 +178,8 @@ export async function createVectorMcpServer(
           .optional(),
         profile: profileSchema,
         candidateMode: candidateModeSchema,
+        deliveryProfile: deliveryProfileSchema.describe("Default editable. Web removes fixed root dimensions only with a viewBox; motion adds stable target IDs; print preserves dimensions."),
+        stableIdPrefix: stableIdPrefixSchema,
         maxColours: z.number().int().min(1).max(256).optional(),
         preservePalette: z.boolean().optional(),
         optimise: z.boolean().optional(),
@@ -198,15 +207,17 @@ export async function createVectorMcpServer(
   server.registerTool(
     "vector_optimise_svg",
     {
-      title: "Optimise SVG Safely",
-      description: "Conservatively optimise an existing governed SVG into a new file. Unsafe SVG is rejected and existing outputs are never overwritten.",
+      title: "Package SVG for Delivery",
+      description: "Conservatively package an existing governed SVG as an editable, web, motion or print output. Unsafe SVG is rejected and existing outputs are never overwritten.",
       inputSchema: {
         inputPath: pathSchema.describe("Existing SVG file within an allowed root."),
         outputPath: pathSchema.describe("New SVG output path within an allowed root."),
+        deliveryProfile: deliveryProfileSchema.describe("Default editable. Determines stable IDs, metadata policy and root dimension handling."),
+        stableIdPrefix: stableIdPrefixSchema,
       },
     },
-    async ({ inputPath, outputPath }) =>
-      executeTool(() => operations.optimiseSvg(inputPath, outputPath)),
+    async (input) =>
+      executeTool(() => operations.optimiseSvg(input)),
   );
 
   server.registerTool(
