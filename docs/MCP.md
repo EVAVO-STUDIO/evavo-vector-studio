@@ -2,18 +2,20 @@
 
 The EVAVO Vector Studio MCP server exposes governed raster, SVG, motion, Lottie, dotLottie and durable batch production through local stdio tools for ChatGPT-compatible MCP hosts, Claude, editors and other agent runtimes.
 
-MCP contract version `1.4` is a bounded local execution surface. It can retain resumable batch state between separate calls, but it is not a remote public endpoint, browser extension or hosted background queue.
+MCP contract version `1.5` is a bounded local execution surface. It can retain resumable batch state between separate calls, but it is not a remote public endpoint, browser extension or hosted background queue.
+
+The v1.5 addition is a shared delivery-intent contract. Raster tracing and existing-SVG packaging can now request an editable master, web compact, motion ready or print safe output without changing the underlying reconstruction and approval boundaries.
 
 ## Current tool contract
 
 | Tool | Behaviour |
 | --- | --- |
-| `vector_capabilities` | Returns versions, tools, allowed roots, limits, output availability and approval policy. |
+| `vector_capabilities` | Returns versions, tools, allowed roots, limits, delivery profiles, output availability and approval policy. |
 | `vector_input_policy` | Returns accepted static-image classes and pre-decode rejection rules. |
 | `vector_inspect_raster` | Inspects one existing static raster without creating output. |
-| `vector_trace_raster` | Creates one new SVG and, optionally, one new difference PNG. |
+| `vector_trace_raster` | Creates one new governed SVG and, optionally, one new difference PNG. |
 | `vector_inspect_svg` | Inspects SVG safety, geometry, topology and editability. |
-| `vector_optimise_svg` | Writes a conservatively optimised SVG to a new path. |
+| `vector_optimise_svg` | Packages an existing SVG to a new editable, web, motion or print path. |
 | `vector_validate_motion_plan` | Validates and normalises one inline or file-based motion-v1 plan. |
 | `vector_animate_svg` | Creates one governed animated SVG plus optional evidence JSON. |
 | `vector_inspect_animated_svg` | Inspects motion identity, keyframes, target rules and reduced-motion fallback. |
@@ -24,7 +26,7 @@ MCP contract version `1.4` is a bounded local execution surface. It can retain r
 | `vector_run_batch` | Runs or resumes one bounded batch-v1 manifest with persistent local state and paginated receipts. |
 | `vector_inspect_batch` | Reads retained batch progress, failures, receipts, lock state and recent events without executing work. |
 
-Every production result remains review-required. Structural success, archive loading and deterministic output do not establish artistic approval or independent source-to-player equivalence.
+Every production result remains review-required. Structural success, archive loading, stable IDs and deterministic output do not establish artistic approval or independent source-to-player equivalence.
 
 ## Build and run
 
@@ -32,7 +34,7 @@ Every production result remains review-required. Structural success, archive loa
 Set-Location C:\GitRepos\evavo-vector-studio
 git pull origin main
 corepack enable
-pnpm install
+pnpm install --frozen-lockfile
 pnpm vector:mcp
 ```
 
@@ -89,22 +91,41 @@ Build the package, then configure the host to launch the compiled stdio entry po
 
 The server uses the reviewed v1 TypeScript SDK line and `StdioServerTransport` for local process-spawned integrations.
 
+## Delivery profiles
+
+The `deliveryProfile` field accepts:
+
+```text
+editable  editable master with deterministic collision-safe stable path IDs
+web       web compact packaging with responsive root dimensions when viewBox is valid
+motion    motion ready packaging with stable animation-target IDs
+print     print safe packaging that preserves explicit root dimensions
+```
+
+`editable` is the default. A custom `stableIdPrefix` may be supplied only for `editable` or `motion`. It must begin with a letter or underscore, contain only letters, numbers, underscores, periods or hyphens, and be at most 48 characters.
+
+The packaging layer records stable IDs, metadata removal, paint normalisation, root-dimension policy and applied passes. It uses safety rollback when a rewrite would introduce an unresolved local reference or another governed SVG failure.
+
+The canonical profile details are in [`DELIVERY-PROFILES.md`](./DELIVERY-PROFILES.md).
+
 ## Raster workflow
 
 1. Call `vector_capabilities` after connecting.
 2. Call `vector_input_policy` before handling an unfamiliar raster container.
 3. Inspect uncertain sources with `vector_inspect_raster`.
-4. Call `vector_trace_raster` with explicit new output paths.
-5. Review render, candidate, topology and editability evidence.
+4. Call `vector_trace_raster` with explicit new output paths and a delivery intent.
+5. Review alpha-aware source, render, candidate, topology, editability and packaging evidence.
 6. Reinspect an SVG after any external manual edit.
 
 ```json
 {
   "inputPath": "C:\\EVAVO\\VectorAssets\\source\\mark.png",
-  "outputSvgPath": "C:\\EVAVO\\VectorAssets\\output\\mark.vector.svg",
-  "differenceOutputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.vector.difference.png",
+  "outputSvgPath": "C:\\EVAVO\\VectorAssets\\output\\mark.editable.svg",
+  "differenceOutputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.difference.png",
   "profile": "auto",
   "candidateMode": "adaptive",
+  "deliveryProfile": "editable",
+  "stableIdPrefix": "mark-shape",
   "maxColours": 16,
   "preservePalette": true,
   "optimise": true,
@@ -114,11 +135,23 @@ The server uses the reviewed v1 TypeScript SDK line and `StdioServerTransport` f
 }
 ```
 
-`summary` is the default compact evidence mode. `full` includes complete retained candidate evidence.
+`summary` is the default compact evidence mode. `full` includes complete retained candidate evidence. Neither mode places the generated SVG or PNG bytes in model context.
+
+## Existing-SVG packaging
+
+```json
+{
+  "inputPath": "C:\\EVAVO\\VectorAssets\\source\\mark.svg",
+  "outputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.web.svg",
+  "deliveryProfile": "web"
+}
+```
+
+The tool returns a file receipt, input/output byte evidence, delivery passes and the complete governed SVG inspection. Existing outputs are rejected.
 
 ## Animated SVG workflow
 
-1. Inspect the governed static SVG.
+1. Start with an inspected static SVG. A `motion` delivery profile is recommended when traced path targets will be animated.
 2. Create a motion-v1 plan inline or in an allowed-root JSON file.
 3. Validate externally generated plans.
 4. Create a new animated SVG and evidence file.
@@ -127,7 +160,7 @@ The server uses the reviewed v1 TypeScript SDK line and `StdioServerTransport` f
 
 ```json
 {
-  "inputPath": "C:\\EVAVO\\VectorAssets\\source\\mark.svg",
+  "inputPath": "C:\\EVAVO\\VectorAssets\\source\\mark.motion.svg",
   "outputSvgPath": "C:\\EVAVO\\VectorAssets\\output\\mark.animated.svg",
   "evidenceOutputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.motion.evidence.json",
   "motionPlan": {
@@ -137,7 +170,7 @@ The server uses the reviewed v1 TypeScript SDK line and `StdioServerTransport` f
     "reducedMotion": "last-frame",
     "tracks": [
       {
-        "targetId": "mark",
+        "targetId": "motion-shape-0001",
         "keyframes": [
           { "offset": 0, "opacity": 0, "translateY": 8 },
           { "offset": 1, "opacity": 1, "translateY": 0 }
@@ -156,7 +189,7 @@ The Lottie tools use the same motion-v1 plan but require the smaller governed Lo
 
 ```json
 {
-  "inputPath": "C:\\EVAVO\\VectorAssets\\source\\mark.svg",
+  "inputPath": "C:\\EVAVO\\VectorAssets\\source\\mark.motion.svg",
   "motionPath": "C:\\EVAVO\\VectorAssets\\plans\\mark.motion.json",
   "outputLottiePath": "C:\\EVAVO\\VectorAssets\\output\\mark.lottie.json",
   "evidenceOutputPath": "C:\\EVAVO\\VectorAssets\\output\\mark.lottie.evidence.json",
@@ -269,6 +302,8 @@ VECTOR_TRACE_RETRY_AFTER_SECONDS 1 to 60, default 5
 Request cancellation is forwarded to native raster work and durable batch execution. Motion, Lottie and dotLottie operations check cancellation before validation, processing and commit. Retained batch state remains inspectable after cancellation.
 
 ## Governed feature boundaries
+
+Alpha-aware raster analysis ignores hidden RGB beneath fully transparent pixels, weights partial alpha, records visible bounds and rejects sources without visible content.
 
 Animated SVG supports opacity, X/Y translation, uniform scale, rotation, timing, delay, direction, fill, iterations, easing and explicit reduced-motion fallback.
 
