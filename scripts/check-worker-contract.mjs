@@ -45,6 +45,7 @@ const files = {
   baseErrors: "packages/worker-engine/src/base-errors.ts",
   errors: "packages/worker-engine/src/errors.ts",
   payloads: "packages/worker-engine/src/payloads.ts",
+  payloadTests: "packages/worker-engine/src/payloads.test.ts",
   fileStore: "packages/worker-engine/src/file-object-store.ts",
   memoryStore: "packages/worker-engine/src/memory-object-store.ts",
   objectStoreIndex: "packages/worker-engine/src/object-store.ts",
@@ -53,6 +54,7 @@ const files = {
   fileStoreTests: "packages/worker-engine/src/file-object-store.test.ts",
   executorTests: "packages/worker-engine/src/executor.test.ts",
   docs: "docs/WORKER.md",
+  deliveryDocs: "docs/DELIVERY-PROFILES.md",
   hostedDocs: "docs/HOSTED-JOBS.md",
   architecture: "docs/ARCHITECTURE.md",
   readme: "README.md",
@@ -135,8 +137,25 @@ requireTokens(files.payloads, sources.payloads, [
   "AnimateSvgWorkerPayload",
   "ExportLottieWorkerPayload",
   "PackageDotLottieWorkerPayload",
+  "type RasterDeliveryProfile",
+  "type WorkerDeliveryOptions",
+  "const DELIVERY_PROFILES",
+  "const STABLE_ID_PREFIX",
+  "function deliveryOptions",
+  'deliveryProfile: rawProfile as RasterDeliveryProfile',
+  "stableIdPrefix is available only for editable or motion delivery profiles",
+  'knownKeys(options, ["deliveryProfile", "stableIdPrefix"]',
   "differenceMaxDimension requires differenceObjectKey",
   "VECTOR_WORKER_OPERATION_UNSUPPORTED",
+]);
+requireTokens(files.payloadTests, sources.payloadTests, [
+  "defaults trace and optimise worker payloads to editable delivery",
+  "accepts motion-ready delivery and a portable stable ID prefix",
+  "rejects profile-specific stable ID misuse before execution",
+  "rejects unsupported delivery profiles and unknown fields",
+  'deliveryProfile: "motion"',
+  'stableIdPrefix: "worker-mark"',
+  "VECTOR_WORKER_PAYLOAD_INVALID",
 ]);
 requireTokens(files.fileStore, sources.fileStore, [
   "FileVectorObjectStore",
@@ -171,6 +190,14 @@ requireTokens(files.executor, sources.executor, [
   "createAnimatedSvg",
   "createLottieFromSvgMotion",
   "createDotLottiePackage",
+  "profile: payload.options.deliveryProfile",
+  "deliveryProfile: result.evidence.output.deliveryProfile",
+  "deliveryProfile: result.evidence.profile",
+  "stablePathIdCount",
+  "stableIdPrefix",
+  "rootDimensions",
+  "optimisationPasses",
+  "safetyRollbackApplied",
   "outputObjects: compactOutputs",
   'approval: "human-review-required"',
 ]);
@@ -187,11 +214,15 @@ requireTokens(files.fileStoreTests, sources.fileStoreTests, [
   "aborts before committing any object",
 ]);
 requireTokens(files.executorTests, sources.executorTests, [
-  "executes optimise, animated SVG, Lottie and dotLottie jobs",
+  "executes delivery-aware optimise, animated SVG, Lottie and dotLottie jobs",
   "rejects source hash drift",
   "VECTOR_WORKER_OBJECT_HASH_MISMATCH",
   "VECTOR_WORKER_OPERATION_UNSUPPORTED",
   "VECTOR_WORKER_CANCELLED",
+  'stableIdPrefix: "worker-shape"',
+  "worker-shape-0001",
+  'deliveryProfile, "motion"',
+  'rootDimensions, "removed-responsive"',
   "doesNotMatch(JSON.stringify(lottieCompletion)",
 ]);
 requireTokens(files.docs, sources.docs, [
@@ -202,8 +233,19 @@ requireTokens(files.docs, sources.docs, [
   "not yet accepted",
   "immutable source-object SHA-256 verification",
   "atomic multi-object output commit",
+  "Delivery-aware SVG jobs",
+  "deliveryProfile",
+  "stableIdPrefix",
+  "editable",
+  "web",
+  "motion",
+  "print",
   "Generated SVG, PNG, Lottie JSON or archive bodies",
   "remoteExecutionAvailable",
+]);
+requireTokens(files.deliveryDocs, sources.deliveryDocs, [
+  "Object-backed worker jobs",
+  "same profile vocabulary",
 ]);
 requireTokens(files.hostedDocs, sources.hostedDocs, ["worker"]);
 requireTokens(files.architecture, sources.architecture, ["worker"]);
@@ -218,7 +260,6 @@ forbidTokens(files.executor, sources.executor, [
   "remoteExecutionAvailable: true",
 ]);
 forbidTokens(files.docs, sources.docs, [
-  "hosted worker process is available",
   "remoteExecutionAvailable: true",
 ]);
 
@@ -243,8 +284,14 @@ process.stdout.write(`${JSON.stringify({
     "export-lottie",
     "package-dotlottie",
   ],
+  deliveryProfiles: ["editable", "web", "motion", "print"],
+  defaultDeliveryProfile: "editable",
+  stableIdProfiles: ["editable", "motion"],
+  deliveryEvidenceRetained: true,
   runBatchAvailable: false,
-  hostedWorkerProcessAvailable: false,
+  localWorkerProcessAvailable: true,
+  httpCoordinatedWorkerAvailable: true,
+  managedRemoteExecutionAvailable: false,
   objectStoreSubpathAvailable: true,
   generatedBodiesInJobRecord: false,
   checkedFiles: [...checkedFiles].sort(),
