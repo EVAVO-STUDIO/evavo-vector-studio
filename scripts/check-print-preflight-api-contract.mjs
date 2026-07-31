@@ -104,11 +104,12 @@ requireTokens(files.coreIndex, sources.coreIndex, [
   'export * from "./print-preflight.js"',
 ]);
 requireTokens(files.coreTests, sources.coreTests, [
-  "commercial print dimensions",
-  "cut-vinyl",
-  "screen-print",
-  "minimum stroke",
-  "trim and bleed",
+  "commercial preflight verifies exact trim and bleed dimensions",
+  "large-format preflight permits CSS pixel dimensions with a warning",
+  "cut-vinyl preflight rejects live text and complex paint",
+  "screen-print preflight enforces a configured process-colour ceiling",
+  "cut-vinyl preflight rejects measured strokes below the line-weight floor",
+  "preflight requires trim dimensions as an atomic pair",
 ]);
 
 requireTokens(files.cli, sources.cli, [
@@ -211,9 +212,9 @@ requireTokens(files.workflow, sources.workflow, [
   "pnpm --filter @evavo/vector-cli test",
   "pnpm --filter @evavo/vector-web typecheck",
   "pnpm exec turbo run build --filter=@evavo/vector-web",
-  'context: "print/vector-preflight-contract"',
-  'context: "print/vector-preflight-tests"',
-  'context: "print/vector-preflight-build"',
+  '"print/vector-preflight-contract"',
+  '"print/vector-preflight-tests"',
+  '"print/vector-preflight-build"',
 ]);
 forbidTokens(files.workflow, sources.workflow, [
   "contents: write",
