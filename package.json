@@ -10,7 +10,7 @@
     "release-proof:check": "node scripts/check-release-proof-contract.mjs",
     "release:source-proof": "node scripts/create-source-proof.mjs",
     "release:live-proof": "node scripts/verify-live-deployment.mjs",
-    "capabilities-api:check": "node scripts/check-capabilities-api-contract.mjs",
+    "capabilities-api:check": "node scripts/check-capability-discovery.mjs",
     "hub:check": "node scripts/check-hub-integration-contract.mjs",
     "private-response:check": "node scripts/check-private-response-contract.mjs",
     "vercel:check": "node scripts/check-vercel-deployment-contract.mjs",
