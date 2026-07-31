@@ -34,11 +34,27 @@ export type DominantColour = Readonly<{
   share: number;
 }>;
 
+export type RasterContentBounds = Readonly<{
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}>;
+
 export type RasterAnalysis = Readonly<{
   source: RasterHeaderInspection & Readonly<{ sha256: string }>;
   sampling: Readonly<{
+    strategy: "alpha-aware-visible-pixel-stride";
     stride: number;
     sampleCount: number;
+    alphaWeight: number;
+  }>;
+  content: Readonly<{
+    bounds: RasterContentBounds;
+    visiblePixelCount: number;
+    visibleCoverage: number;
+    boundingBoxCoverage: number;
+    aspectRatio: number;
   }>;
   alpha: Readonly<{
     transparentCoverage: number;
