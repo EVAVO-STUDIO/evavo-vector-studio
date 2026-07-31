@@ -27,16 +27,16 @@ generatedBodiesIncluded: false
 sensitiveValuesIncluded: false
 ```
 
-Protected production endpoints retain their existing session or bearer authentication. Capability discovery does not grant access to tracing, motion, jobs, worker control or object transfer.
+Protected production endpoints retain their existing session or bearer authentication. Capability discovery does not grant access to tracing, print preflight, motion, jobs, worker control or object transfer.
 
 ## Discoverable interfaces
 
 The document identifies the current paths and commands for:
 
 - browser trace workspace and Motion Director;
-- raster, animated SVG, Lottie and dotLottie HTTP APIs;
+- raster, SVG print preflight, animated SVG, Lottie and dotLottie HTTP APIs;
 - hosted job control, worker control and worker-object transfer;
-- single-file CLI, durable batch CLI, local worker and HTTP worker;
+- single-file CLI, print-preflight CLI, durable batch CLI, local worker and HTTP worker;
 - MCP stdio transport and its public contract version.
 
 Generated SVG, PNG, Lottie JSON and dotLottie archives remain outside discovery responses and agent model context.
@@ -58,6 +58,27 @@ Discovery reports:
 - safety rollback evidence.
 
 The document describes support, not the result for a specific asset. Per-asset source, candidate, topology, geometry, render, delivery and warning evidence remains on the trace result.
+
+## Print preflight metadata
+
+The raster section separately advertises the read-only `print-preflight-v1` contract through:
+
+```text
+POST /api/v1/print/preflight
+evavo-vector-print
+```
+
+Discovery reports the `commercial`, `large-format`, `cut-vinyl` and `screen-print` profiles plus physical-dimension, trim-and-bleed, minimum-line-weight and process-colour-token checks.
+
+The capability contract deliberately reports:
+
+```text
+cmykOrSpotColourProofAvailable: false
+productionApproval: false
+approval: review-required
+```
+
+Print preflight can detect structural production risks, but it cannot prove ICC conversion, spot-colour libraries, trapping, overprint, RIP behaviour or a physical proof.
 
 ## Motion and animation metadata
 
@@ -124,7 +145,9 @@ The dependency-free contract checks that every `@evavo/*` workspace import is de
 
 It also derives the canonical MCP tool inventory from direct server registrations and the Lottie, dotLottie and durable-batch tool-name contracts. The exposed MCP contract version, tool count and MCP batch ceiling must agree with those source files. Duplicate tool names, stale counts or stale limits fail before dependency installation, TypeScript or the production build.
 
-The focused workflow watches `packages/mcp/**` as well as the route and other capability-bearing packages. An MCP capability change therefore cannot bypass the focused contract, frozen dependency installation, web typecheck and production build.
+The focused capability workflow watches `packages/mcp/**` as well as the route and other capability-bearing packages. An MCP capability change therefore cannot bypass the focused contract, frozen dependency installation, web typecheck and production build.
+
+The separate print-preflight workflow watches the print core, CLI, authenticated API route, discovery metadata and print documentation. It runs the print contract, exact dependency installation, executable core and CLI tests, Vector web typecheck and the workspace-aware production build.
 
 The service version in the capability response is checked against the root package version. The obsolete duplicate checker is required to remain absent so there is one canonical discovery contract.
 
@@ -144,12 +167,13 @@ This builds the canonical workspace dependency graph before Webpack resolves the
 
 ## Validation
 
-The dependency-free contract is:
+The dependency-free contracts are:
 
 ```powershell
 pnpm capabilities-api:check
+pnpm print-api:check
 ```
 
-The focused GitHub workflow runs the contract, exact dependency installation, canonical workspace package build, Vector web typecheck and production build whenever capability route, contract, documentation or source capability packages change.
+The focused GitHub workflows run their contracts, exact dependency installation, required workspace builds, executable tests, Vector web typecheck and production build whenever their source capability surfaces change.
 
-The full repository quality chain also includes `capabilities-api:check` before dependency-backed lint, typecheck, tests and build.
+The full repository quality chain includes both contracts before dependency-backed lint, typecheck, tests and build.
