@@ -64,6 +64,7 @@ requireTokens(files.deployer, sources.deployer, [
   'const TEAM_ID = "team_ckKLAnG3MGJK0mMpIVpjbogl"',
   'const PROJECT_NAME = "evavo-vector-studio"',
   'const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio"',
+  'const GITHUB_REPOSITORY_VISIBILITY = "private"',
   'const PRODUCTION_DOMAIN = "vector.evavo.com.au"',
   'const APPLY_CONFIRMATION = "deploy-evavo-vector-studio"',
   'const DEPLOYMENT_TIMEOUT_MS = 20 * 60 * 1000',
@@ -85,11 +86,14 @@ requireTokens(files.deployer, sources.deployer, [
   'sha: commit',
   'target: "production"',
   'githubCommitSha: commit',
+  'ciGitRepoVisibility: GITHUB_REPOSITORY_VISIBILITY',
   'monorepoManager: "turbo"',
   'nodeVersion: "22.x"',
   'deployment.readyState === "READY"',
   'deployment.commit === options.commit',
   'aliases.includes(PRODUCTION_DOMAIN)',
+  'assert.equal(GITHUB_REPOSITORY_VISIBILITY, "private")',
+  'githubRepositoryVisibility: GITHUB_REPOSITORY_VISIBILITY',
   '"VERCEL_DEPLOY_COMMIT_MISMATCH"',
   '"VERCEL_DEPLOY_COMMIT_UNPROVEN"',
   '"VERCEL_DEPLOY_ALIAS_TIMEOUT"',
@@ -99,6 +103,7 @@ requireTokens(files.deployer, sources.deployer, [
 ]);
 
 forbidTokens(files.deployer, sources.deployer, [
+  'ciGitRepoVisibility: "public"',
   'type: "vercel"',
   'withLatestCommit: true',
   'target: "preview"',
@@ -299,6 +304,7 @@ process.stdout.write(`${JSON.stringify({
   productionDomain: "vector.evavo.com.au",
   exactCommitRequired: true,
   productionAliasRequired: true,
+  privateGitHubSourceMetadata: true,
   livePublicProofRequired: true,
   liveCapabilityDiscoveryRequired: true,
   capabilityResponseBodyRetained: false,
