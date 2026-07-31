@@ -53,6 +53,7 @@ function output(anchors: number, bytes = 1024): TraceOutputEvidence {
     metadataElementsRemoved: 0,
     paintValuesNormalised: 0,
     rootDimensions: "preserved",
+    safetyRollbackApplied: false,
   };
 }
 
