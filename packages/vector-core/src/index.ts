@@ -1,4 +1,5 @@
 export * from "./difference-artifact-verification.js";
+export * from "./print-preflight.js";
 export * from "./svg.js";
 export * from "./svg-topology.js";
 export { optimiseSvg } from "./svg-optimisation.js";
