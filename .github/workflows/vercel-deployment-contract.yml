@@ -20,6 +20,7 @@ on:
       - "apps/web/public/hub/evavo-vector-studio.deployment.json"
       - "scripts/check-vercel-deployment-contract.mjs"
       - "scripts/check-vercel-project-provisioning-contract.mjs"
+      - "scripts/check-vercel-deployment-plan-receipt-contract.mjs"
       - "scripts/check-vercel-production-deployment-contract.mjs"
       - "scripts/check-private-response-contract.mjs"
       - "scripts/provision-vector-studio-vercel.mjs"
@@ -51,6 +52,7 @@ on:
       - "apps/web/public/hub/evavo-vector-studio.deployment.json"
       - "scripts/check-vercel-deployment-contract.mjs"
       - "scripts/check-vercel-project-provisioning-contract.mjs"
+      - "scripts/check-vercel-deployment-plan-receipt-contract.mjs"
       - "scripts/check-vercel-production-deployment-contract.mjs"
       - "scripts/check-private-response-contract.mjs"
       - "scripts/provision-vector-studio-vercel.mjs"
@@ -102,6 +104,9 @@ jobs:
 
       - name: Verify exact production deployment contract
         run: node scripts/check-vercel-production-deployment-contract.mjs
+
+      - name: Verify diagnostic deployment-plan receipt contract
+        run: node scripts/check-vercel-deployment-plan-receipt-contract.mjs
 
       - name: Verify Vercel provisioner self-test
         run: node scripts/provision-vector-studio-vercel.mjs --self-test
