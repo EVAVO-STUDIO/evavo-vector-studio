@@ -61,7 +61,17 @@ requireTokens(files.workspace, sources.workspace, [
   "payload.evidence.selection.selectedCandidateId",
   "<TopologyEvidence topology={result.inspection.topology} findings={result.inspection.findings} />",
   "shared SHA-256 verifier passed",
-  "Animated containers and multi-page TIFF are rejected before decoding",
+  "Hidden RGB beneath transparent pixels is ignored",
+  "animated containers and multi-page TIFF are rejected before decoding",
+  'type DeliveryProfile = "editable" | "web" | "motion" | "print"',
+  'form.set("deliveryProfile", deliveryProfile)',
+  "Editable master · stable shape IDs",
+  "Web compact · responsive packaging",
+  "Motion ready · stable target IDs",
+  "Print safe · preserve dimensions",
+  "stablePathIdCount",
+  "Visible bounds",
+  "Packaging passes",
 ]);
 
 requireTokens(files.topology, sources.topology, [
@@ -86,6 +96,10 @@ requireTokens(files.traceApi, sources.traceApi, [
   'encoding: "base64" as const',
   'Buffer.from(differencePng).toString("base64")',
   "differenceEvidence && differencePng",
+  'const DELIVERY_PROFILES = new Set<RasterDeliveryProfile>(["editable", "web", "motion", "print"])',
+  'const rawDeliveryProfile = stringField(form, "deliveryProfile") ?? "editable"',
+  'x-vector-delivery-profile',
+  'x-vector-stable-path-ids',
 ]);
 
 requireTokens(files.inputPolicy, sources.inputPolicy, [
@@ -117,6 +131,8 @@ process.stdout.write(`${JSON.stringify({
     "SHA-256",
     "selected candidate binding",
     "topology review UI",
+    "alpha-aware source explanation",
+    "governed editable, web, motion and print delivery profiles",
     "static input policy discovery",
   ],
 }, null, 2)}\n`);
