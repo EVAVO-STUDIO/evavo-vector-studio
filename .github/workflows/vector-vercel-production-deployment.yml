@@ -59,10 +59,11 @@ jobs:
           node-version: 22
           package-manager-cache: false
 
-      - name: Verify exact deployer and launch-token self-tests
+      - name: Verify exact deployer and live-proof self-tests
         run: |
           node scripts/deploy-vector-studio-vercel.mjs --self-test
           node scripts/create-vector-live-launch-token.mjs --self-test
+          node scripts/verify-live-capability-discovery.mjs --self-test
 
       - name: Create bounded no-mutation deployment plan
         id: deployment
@@ -149,11 +150,12 @@ jobs:
           node-version: 22
           package-manager-cache: false
 
-      - name: Verify provisioning, deployment and launch-token self-tests
+      - name: Verify provisioning, deployment and live-proof self-tests
         run: |
           node scripts/provision-vector-studio-vercel.mjs --self-test
           node scripts/deploy-vector-studio-vercel.mjs --self-test
           node scripts/create-vector-live-launch-token.mjs --self-test
+          node scripts/verify-live-capability-discovery.mjs --self-test
 
       - name: Verify provisioned project, production environment and domain without mutation
         env:
@@ -209,9 +211,20 @@ jobs:
             --commit "${{ inputs.commit }}" \
             --out .ci/vector-public-deployment-proof.json
 
+      - name: Verify live capability discovery and deployment non-claims
+        id: capabilities
+        if: ${{ steps.public_runtime.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          VECTOR_DEPLOYMENT_SOURCE_PROOF: .ci/vector-source-proof.json
+        run: |
+          node scripts/verify-live-capability-discovery.mjs \
+            --commit "${{ inputs.commit }}" \
+            --out .ci/vector-live-capability-discovery.json
+
       - name: Verify one-time owner signed launch and replay rejection
         id: owner_launch
-        if: ${{ steps.public_runtime.outcome == 'success' }}
+        if: ${{ steps.capabilities.outcome == 'success' }}
         continue-on-error: true
         env:
           EVAVO_CLIENT_APP_LAUNCH_SECRET: ${{ secrets.EVAVO_CLIENT_APP_LAUNCH_SECRET }}
@@ -274,6 +287,7 @@ jobs:
             .ci/vector-vercel-production-deployment.json
             .ci/vector-live-private-response.json
             .ci/vector-public-deployment-proof.json
+            .ci/vector-live-capability-discovery.json
             .ci/vector-owner-live-launch-token.json
             .ci/vector-owner-live-launch-proof.json
             .ci/vector-client-live-launch-token.json
@@ -289,6 +303,7 @@ jobs:
           DEPLOYMENT_OUTCOME: ${{ steps.deployment.outcome }}
           PRIVATE_RESPONSE_OUTCOME: ${{ steps.private_response.outcome }}
           PUBLIC_RUNTIME_OUTCOME: ${{ steps.public_runtime.outcome }}
+          CAPABILITIES_OUTCOME: ${{ steps.capabilities.outcome }}
           OWNER_LAUNCH_OUTCOME: ${{ steps.owner_launch.outcome }}
           CLIENT_LAUNCH_OUTCOME: ${{ steps.client_launch.outcome }}
         with:
@@ -297,6 +312,7 @@ jobs:
               process.env.DEPLOYMENT_OUTCOME === "success" &&
               process.env.PRIVATE_RESPONSE_OUTCOME === "success" &&
               process.env.PUBLIC_RUNTIME_OUTCOME === "success" &&
+              process.env.CAPABILITIES_OUTCOME === "success" &&
               process.env.OWNER_LAUNCH_OUTCOME === "success" &&
               process.env.CLIENT_LAUNCH_OUTCOME === "success";
             await github.rest.repos.createCommitStatus({
@@ -306,7 +322,7 @@ jobs:
               state: passed ? "success" : "failure",
               context: "deploy/vector-studio-production-exact",
               description: passed
-                ? "exact production, owner/client launch and replay proofs passed"
+                ? "exact production, live capabilities and owner/client launch proofs passed"
                 : "Vector Studio exact production deployment proof is incomplete",
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
@@ -317,11 +333,13 @@ jobs:
           DEPLOYMENT_OUTCOME: ${{ steps.deployment.outcome }}
           PRIVATE_RESPONSE_OUTCOME: ${{ steps.private_response.outcome }}
           PUBLIC_RUNTIME_OUTCOME: ${{ steps.public_runtime.outcome }}
+          CAPABILITIES_OUTCOME: ${{ steps.capabilities.outcome }}
           OWNER_LAUNCH_OUTCOME: ${{ steps.owner_launch.outcome }}
           CLIENT_LAUNCH_OUTCOME: ${{ steps.client_launch.outcome }}
         run: |
           test "$DEPLOYMENT_OUTCOME" = "success"
           test "$PRIVATE_RESPONSE_OUTCOME" = "success"
           test "$PUBLIC_RUNTIME_OUTCOME" = "success"
+          test "$CAPABILITIES_OUTCOME" = "success"
           test "$OWNER_LAUNCH_OUTCOME" = "success"
           test "$CLIENT_LAUNCH_OUTCOME" = "success"
