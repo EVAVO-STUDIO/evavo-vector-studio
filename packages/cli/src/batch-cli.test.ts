@@ -15,7 +15,7 @@ function run(args: readonly string[]) {
   });
 }
 
-test("runs, inspects and resumes a governed SVG batch without overwriting", async () => {
+test("runs, inspects and resumes a governed motion-ready SVG batch without overwriting", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "evavo-vector-batch-cli-"));
   try {
     const sourcePath = path.join(root, "source.svg");
@@ -24,7 +24,7 @@ test("runs, inspects and resumes a governed SVG batch without overwriting", asyn
     const evidencePath = path.join(root, "output", "mark.optimised.evidence.json");
     await writeFile(
       sourcePath,
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Mark</title><path id="mark" fill="#ff244e" d="M2 2H18V18H2Z"/></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>Mark</title><path fill="#ff244e" d="M2 2H18V18H2Z"/></svg>',
       "utf8",
     );
     await writeFile(
@@ -42,6 +42,8 @@ test("runs, inspects and resumes a governed SVG batch without overwriting", asyn
               inputPath: "source.svg",
               outputPath: "output/mark.optimised.svg",
               evidenceOutputPath: "output/mark.optimised.evidence.json",
+              deliveryProfile: "motion",
+              stableIdPrefix: "batch-mark",
             },
           },
         ],
@@ -59,6 +61,12 @@ test("runs, inspects and resumes a governed SVG batch without overwriting", asyn
           status?: string;
           attempts?: number;
           outputs?: Array<{ sha256?: string }>;
+          evidence?: {
+            deliveryProfile?: string;
+            stablePathIdCount?: number;
+            stableIdPrefix?: string;
+            rootDimensions?: string;
+          };
         }>;
       };
     };
@@ -70,8 +78,22 @@ test("runs, inspects and resumes a governed SVG batch without overwriting", asyn
       firstPayload.state?.items?.[0]?.outputs?.[0]?.sha256 ?? "",
       /^[a-f0-9]{64}$/,
     );
-    assert.match(await readFile(outputPath, "utf8"), /<svg/);
-    assert.match(await readFile(evidencePath, "utf8"), /"bytesSaved"/);
+    assert.equal(firstPayload.state?.items?.[0]?.evidence?.deliveryProfile, "motion");
+    assert.equal(firstPayload.state?.items?.[0]?.evidence?.stablePathIdCount, 1);
+    assert.equal(firstPayload.state?.items?.[0]?.evidence?.stableIdPrefix, "batch-mark");
+    assert.equal(firstPayload.state?.items?.[0]?.evidence?.rootDimensions, "removed-responsive");
+
+    const output = await readFile(outputPath, "utf8");
+    assert.match(output, /<svg/);
+    assert.match(output, /id="batch-mark-0001"/);
+    assert.doesNotMatch(output, /\swidth=/i);
+    assert.doesNotMatch(output, /\sheight=/i);
+
+    const evidence = await readFile(evidencePath, "utf8");
+    assert.match(evidence, /"bytesSaved"/);
+    assert.match(evidence, /"profile": "motion"/);
+    assert.match(evidence, /"prefix": "batch-mark"/);
+    assert.match(evidence, /"rootDimensions": "removed-responsive"/);
 
     const second = run(["run", manifestPath, "--root", root]);
     assert.equal(second.status, 0, second.stderr);
@@ -98,6 +120,59 @@ test("runs, inspects and resumes a governed SVG batch without overwriting", asyn
     assert.equal(inspection.progress?.percentComplete, 100);
     assert.ok(
       inspection.recentEvents?.some((event) => event.type === "item-reused"),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects a stable ID prefix for a compact web delivery batch", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "evavo-vector-batch-delivery-"));
+  try {
+    const sourcePath = path.join(root, "source.svg");
+    const manifestPath = path.join(root, "batch.json");
+    await writeFile(
+      sourcePath,
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><title>Mark</title><path d="M0 0H10V10H0Z"/></svg>',
+      "utf8",
+    );
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify({
+        version: "1.0",
+        id: "invalid-delivery-fixture",
+        name: "Invalid delivery fixture",
+        failureMode: "continue",
+        items: [{
+          id: "mark",
+          operation: "optimise-svg",
+          spec: {
+            inputPath: "source.svg",
+            outputPath: "mark.web.svg",
+            evidenceOutputPath: "mark.web.evidence.json",
+            deliveryProfile: "web",
+            stableIdPrefix: "not-allowed-for-web",
+          },
+        }],
+      }, null, 2)}\n`,
+      "utf8",
+    );
+
+    const result = run(["run", manifestPath, "--root", root]);
+    assert.equal(result.status, 2);
+    const payload = JSON.parse(result.stdout) as {
+      state?: {
+        items?: Array<{
+          status?: string;
+          error?: { code?: string; message?: string };
+        }>;
+      };
+    };
+    assert.equal(payload.state?.items?.[0]?.status, "failed");
+    assert.equal(payload.state?.items?.[0]?.error?.code, "BATCH_OPERATION_FAILED");
+    assert.match(
+      payload.state?.items?.[0]?.error?.message ?? "",
+      /editable or motion delivery profiles/,
     );
   } finally {
     await rm(root, { recursive: true, force: true });
