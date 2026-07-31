@@ -29,6 +29,7 @@ import {
   inspectRaster,
   traceRaster,
   type RasterCandidateMode,
+  type RasterDeliveryProfile,
   type RasterTraceOptions,
   type RasterTraceProfileSelection,
 } from "@evavo/raster-engine";
@@ -41,9 +42,15 @@ import {
 const VERSION = "0.4.0";
 const TRACE_PROFILES = new Set<RasterTraceProfileSelection>(["auto", "logo", "icon", "line-art", "illustration", "photo"]);
 const CANDIDATE_MODES = new Set<RasterCandidateMode>(["adaptive", "single"]);
+const DELIVERY_PROFILES = new Set<RasterDeliveryProfile>(["editable", "web", "motion", "print"]);
+const STABLE_ID_PREFIX = /^[A-Za-z_][A-Za-z0-9_.-]{0,47}$/;
 
 type JsonRecord = Record<string, unknown>;
 type LabelledPath = Readonly<{ label: string; path: string }>;
+type DeliveryOptions = Readonly<{
+  deliveryProfile: RasterDeliveryProfile;
+  stableIdPrefix?: string;
+}>;
 
 function print(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
@@ -61,9 +68,11 @@ function usage(): string {
     "Usage:",
     "  evavo-vector inspect <input.svg>",
     "  evavo-vector optimise <input.svg> [--out output.svg]",
+    "                     [--delivery-profile editable|web|motion|print] [--stable-id-prefix prefix]",
     "  evavo-vector raster:inspect <input.png>",
     "  evavo-vector trace <input.png> [--out output.svg] [--profile auto|logo|icon|line-art|illustration|photo]",
     "                     [--candidate-mode adaptive|single] [--max-colours 1..256]",
+    "                     [--delivery-profile editable|web|motion|print] [--stable-id-prefix prefix]",
     "                     [--preserve-palette|--simplify-palette] [--no-optimise]",
     "                     [--diff-out output.diff.png] [--difference-max-dimension 32..1024]",
     "                     [--title \"Accessible title\"]",
@@ -109,6 +118,37 @@ function parseIntegerOption(args: readonly string[], name: string): number | und
   const value = Number(raw);
   if (!Number.isInteger(value)) fail({ error: "VECTOR_CLI_OPTION_INVALID", option: name, value: raw });
   return value;
+}
+
+function deliveryOptions(args: readonly string[]): DeliveryOptions {
+  const rawDeliveryProfile = option(args, "--delivery-profile") ?? "editable";
+  if (!DELIVERY_PROFILES.has(rawDeliveryProfile as RasterDeliveryProfile)) {
+    fail({
+      error: "VECTOR_CLI_OPTION_INVALID",
+      option: "--delivery-profile",
+      value: rawDeliveryProfile,
+      allowed: [...DELIVERY_PROFILES],
+    });
+  }
+  const deliveryProfile = rawDeliveryProfile as RasterDeliveryProfile;
+  const stableIdPrefix = option(args, "--stable-id-prefix") ?? undefined;
+  if (stableIdPrefix && !STABLE_ID_PREFIX.test(stableIdPrefix)) {
+    fail({
+      error: "VECTOR_CLI_OPTION_INVALID",
+      option: "--stable-id-prefix",
+      value: stableIdPrefix,
+      message: "The prefix must begin with a letter or underscore and contain only letters, numbers, underscores, periods or hyphens.",
+    });
+  }
+  if (stableIdPrefix && deliveryProfile !== "editable" && deliveryProfile !== "motion") {
+    fail({
+      error: "VECTOR_CLI_OPTION_CONFLICT",
+      option: "--stable-id-prefix",
+      deliveryProfile,
+      allowedDeliveryProfiles: ["editable", "motion"],
+    });
+  }
+  return Object.freeze({ deliveryProfile, stableIdPrefix });
 }
 
 function pathKey(value: string): string {
@@ -218,6 +258,7 @@ function traceOptions(sourcePath: string, args: readonly string[]): RasterTraceO
     sourceName: basename(sourcePath),
     profile: rawProfile as RasterTraceProfileSelection,
     candidateMode: rawCandidateMode as RasterCandidateMode,
+    ...deliveryOptions(args),
     preservePalette: !has(args, "--simplify-palette"),
     maxColours,
     optimise: !has(args, "--no-optimise"),
@@ -297,7 +338,7 @@ async function optimiseSvgFile(input: string, args: readonly string[]): Promise<
     { label: "output", path: outputPath },
   ]);
   const source = await readFile(sourcePath, "utf8");
-  const result = optimiseSvg(source);
+  const result = optimiseSvg(source, deliveryOptions(args));
   if (!result.inspection.valid) {
     print({ command: "optimise", written: false, sourcePath, outputPath, ...result });
     process.exitCode = 2;
@@ -314,6 +355,8 @@ async function optimiseSvgFile(input: string, args: readonly string[]): Promise<
     beforeBytes: result.beforeBytes,
     afterBytes: result.afterBytes,
     bytesSaved: result.bytesSaved,
+    bytesDelta: result.bytesDelta,
+    delivery: result.evidence,
     inspection: result.inspection,
   });
 }
@@ -364,6 +407,8 @@ async function traceRasterFile(input: string, args: readonly string[]): Promise<
       differencePng: differenceOutputPath ? receiptFor(receipts, differenceOutputPath) : null,
     },
     inputPolicy: RASTER_INPUT_POLICY.mode,
+    deliveryProfile: result.evidence.output.deliveryProfile,
+    stablePathIdCount: result.evidence.output.stablePathIdCount,
     approval: result.evidence.qualityGates.productionApproval,
     renderComparison: result.evidence.qualityGates.renderComparison,
     selectedCandidate: result.evidence.selection.selectedCandidateId,
@@ -547,18 +592,34 @@ function manifest(): JsonRecord {
     deterministicCommands: ["inspect", "motion:inspect", "motion:validate", "lottie:inspect", "raster:inspect"],
     boundedCommands: ["trace"],
     productionCommands: ["optimise", "trace", "animate-svg", "lottie:export"],
+    deliveryProfiles: Object.freeze({
+      editable: "deterministic collision-safe path IDs with source dimensions preserved",
+      web: "responsive root dimensions and compact metadata policy without generated path IDs",
+      motion: "deterministic collision-safe motion target IDs and responsive root dimensions",
+      print: "conservative document normalisation with root dimensions preserved",
+    }),
     commands: {
       inspect: { input: "path to SVG", output: "JSON safety, geometry, topology and structure inspection" },
-      optimise: { input: "path to SVG", options: { "--out": "new SVG output path" }, output: "new optimised SVG plus JSON evidence" },
-      "raster:inspect": { input: "path to one supported static raster", output: "JSON source analysis and profile recommendation" },
+      optimise: {
+        input: "path to SVG",
+        options: {
+          "--out": "new SVG output path",
+          "--delivery-profile": [...DELIVERY_PROFILES],
+          "--stable-id-prefix": "optional editable or motion path-ID prefix",
+        },
+        output: "new governed SVG plus delivery and structural evidence",
+      },
+      "raster:inspect": { input: "path to one supported static raster", output: "alpha-aware JSON source analysis and profile recommendation" },
       trace: {
         input: "path to one supported static raster",
         options: {
           "--candidate-mode": ["adaptive", "single"],
+          "--delivery-profile": [...DELIVERY_PROFILES],
+          "--stable-id-prefix": "optional editable or motion path-ID prefix",
           "--diff-out": "optional new visual difference PNG path",
           "--difference-max-dimension": { default: DEFAULT_DIFFERENCE_MAX_DIMENSION, range: [32, MAX_DIFFERENCE_DIMENSION] },
         },
-        output: "new selected SVG plus source, candidate, topology, geometry, render and optional difference evidence",
+        output: "new selected SVG plus alpha-aware source, delivery, candidate, topology, geometry, render and optional difference evidence",
         approvalState: "human-review-required",
       },
       "motion:validate": { input: "motion plan JSON", output: "normalized v1 motion contract" },
@@ -607,11 +668,15 @@ function manifest(): JsonRecord {
       maxInputBytes: DEFAULT_MAX_INPUT_BYTES,
       maxDecodedPixels: DEFAULT_MAX_PIXELS,
       rasterTracingAvailable: true,
+      alphaAwareAnalysisAvailable: true,
       renderComparisonAvailable: true,
       renderComparisonMaximumDimensions: [64, 256, 1024],
       differenceArtifactAvailable: true,
       differenceArtifactMaximumDimension: MAX_DIFFERENCE_DIMENSION,
       adaptiveCandidateMaximums: { threeCandidatesThroughPixels: 4000000, twoCandidatesThroughPixels: 12000000, otherwise: 1 },
+      deliveryProfiles: [...DELIVERY_PROFILES],
+      deterministicStablePathIds: true,
+      responsiveWebPackaging: true,
       animatedSvgAvailable: true,
       animatedSvgProperties: ["opacity", "translateX", "translateY", "scale", "rotateDeg"],
       reducedMotionFallbackRequired: true,
