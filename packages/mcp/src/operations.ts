@@ -575,7 +575,7 @@ export function createVectorMcpOperations(
         differencePng: commitDifferencePath ? receiptByPath(receipts, commitDifferencePath) : null,
       }),
       delivery: Object.freeze({
-        profile: result.evidence.output.deliveryProfile,
+        deliveryProfile: result.evidence.output.deliveryProfile,
         stablePathIdCount: result.evidence.output.stablePathIdCount,
         stableIdPrefix: result.evidence.output.stableIdPrefix,
         rootDimensions: result.evidence.output.rootDimensions,
