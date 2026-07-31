@@ -44,7 +44,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Checkout exact commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
@@ -72,9 +72,15 @@ jobs:
         continue-on-error: true
         run: pnpm install --frozen-lockfile
 
+      - name: Build canonical workspace packages
+        id: dependencies
+        if: ${{ steps.install.outcome == 'success' }}
+        continue-on-error: true
+        run: pnpm build:packages
+
       - name: Run core and CLI print tests
         id: tests
-        if: ${{ steps.install.outcome == 'success' }}
+        if: ${{ steps.dependencies.outcome == 'success' }}
         continue-on-error: true
         run: |
           pnpm --filter @evavo/vector-core test
@@ -82,13 +88,13 @@ jobs:
 
       - name: Typecheck Vector web
         id: typecheck
-        if: ${{ steps.install.outcome == 'success' }}
+        if: ${{ steps.dependencies.outcome == 'success' }}
         continue-on-error: true
         run: pnpm --filter @evavo/vector-web typecheck
 
       - name: Build Vector web through workspace dependencies
         id: build
-        if: ${{ steps.install.outcome == 'success' && steps.typecheck.outcome == 'success' }}
+        if: ${{ steps.dependencies.outcome == 'success' && steps.typecheck.outcome == 'success' }}
         continue-on-error: true
         run: pnpm exec turbo run build --filter=@evavo/vector-web
 
@@ -98,12 +104,16 @@ jobs:
         env:
           CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          DEPENDENCIES_OUTCOME: ${{ steps.dependencies.outcome }}
           TESTS_OUTCOME: ${{ steps.tests.outcome }}
           TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
         with:
           script: |
             const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const dependenciesPassed =
+              process.env.INSTALL_OUTCOME === "success" &&
+              process.env.DEPENDENCIES_OUTCOME === "success";
             const gates = [
               [
                 "print/vector-preflight-contract",
@@ -112,12 +122,12 @@ jobs:
               ],
               [
                 "print/vector-preflight-tests",
-                process.env.INSTALL_OUTCOME === "success" && process.env.TESTS_OUTCOME === "success",
+                dependenciesPassed && process.env.TESTS_OUTCOME === "success",
                 "print preflight tests",
               ],
               [
                 "print/vector-preflight-build",
-                process.env.INSTALL_OUTCOME === "success" &&
+                dependenciesPassed &&
                   process.env.TYPECHECK_OUTCOME === "success" &&
                   process.env.BUILD_OUTCOME === "success",
                 "print preflight web build",
@@ -140,12 +150,14 @@ jobs:
         env:
           CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          DEPENDENCIES_OUTCOME: ${{ steps.dependencies.outcome }}
           TESTS_OUTCOME: ${{ steps.tests.outcome }}
           TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
         run: |
           test "$CONTRACT_OUTCOME" = "success"
           test "$INSTALL_OUTCOME" = "success"
+          test "$DEPENDENCIES_OUTCOME" = "success"
           test "$TESTS_OUTCOME" = "success"
           test "$TYPECHECK_OUTCOME" = "success"
           test "$BUILD_OUTCOME" = "success"
