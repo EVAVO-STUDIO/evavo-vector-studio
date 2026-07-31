@@ -103,6 +103,7 @@ function outputEvidence(
     metadataElementsRemoved: optimisation.metadataElementsRemoved,
     paintValuesNormalised: optimisation.paintValuesNormalised,
     rootDimensions: optimisation.rootDimensions,
+    safetyRollbackApplied: optimisation.safetyRollbackApplied,
   });
 }
 
