@@ -14,8 +14,16 @@ on:
       - "packages/vector-core/src/index.ts"
       - "packages/cli/src/print-cli.ts"
       - "packages/cli/package.json"
+      - "packages/mcp/src/print-tools.ts"
+      - "packages/mcp/src/print-tools.test.ts"
+      - "packages/mcp/src/server.ts"
+      - "packages/mcp/package.json"
       - "scripts/check-print-preflight-api-contract.mjs"
+      - "scripts/check-capability-discovery.mjs"
+      - "scripts/check-mcp-contract.mjs"
       - "docs/PRINT-PREFLIGHT.md"
+      - "docs/CAPABILITIES.md"
+      - "docs/MCP.md"
       - ".github/workflows/print-preflight-contract.yml"
   pull_request:
     paths:
@@ -29,8 +37,16 @@ on:
       - "packages/vector-core/src/index.ts"
       - "packages/cli/src/print-cli.ts"
       - "packages/cli/package.json"
+      - "packages/mcp/src/print-tools.ts"
+      - "packages/mcp/src/print-tools.test.ts"
+      - "packages/mcp/src/server.ts"
+      - "packages/mcp/package.json"
       - "scripts/check-print-preflight-api-contract.mjs"
+      - "scripts/check-capability-discovery.mjs"
+      - "scripts/check-mcp-contract.mjs"
       - "docs/PRINT-PREFLIGHT.md"
+      - "docs/CAPABILITIES.md"
+      - "docs/MCP.md"
       - ".github/workflows/print-preflight-contract.yml"
 
 permissions:
@@ -44,7 +60,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout exact commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
@@ -78,13 +94,14 @@ jobs:
         continue-on-error: true
         run: pnpm build:packages
 
-      - name: Run core and CLI print tests
+      - name: Run core, CLI and MCP print tests
         id: tests
         if: ${{ steps.dependencies.outcome == 'success' }}
         continue-on-error: true
         run: |
           pnpm --filter @evavo/vector-core test
           pnpm --filter @evavo/vector-cli test
+          pnpm --filter @evavo/vector-mcp test
 
       - name: Typecheck Vector web
         id: typecheck
