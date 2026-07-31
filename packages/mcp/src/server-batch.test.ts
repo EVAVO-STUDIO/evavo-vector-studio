@@ -40,22 +40,24 @@ function optimiseItem(id: string, source: string) {
       inputPath: source,
       outputPath: `output/${id}.optimised.svg`,
       evidenceOutputPath: `output/${id}.optimised.evidence.json`,
+      deliveryProfile: "motion",
+      stableIdPrefix: `${id}-shape`,
     }),
   });
 }
 
-test("runs, paginates, inspects and safely resumes a receipt-only durable batch", async () => {
+test("runs, paginates, inspects and safely resumes a receipt-only durable batch with delivery evidence", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "evavo-vector-mcp-batch-"));
   const manifestPath = path.join(root, "batch.json");
   try {
     await writeFile(
       path.join(root, "first.svg"),
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>First</title><path id="first" fill="#ff244e" d="M2 2H18V18H2Z"/></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>First</title><path fill="#ff244e" d="M2 2H18V18H2Z"/></svg>',
       "utf8",
     );
     await writeFile(
       path.join(root, "second.svg"),
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Second</title><path id="second" fill="#111111" d="M3 3H17V17H3Z"/></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>Second</title><path fill="#111111" d="M3 3H17V17H3Z"/></svg>',
       "utf8",
     );
     await writeFile(
@@ -91,13 +93,19 @@ test("runs, paginates, inspects and safely resumes a receipt-only durable batch"
         durableBatch?: {
           contractVersion?: string;
           maximumManifestItems?: number;
+          deliveryProfiles?: string[];
+          defaultDeliveryProfile?: string;
+          stableIdProfiles?: string[];
+          alphaAwareRasterAnalysis?: boolean;
+          deliveryEvidenceRetained?: boolean;
+          sharedWorkerRegistry?: boolean;
           persistentState?: boolean;
           resumable?: boolean;
           generatedBodiesInModelContext?: boolean;
           hostedBackgroundQueue?: boolean;
         };
       } | undefined;
-      assert.equal(capabilityPayload?.mcpContractVersion, "1.4");
+      assert.equal(capabilityPayload?.mcpContractVersion, "1.5");
       assert.equal(
         capabilityPayload?.durableBatch?.contractVersion,
         VECTOR_MCP_BATCH_CONTRACT_VERSION,
@@ -106,6 +114,18 @@ test("runs, paginates, inspects and safely resumes a receipt-only durable batch"
         capabilityPayload?.durableBatch?.maximumManifestItems,
         VECTOR_MCP_BATCH_MAX_ITEMS,
       );
+      assert.deepEqual(
+        capabilityPayload?.durableBatch?.deliveryProfiles,
+        ["editable", "web", "motion", "print"],
+      );
+      assert.equal(capabilityPayload?.durableBatch?.defaultDeliveryProfile, "editable");
+      assert.deepEqual(
+        capabilityPayload?.durableBatch?.stableIdProfiles,
+        ["editable", "motion"],
+      );
+      assert.equal(capabilityPayload?.durableBatch?.alphaAwareRasterAnalysis, true);
+      assert.equal(capabilityPayload?.durableBatch?.deliveryEvidenceRetained, true);
+      assert.equal(capabilityPayload?.durableBatch?.sharedWorkerRegistry, true);
       assert.equal(capabilityPayload?.durableBatch?.persistentState, true);
       assert.equal(capabilityPayload?.durableBatch?.resumable, true);
       assert.equal(
@@ -140,6 +160,12 @@ test("runs, paginates, inspects and safely resumes a receipt-only durable batch"
             id?: string;
             attempts?: number;
             outputs?: Array<{ path?: string; sha256?: string }>;
+            evidence?: {
+              deliveryProfile?: string;
+              stablePathIdCount?: number;
+              stableIdPrefix?: string;
+              rootDimensions?: string;
+            };
           }>;
         };
       } | undefined;
@@ -155,6 +181,10 @@ test("runs, paginates, inspects and safely resumes a receipt-only durable batch"
       assert.equal(firstPayload?.state?.page?.nextOffset, 1);
       assert.equal(firstPayload?.state?.items?.[0]?.id, "first");
       assert.equal(firstPayload?.state?.items?.[0]?.attempts, 1);
+      assert.equal(firstPayload?.state?.items?.[0]?.evidence?.deliveryProfile, "motion");
+      assert.equal(firstPayload?.state?.items?.[0]?.evidence?.stablePathIdCount, 1);
+      assert.equal(firstPayload?.state?.items?.[0]?.evidence?.stableIdPrefix, "first-shape");
+      assert.equal(firstPayload?.state?.items?.[0]?.evidence?.rootDimensions, "removed-responsive");
       assert.match(
         firstPayload?.state?.items?.[0]?.outputs?.[0]?.sha256 ?? "",
         /^[a-f0-9]{64}$/,
@@ -177,7 +207,11 @@ test("runs, paginates, inspects and safely resumes a receipt-only durable batch"
       const inspectedPayload = inspected.structuredContent as {
         state?: {
           page?: { returned?: number; nextOffset?: number | null };
-          items?: Array<{ id?: string; attempts?: number }>;
+          items?: Array<{
+            id?: string;
+            attempts?: number;
+            evidence?: { deliveryProfile?: string; stableIdPrefix?: string };
+          }>;
         };
         recentEvents?: Array<{ type?: string }>;
       } | undefined;
@@ -185,6 +219,8 @@ test("runs, paginates, inspects and safely resumes a receipt-only durable batch"
       assert.equal(inspectedPayload?.state?.page?.nextOffset, null);
       assert.equal(inspectedPayload?.state?.items?.[0]?.id, "second");
       assert.equal(inspectedPayload?.state?.items?.[0]?.attempts, 1);
+      assert.equal(inspectedPayload?.state?.items?.[0]?.evidence?.deliveryProfile, "motion");
+      assert.equal(inspectedPayload?.state?.items?.[0]?.evidence?.stableIdPrefix, "second-shape");
 
       const resumed = await client.callTool({
         name: "vector_run_batch",
@@ -212,16 +248,20 @@ test("runs, paginates, inspects and safely resumes a receipt-only durable batch"
       );
       assert.doesNotMatch(JSON.stringify(resumedPayload), /<svg\b/i);
 
-      assert.match(
-        await readFile(path.join(root, "output", "first.optimised.svg"), "utf8"),
-        /<svg\b/i,
+      const firstSvg = await readFile(
+        path.join(root, "output", "first.optimised.svg"),
+        "utf8",
       );
+      assert.match(firstSvg, /<svg\b/i);
+      assert.match(firstSvg, /id="first-shape-0001"/);
+      assert.doesNotMatch(firstSvg, /\swidth=/i);
+      assert.doesNotMatch(firstSvg, /\sheight=/i);
       assert.match(
         await readFile(
           path.join(root, "output", "first.optimised.evidence.json"),
           "utf8",
         ),
-        /"bytesSaved"/,
+        /"profile": "motion"/,
       );
     } finally {
       await client.close();
