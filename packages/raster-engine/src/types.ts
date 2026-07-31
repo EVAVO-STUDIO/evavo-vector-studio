@@ -188,6 +188,7 @@ export type TraceOutputEvidence = Readonly<{
   metadataElementsRemoved: number;
   paintValuesNormalised: number;
   rootDimensions: "preserved" | "removed-responsive" | "not-present";
+  safetyRollbackApplied: boolean;
 }>;
 
 export type TraceCandidateTimings = Readonly<{
