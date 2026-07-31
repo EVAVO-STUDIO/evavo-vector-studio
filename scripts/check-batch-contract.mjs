@@ -57,7 +57,9 @@ const files = {
   operations: "packages/cli/src/batch-operations.ts",
   cli: "packages/cli/src/batch-cli.ts",
   cliTests: "packages/cli/src/batch-cli.test.ts",
+  jobsIndex: "packages/vector-jobs/src/index.ts",
   docs: "docs/BATCH.md",
+  deliveryDocs: "docs/DELIVERY-PROFILES.md",
   pathDocs: "docs/BATCH-PATH-SAFETY.md",
   architecture: "docs/ARCHITECTURE.md",
   readme: "README.md",
@@ -233,6 +235,20 @@ requireTokens(files.operations, sources.operations, [
   "createDotLottiePackage",
   "commitNewOutputFiles",
   "must stay inside the batch root",
+  "type RasterDeliveryProfile",
+  "const DELIVERY_PROFILES",
+  '"deliveryProfile"',
+  '"stableIdPrefix"',
+  "function deliveryOptions",
+  "stableIdPrefix is available only for editable or motion delivery profiles",
+  "const delivery = deliveryOptions(context)",
+  "...delivery",
+  "optimiseSvg(source, delivery)",
+  "deliveryProfile: result.evidence.output.deliveryProfile",
+  "deliveryProfile: result.evidence.profile",
+  "stablePathIdCount",
+  "rootDimensions",
+  "safetyRollbackApplied",
 ]);
 requireTokens(files.cli, sources.cli, [
   "EVAVO Vector Studio durable batch CLI",
@@ -244,11 +260,27 @@ requireTokens(files.cli, sources.cli, [
   "createVectorBatchOperationRegistry",
   "completedOutputReverification: true",
   'approval: "human-review-required"',
+  "delivery: Object.freeze({",
+  'profiles: Object.freeze(["editable", "web", "motion", "print"])',
+  'stableIdProfiles: Object.freeze(["editable", "motion"])',
+  "alphaAwareRasterAnalysis: true",
+  "immutableManifestRevision: true",
+  "deliveryEvidenceRetained: true",
 ]);
 requireTokens(files.cliTests, sources.cliTests, [
   "runs, inspects and resumes",
   "rejects input revision drift",
   "BATCH_ITEM_REVISION_MISMATCH",
+  'deliveryProfile: "motion"',
+  'stableIdPrefix: "batch-mark"',
+  'id=\\"batch-mark-0001\\"',
+  "rejects a stable ID prefix for a compact web delivery batch",
+  "deliveryEvidenceRetained",
+  'deepEqual(contract.delivery?.profiles, ["editable", "web", "motion", "print"])',
+]);
+requireTokens(files.jobsIndex, sources.jobsIndex, [
+  'from "@evavo/vector-cli/batch-operations"',
+  "createVectorBatchOperationRegistry",
 ]);
 requireTokens(files.docs, sources.docs, [
   "schemas/batch-v1.schema.json",
@@ -256,11 +288,22 @@ requireTokens(files.docs, sources.docs, [
   "vector:batch:inspect",
   "trace-raster",
   "package-dotlottie",
+  "deliveryProfile",
+  "stableIdPrefix",
+  "editable",
+  "motion",
   "BATCH_MANIFEST_CHANGED",
   "BATCH_ITEM_REVISION_MISMATCH",
   "BATCH_COMPLETED_OUTPUT_INVALID",
   "crash-resumable local runner",
   "not yet a hosted background queue",
+]);
+requireTokens(files.deliveryDocs, sources.deliveryDocs, [
+  "Editable master",
+  "Web compact",
+  "Motion ready",
+  "Print safe",
+  "Durable batch manifests",
 ]);
 requireTokens(files.pathDocs, sources.pathDocs, [
   "canonical execution root",
@@ -320,6 +363,10 @@ process.stdout.write(`${JSON.stringify({
     "export-lottie",
     "package-dotlottie",
   ],
+  deliveryProfiles: ["editable", "web", "motion", "print"],
+  stableIdProfiles: ["editable", "motion"],
+  alphaAwareRasterAnalysis: true,
+  sharedWorkerRegistry: true,
   durability: {
     manifestImmutable: true,
     canonicalRoot: true,
