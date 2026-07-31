@@ -21,8 +21,13 @@ const ALIAS_TIMEOUT_MS = 2 * 60 * 1000;
 const POLL_INTERVAL_MS = 5_000;
 const MAX_RESPONSE_BYTES = 1_000_000;
 const MAX_RECEIPT_BYTES = 256 * 1024;
+const MAX_FAILURE_DETAILS_BYTES = 8 * 1024;
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const TERMINAL_FAILURE_STATES = new Set(["ERROR", "CANCELED", "BLOCKED"]);
+
+let activeOptions = null;
+let activeStartedAtMs = null;
+let activePlan = null;
 
 function fail(code, message, details = undefined) {
   const error = new Error(message);
@@ -74,6 +79,34 @@ function credentialState(environment = process.env) {
     token,
     invalid: Object.freeze(invalid),
     passed: invalid.length === 0,
+  });
+}
+
+function serialisableDetails(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  try {
+    const serialized = JSON.stringify(value);
+    if (Buffer.byteLength(serialized, "utf8") > MAX_FAILURE_DETAILS_BYTES) return null;
+    return Object.freeze(JSON.parse(serialized));
+  } catch {
+    return null;
+  }
+}
+
+function safeFailure(error) {
+  return Object.freeze({
+    code:
+      error instanceof Error && "code" in error && typeof error.code === "string"
+        ? error.code.slice(0, 160)
+        : "VERCEL_DEPLOY_FAILED",
+    message:
+      error instanceof Error
+        ? error.message.slice(0, 2_000)
+        : String(error).slice(0, 2_000),
+    details:
+      error instanceof Error && "details" in error
+        ? serialisableDetails(error.details)
+        : null,
   });
 }
 
@@ -318,6 +351,16 @@ async function inspect(client, commit) {
   });
 }
 
+function unavailablePlan() {
+  return Object.freeze({
+    inspectionAvailable: false,
+    project: Object.freeze({ exists: null, id: null, ready: false }),
+    domain: Object.freeze({ exists: null, verified: false }),
+    exactCommitDeployment: null,
+    action: "inspection-unavailable",
+  });
+}
+
 function planFromInspection(inspection, commit) {
   const exactReady = inspection.deployments.find(
     (deployment) =>
@@ -326,6 +369,7 @@ function planFromInspection(inspection, commit) {
       deployment.target === "production",
   ) ?? null;
   return Object.freeze({
+    inspectionAvailable: true,
     project: Object.freeze({
       exists: Boolean(inspection.project),
       id: safeProject(inspection.project)?.id ?? null,
@@ -340,25 +384,41 @@ function planFromInspection(inspection, commit) {
   });
 }
 
-function requireDeploymentBoundary(plan) {
+function deploymentBoundaryBlockers(plan) {
+  if (!plan || plan.inspectionAvailable !== true) return Object.freeze([]);
+  const blockers = [];
   if (!plan.project.exists) {
-    fail(
-      "VERCEL_DEPLOY_PROJECT_MISSING",
-      "The Vector Studio Vercel project must be provisioned before deployment.",
-    );
+    blockers.push(Object.freeze({
+      code: "VERCEL_DEPLOY_PROJECT_MISSING",
+      message: "The Vector Studio Vercel project must be provisioned before deployment.",
+      details: null,
+    }));
+  } else {
+    if (!plan.project.ready) {
+      blockers.push(Object.freeze({
+        code: "VERCEL_DEPLOY_PROJECT_NOT_READY",
+        message: "The Vercel project does not match the governed GitHub and monorepo build contract.",
+        details: null,
+      }));
+    }
+    if (!plan.domain.exists || !plan.domain.verified) {
+      blockers.push(Object.freeze({
+        code: "VERCEL_DEPLOY_DOMAIN_NOT_VERIFIED",
+        message: "The production domain must be assigned and verified before deployment.",
+        details: null,
+      }));
+    }
   }
-  if (!plan.project.ready) {
-    fail(
-      "VERCEL_DEPLOY_PROJECT_NOT_READY",
-      "The Vercel project does not match the governed GitHub and monorepo build contract.",
-    );
-  }
-  if (!plan.domain.exists || !plan.domain.verified) {
-    fail(
-      "VERCEL_DEPLOY_DOMAIN_NOT_VERIFIED",
-      "The production domain must be assigned and verified before deployment.",
-    );
-  }
+  return Object.freeze(blockers);
+}
+
+function requireDeploymentBoundary(plan) {
+  const blockers = deploymentBoundaryBlockers(plan);
+  if (blockers.length < 1) return;
+  const primary = blockers[0];
+  fail(primary.code, primary.message, {
+    blockerCodes: blockers.map((item) => item.code),
+  });
 }
 
 async function createDeployment(client, projectId, commit) {
@@ -518,6 +578,43 @@ async function writeReceipt(options, receipt) {
   return atomicNewFile(target, serialized);
 }
 
+async function writePlanFailureReceipt(options, error) {
+  const failure = safeFailure(error);
+  const boundary = deploymentBoundaryBlockers(activePlan);
+  const blockers = [
+    failure,
+    ...boundary.filter((item) => item.code !== failure.code),
+  ];
+  const completedAtMs = Date.now();
+  const receipt = Object.freeze({
+    version: CONTRACT_VERSION,
+    check: "vector-studio-vercel-deployment",
+    repository: REPOSITORY,
+    commit: options.commit,
+    mode: "plan",
+    projectId: activePlan?.project?.id ?? null,
+    productionDomain: PRODUCTION_DOMAIN,
+    startedAt: new Date(activeStartedAtMs ?? completedAtMs).toISOString(),
+    completedAt: new Date(completedAtMs).toISOString(),
+    durationMs: Math.max(0, completedAtMs - (activeStartedAtMs ?? completedAtMs)),
+    passed: false,
+    readyToApply: false,
+    plan: activePlan ?? unavailablePlan(),
+    blockers: Object.freeze(blockers),
+    result: Object.freeze({
+      deploymentCreated: false,
+      deployment: null,
+      aliases: Object.freeze([]),
+      exactCommitProven: false,
+      productionAliasProven: false,
+    }),
+    diagnosticReceipt: true,
+    mutationPerformed: false,
+    sensitiveValuesRecorded: false,
+  });
+  return writeReceipt(options, receipt);
+}
+
 async function runSelfTest() {
   assert.equal(credentialState({ VERCEL_TOKEN: "v".repeat(40) }).passed, true);
   assert.equal(credentialState({ VERCEL_TOKEN: "short" }).passed, false);
@@ -551,11 +648,23 @@ async function runSelfTest() {
     "a".repeat(40),
   );
   assert.equal(plan.action, "reuse-ready-exact-commit");
+  assert.equal(deploymentBoundaryBlockers(plan).length, 0);
+
+  const missingProject = planFromInspection(
+    { project: null, domain: null, deployments: [] },
+    "b".repeat(40),
+  );
+  const missingBlockers = deploymentBoundaryBlockers(missingProject);
+  assert.equal(missingBlockers.length, 1);
+  assert.equal(missingBlockers[0].code, "VERCEL_DEPLOY_PROJECT_MISSING");
+  assert.equal(unavailablePlan().inspectionAvailable, false);
+
   process.stdout.write(`${JSON.stringify({
     ok: true,
     check: "vector-studio-vercel-deployer-self-test",
     contractVersion: CONTRACT_VERSION,
     githubRepositoryVisibility: GITHUB_REPOSITORY_VISIBILITY,
+    diagnosticPlanReceipts: true,
     mutationPerformed: false,
     sensitiveValuesRecorded: false,
   }, null, 2)}\n`);
@@ -563,6 +672,10 @@ async function runSelfTest() {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  activeOptions = options;
+  activeStartedAtMs = Date.now();
+  activePlan = unavailablePlan();
+
   if (options.selfTest) {
     await runSelfTest();
     return;
@@ -586,10 +699,10 @@ async function main() {
     );
   }
 
-  const startedAtMs = Date.now();
   const client = apiClient(credentials.token);
   const inspection = await inspect(client, options.commit);
   const plan = planFromInspection(inspection, options.commit);
+  activePlan = plan;
   requireDeploymentBoundary(plan);
 
   let created = false;
@@ -635,11 +748,13 @@ async function main() {
     mode: options.mode,
     projectId: plan.project.id,
     productionDomain: PRODUCTION_DOMAIN,
-    startedAt: new Date(startedAtMs).toISOString(),
+    startedAt: new Date(activeStartedAtMs).toISOString(),
     completedAt: new Date(completedAtMs).toISOString(),
-    durationMs: completedAtMs - startedAtMs,
+    durationMs: completedAtMs - activeStartedAtMs,
     passed,
+    readyToApply: true,
     plan,
+    blockers: Object.freeze([]),
     result: Object.freeze({
       deploymentCreated: created,
       deployment,
@@ -647,6 +762,7 @@ async function main() {
       exactCommitProven: deployment?.commit === options.commit,
       productionAliasProven: aliases.includes(PRODUCTION_DOMAIN),
     }),
+    diagnosticReceipt: false,
     mutationPerformed: options.mode === "apply",
     sensitiveValuesRecorded: false,
   });
@@ -655,23 +771,46 @@ async function main() {
     ok: passed,
     mode: options.mode,
     output,
+    readyToApply: true,
+    blockerCodes: [],
     deploymentCreated: created,
     deploymentId: deployment?.id ?? null,
     readyState: deployment?.readyState ?? null,
     exactCommitProven: deployment?.commit === options.commit,
     productionAliasProven: aliases.includes(PRODUCTION_DOMAIN),
+    diagnosticReceipt: false,
     mutationPerformed: options.mode === "apply",
     sensitiveValuesRecorded: false,
   }, null, 2)}\n`);
   if (!passed) process.exit(1);
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
+  const failure = safeFailure(error);
+  let diagnosticOutput = null;
+  let diagnosticReceiptError = null;
+  if (activeOptions?.mode === "plan" && !activeOptions.selfTest) {
+    try {
+      diagnosticOutput = await writePlanFailureReceipt(activeOptions, error);
+    } catch (receiptError) {
+      diagnosticReceiptError = safeFailure(receiptError);
+    }
+  }
   process.stderr.write(`${JSON.stringify({
     ok: false,
-    error: error instanceof Error && "code" in error ? error.code : "VERCEL_DEPLOY_FAILED",
-    message: error instanceof Error ? error.message : String(error),
-    details: error instanceof Error && "details" in error ? error.details : undefined,
+    error: failure.code,
+    message: failure.message,
+    details: failure.details,
+    blockerCodes: [
+      failure.code,
+      ...deploymentBoundaryBlockers(activePlan)
+        .map((item) => item.code)
+        .filter((code) => code !== failure.code),
+    ],
+    diagnosticReceiptWritten: Boolean(diagnosticOutput),
+    diagnosticOutput,
+    diagnosticReceiptError,
+    mutationPerformed: false,
     sensitiveValuesRecorded: false,
   }, null, 2)}\n`);
   process.exit(1);
