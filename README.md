@@ -1,8 +1,8 @@
 # EVAVO Vector Studio
 
-EVAVO Vector Studio is a governed raster-to-vector and motion-production workspace for reconstructing logos, icons, line art, illustrations and selected photographic sources as editable vector assets.
+EVAVO Vector Studio is a governed raster-to-vector and motion-production workspace for reconstructing logos, icons, line art, illustrations and selected photographic sources as editable, web, motion and print vector assets.
 
-The system does not call one automatic trace “finished”. It inspects the source, creates bounded candidates, measures visual equivalence, records geometry and topology evidence, selects transparently and keeps professional approval separate from machine completion.
+The system does not call one automatic trace “finished”. It inspects visible source content, creates bounded candidates, measures visual equivalence, records geometry and topology evidence, packages the selected result for an explicit delivery intent and keeps professional approval separate from machine completion.
 
 ## Available production surfaces
 
@@ -13,15 +13,21 @@ Available through the browser, authenticated HTTP API, CLI, MCP and resumable ba
 - guarded static PNG, JPEG, WebP, GIF, BMP and single-page classic TIFF preflight;
 - pre-decode rejection of APNG, animated GIF, animated WebP, MPO JPEG, multi-page TIFF and BigTIFF;
 - 25 MiB encoded-input and 40 million decoded-pixel limits;
+- alpha-aware visible-content bounds and colour analysis that ignores hidden RGB beneath fully transparent pixels;
 - native RGBA decoding and spline reconstruction;
 - automatic or explicit logo, icon, line-art, illustration and photo profiles;
 - adaptive base, fidelity and economy candidates under source-pixel budgets;
-- safe multipass SVG optimisation;
+- editable, web, motion and print delivery profiles;
+- deterministic collision-safe stable path IDs for editable and motion outputs;
+- responsive root-dimension packaging for web and motion only when a valid `viewBox` exists;
+- safe multipass SVG optimisation with delivery-transform safety rollback;
 - SVG safety, geometry, topology and editability inspection;
 - alpha-aware multi-scale render comparison;
 - optional visual-difference heatmap PNG with selected-candidate binding and SHA-256;
 - browser verification of the base64 difference PNG before display or download;
 - no production auto-approval.
+
+See [`docs/DELIVERY-PROFILES.md`](docs/DELIVERY-PROFILES.md) for the governed packaging contract.
 
 ### Animated SVG
 
@@ -73,6 +79,7 @@ The `evavo-vector-batch` CLI provides a crash-resumable local runner for ChatGPT
 - exclusive runner locks and stale-lock recovery;
 - immutable manifest SHA-256 per job ID;
 - input revision SHA-256 per item;
+- delivery intent retained inside the immutable operation revision;
 - output receipt re-verification before reuse;
 - interrupted-item recovery;
 - `continue` and `fail-fast` modes;
@@ -153,7 +160,7 @@ HTTP mode verifies service discovery before acquiring a lease, validates downloa
 Set-Location C:\GitRepos\evavo-vector-studio
 git pull origin main
 corepack enable
-pnpm install
+pnpm install --frozen-lockfile
 pnpm check
 pnpm dev
 ```
@@ -171,7 +178,7 @@ For protected production deployment, configure a long server-only `VECTOR_API_TO
 
 ### Trace workspace
 
-The trace workspace previews the selected raster locally, resolves a trace profile, runs adaptive or single-candidate reconstruction, compares source and selected SVG, verifies optional difference evidence, displays topology and geometry, and downloads the SVG and optional PNG separately.
+The trace workspace previews the selected raster locally, resolves a trace profile, runs adaptive or single-candidate reconstruction, compares source and selected SVG, verifies optional difference evidence, displays topology and geometry, applies the selected editable, web, motion or print delivery profile, and downloads the SVG and optional PNG separately.
 
 White regions in the visual-difference heatmap are measured matches. Red regions identify measured difference using a declared amplification. This evidence does not replace curve, negative-space, compound-path or brand review.
 
@@ -196,21 +203,26 @@ Every browser output remains `human-review-required` or `review-required`.
 ## Single-file CLI
 
 ```powershell
-# Inspect one raster
+# Inspect one raster with alpha-aware visible-content evidence
 pnpm vector:raster:inspect -- .\fixtures\mark.png
 
-# Trace one raster, including optional difference evidence
+# Trace one raster as an editable master with optional difference evidence
 pnpm vector:trace -- `
   .\fixtures\mark.png `
-  --out .\outputs\mark.vector.svg `
+  --out .\outputs\mark.editable.svg `
   --profile logo `
   --candidate-mode adaptive `
+  --delivery-profile editable `
+  --stable-id-prefix mark-shape `
   --diff-out .\outputs\mark.difference.png `
   --difference-max-dimension 512
 
-# Inspect and optimise SVG
+# Package an existing SVG for responsive web delivery
 pnpm vector:inspect -- .\fixtures\mark.svg
-pnpm vector:optimise -- .\fixtures\mark.svg --out .\outputs\mark.optimised.svg
+pnpm vector:optimise -- `
+  .\fixtures\mark.svg `
+  --out .\outputs\mark.web.svg `
+  --delivery-profile web
 
 # Animated SVG
 pnpm vector:motion:validate -- .\fixtures\motion\gentle-entrance.motion.json
@@ -278,7 +290,7 @@ $env:VECTOR_MCP_ALLOWED_ROOTS = "C:\GitRepos\evavo-vector-studio;C:\EVAVO\Vector
 pnpm vector:mcp
 ```
 
-MCP contract `1.4` exposes fifteen tools, including:
+MCP contract `1.5` exposes fifteen tools, including:
 
 ```text
 vector_trace_raster
@@ -293,7 +305,7 @@ vector_run_batch
 vector_inspect_batch
 ```
 
-The Lottie, dotLottie and durable batch MCP operations use canonical allowed roots, new-file-only transactions and receipt-only results. Generated SVG, PNG, Lottie JSON and ZIP bodies remain outside model context. MCP batches are paginated, cancellation-aware and resumable when invoked again, accept at most 100 manifest items, and are not a hosted background queue.
+The raster and SVG tools expose editable, web, motion and print delivery profiles with alpha-aware source evidence, stable IDs and safety rollback. The Lottie, dotLottie and durable batch MCP operations use canonical allowed roots, new-file-only transactions and receipt-only results. Generated SVG, PNG, Lottie JSON and ZIP bodies remain outside model context. MCP batches are paginated, cancellation-aware and resumable when invoked again, accept at most 100 manifest items, and are not a hosted background queue.
 
 ## Authenticated API
 
@@ -328,7 +340,7 @@ See [`docs/WORKER-API.md`](docs/WORKER-API.md).
 
 Machine completion, structural validity, measured render quality, archive loading and production approval are separate states.
 
-The system can retain safety checks, settings, revisions, candidate selection, topology, render metrics, hashes, archive structure and output receipts. It cannot automatically establish ideal Bézier placement, semantic layer design, optical brand correction, creative motion direction or cross-player pixel equivalence.
+The system can retain source visibility, safety checks, delivery settings, revisions, candidate selection, topology, render metrics, stable IDs, hashes, archive structure and output receipts. It cannot automatically establish ideal Bézier placement, semantic layer design, optical brand correction, creative motion direction, print-production fitness or cross-player pixel equivalence.
 
 Production auto-approval is unavailable. All generated assets remain review-required.
 
@@ -336,8 +348,8 @@ Production auto-approval is unavailable. All generated assets remain review-requ
 
 ```text
 apps/web                  trace workspace, Motion Director and authenticated APIs
-packages/vector-core      SVG safety, geometry and topology
-packages/raster-engine    raster preflight, reconstruction and visual evidence
+packages/vector-core      SVG safety, geometry, topology and delivery packaging
+packages/raster-engine    raster preflight, alpha-aware analysis, reconstruction and visual evidence
 packages/motion-engine    governed animated SVG
 packages/lottie-engine    Lottie JSON and deterministic dotLottie
 packages/job-engine       persistent resumable batch state and runner
@@ -360,6 +372,7 @@ docs                      architecture, API, CLI, MCP, motion, archive and job c
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - [`docs/QUALITY-EVIDENCE.md`](docs/QUALITY-EVIDENCE.md)
 - [`docs/INPUT-SAFETY.md`](docs/INPUT-SAFETY.md)
+- [`docs/DELIVERY-PROFILES.md`](docs/DELIVERY-PROFILES.md)
 - [`docs/CLI.md`](docs/CLI.md)
 - [`docs/API.md`](docs/API.md)
 - [`docs/MOTION.md`](docs/MOTION.md)
@@ -379,4 +392,4 @@ docs                      architecture, API, CLI, MCP, motion, archive and job c
 
 The EVAVO website hub integration remains a signed federated candidate. The repository does not mark itself released until deployment, authentication, host limits, signed launch and live smoke evidence are verified.
 
-Preserve source intent. Reconstruct deliberate geometry. Minimise unnecessary anchors. Keep outputs editable. Direct motion intentionally. Translate formats explicitly. Record material decisions. Reject unsafe or misleading results instead of silently producing something different.
+Preserve source intent. Reconstruct deliberate geometry. Minimise unnecessary anchors. Keep outputs editable. Package for the real destination. Direct motion intentionally. Translate formats explicitly. Record material decisions. Reject unsafe or misleading results instead of silently producing something different.
