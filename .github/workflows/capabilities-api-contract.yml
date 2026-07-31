@@ -13,7 +13,7 @@ on:
       - "packages/lottie-engine/**"
       - "packages/job-engine/**"
       - "packages/worker-engine/**"
-      - "scripts/check-capabilities-api-contract.mjs"
+      - "scripts/check-capability-discovery.mjs"
       - "docs/CAPABILITIES.md"
       - ".github/workflows/capabilities-api-contract.yml"
   pull_request:
@@ -27,7 +27,7 @@ on:
       - "packages/lottie-engine/**"
       - "packages/job-engine/**"
       - "packages/worker-engine/**"
-      - "scripts/check-capabilities-api-contract.mjs"
+      - "scripts/check-capability-discovery.mjs"
       - "docs/CAPABILITIES.md"
       - ".github/workflows/capabilities-api-contract.yml"
 
@@ -60,7 +60,7 @@ jobs:
 
       - name: Verify capability discovery contract
         id: contract
-        run: node scripts/check-capabilities-api-contract.mjs
+        run: node scripts/check-capability-discovery.mjs
 
       - name: Install exact dependencies
         run: pnpm install --frozen-lockfile
