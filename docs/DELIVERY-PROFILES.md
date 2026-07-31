@@ -15,9 +15,9 @@ All profiles inherit the same source and safety rules:
 - unsafe profile transforms use safety rollback rather than retaining a broken result;
 - human review remains required for curves, topology, negative space, brand fidelity, motion timing, accessibility and destination compatibility.
 
-## `editable`
+## Editable master (`editable`)
 
-The editable master profile is the default for tracing, SVG optimisation, API, CLI and MCP calls.
+The editable master profile is the default for tracing, SVG optimisation, API, CLI, MCP, durable batches and object-backed worker jobs.
 
 It:
 
@@ -30,7 +30,7 @@ It:
 
 Default generated IDs use `vector-shape-0001`, `vector-shape-0002` and so on. A custom `stableIdPrefix` is accepted only when it begins with a letter or underscore and contains only letters, numbers, underscores, periods or hyphens.
 
-## `web`
+## Web compact (`web`)
 
 The web compact profile prepares a safe responsive SVG without inventing motion targets.
 
@@ -45,7 +45,7 @@ It:
 
 The result remains an SVG asset, not a complete performance guarantee. Review bytes, path count, estimated anchors, paint order, browser rendering and the intended loading context.
 
-## `motion`
+## Motion ready (`motion`)
 
 The motion ready profile creates deterministic animation targets while retaining responsive scaling.
 
@@ -60,7 +60,7 @@ It:
 
 Motion readiness does not imply that every reconstructed path should move. A human must still define semantic groups, transform origins, timing, easing and reduced-motion behaviour.
 
-## `print`
+## Print safe (`print`)
 
 The print safe profile performs conservative document normalisation while preserving explicit root dimensions.
 
@@ -94,7 +94,7 @@ safetyRollbackApplied
 
 Raster traces include the same fields inside selected-candidate evidence. CLI and MCP operations return file receipts rather than embedding generated SVG or PNG bodies in agent context.
 
-## Examples
+## Direct examples
 
 CLI tracing:
 
@@ -125,6 +125,36 @@ MCP trace options:
   "evidenceLevel": "summary"
 }
 ```
+
+## Durable batch manifests
+
+The same delivery contract is accepted by `trace-raster` and `optimise-svg` batch items. The selected profile and optional stable ID prefix are part of the canonical manifest revision, so changing delivery intent under an existing job ID fails as manifest drift rather than silently reusing an incompatible output.
+
+```json
+{
+  "version": "1.0",
+  "id": "brand-motion-assets-v1",
+  "name": "Motion-ready brand assets",
+  "failureMode": "continue",
+  "items": [
+    {
+      "id": "primary-mark",
+      "operation": "optimise-svg",
+      "spec": {
+        "inputPath": "source/primary-mark.svg",
+        "outputPath": "output/primary-mark.motion.svg",
+        "evidenceOutputPath": "output/primary-mark.motion.evidence.json",
+        "deliveryProfile": "motion",
+        "stableIdPrefix": "primary-mark"
+      }
+    }
+  ]
+}
+```
+
+The local batch CLI, MCP durable batch tools and their shared operation registry retain compact delivery evidence in job state while writing full evidence to the declared JSON output. Object-backed worker jobs use the same profile vocabulary through their separately validated payload boundary. All automated surfaces default to `editable` when no profile is supplied.
+
+`stableIdPrefix` is valid only with `editable` and `motion`. `web` and `print` reject a supplied prefix rather than ignoring it. Completed items are reused only when both their canonical input revision and output receipts still verify.
 
 ## Approval boundary
 
