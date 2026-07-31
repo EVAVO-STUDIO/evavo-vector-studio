@@ -62,6 +62,7 @@ jobs:
       - name: Verify exact deployer and live-proof self-tests
         run: |
           node scripts/deploy-vector-studio-vercel.mjs --self-test
+          node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test
           node scripts/create-vector-live-launch-token.mjs --self-test
           node scripts/verify-live-capability-discovery.mjs --self-test
 
@@ -153,6 +154,7 @@ jobs:
       - name: Verify provisioning, deployment and live-proof self-tests
         run: |
           node scripts/provision-vector-studio-vercel.mjs --self-test
+          node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test
           node scripts/deploy-vector-studio-vercel.mjs --self-test
           node scripts/create-vector-live-launch-token.mjs --self-test
           node scripts/verify-live-capability-discovery.mjs --self-test
@@ -168,8 +170,7 @@ jobs:
           VECTOR_WORKER_API_TOKEN: ${{ secrets.VECTOR_WORKER_API_TOKEN }}
         run: |
           mkdir -p .ci
-          node scripts/provision-vector-studio-vercel.mjs \
-            --mode plan \
+          node scripts/plan-vector-studio-vercel-provisioning.mjs \
             --commit "${{ inputs.commit }}" \
             --out .ci/vector-vercel-provision-before-deploy.json
 
