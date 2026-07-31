@@ -116,6 +116,14 @@ state: human-review-required
 
 Every asset still needs the review appropriate to its source, geometry, topology, brand, accessibility, motion, player, print or delivery context.
 
+## Source agreement and dependency closure
+
+The HTTP endpoint is intentionally a dependency-light runtime route. It imports only the workspace packages needed for live capability constants rather than loading the durable job runner solely to expose two static batch values.
+
+The dependency-free contract checks that every `@evavo/*` workspace import is declared by the Vector web package. It also compares the locally exposed batch contract version and maximum item count with the canonical job-engine source constants. A source version change, an undeclared import or a stale mirrored value therefore fails before dependency installation, TypeScript or the production build.
+
+The service version in the capability response is also checked against the root package version. The obsolete duplicate checker is required to remain absent so there is one canonical discovery contract.
+
 ## Validation
 
 The dependency-free contract is:
