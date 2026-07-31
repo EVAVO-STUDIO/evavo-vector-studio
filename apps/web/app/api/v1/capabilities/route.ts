@@ -27,8 +27,8 @@ export const dynamic = "force-dynamic";
 
 const VECTOR_STUDIO_VERSION = "0.4.0" as const;
 const CAPABILITIES_CONTRACT_VERSION = "1.0" as const;
-const MCP_CONTRACT_VERSION = "1.5" as const;
-const MCP_TOOL_COUNT = 15;
+const MCP_CONTRACT_VERSION = "1.6" as const;
+const MCP_TOOL_COUNT = 16;
 const BATCH_CONTRACT_VERSION = "1.0" as const;
 const MAX_BATCH_ITEMS = 1_000;
 const MCP_MAX_BATCH_ITEMS = 100;
