@@ -49,9 +49,13 @@ const files = Object.freeze({
   coreTests: "packages/vector-core/src/print-preflight.test.ts",
   cli: "packages/cli/src/print-cli.ts",
   cliPackage: "packages/cli/package.json",
+  mcpPrint: "packages/mcp/src/print-tools.ts",
+  mcpPrintTests: "packages/mcp/src/print-tools.test.ts",
+  mcpServer: "packages/mcp/src/server.ts",
   route: "apps/web/app/api/v1/print/preflight/route.ts",
   capabilities: "apps/web/app/api/v1/capabilities/route.ts",
   documentation: "docs/PRINT-PREFLIGHT.md",
+  capabilityDocumentation: "docs/CAPABILITIES.md",
   workflow: ".github/workflows/print-preflight-contract.yml",
 });
 const sources = Object.fromEntries(
@@ -127,6 +131,50 @@ forbidTokens(files.cli, sources.cli, [
   "appendFile(",
 ]);
 
+requireTokens(files.mcpPrint, sources.mcpPrint, [
+  'VECTOR_MCP_PRINT_CONTRACT_VERSION = "1.0"',
+  "VECTOR_MCP_PRINT_MAX_INPUT_BYTES",
+  '"vector_preflight_svg_print"',
+  "preflightSvgForPrint",
+  "pathPolicy.resolveInputFile",
+  "VECTOR_MCP_CANCELLED",
+  "outputWritten: false",
+  "generatedBodiesInModelContext: false",
+  "productionApproval: false",
+  'approval: "review-required"',
+  'mcpContractVersion: "1.6"',
+  "printPreflightEvidence: true",
+  "printPreflightWritesFiles: false",
+  "printProductionApproval: false",
+]);
+forbidTokens(files.mcpPrint, sources.mcpPrint, [
+  "resolveOutputFile",
+  "commitNewVectorFiles",
+  "writeFile(",
+  "appendFile(",
+  "generatedBodiesInModelContext: true",
+  "outputWritten: true",
+  "productionApproval: true",
+  'approval: "approved"',
+]);
+requireTokens(files.mcpPrintTests, sources.mcpPrintTests, [
+  "exposes print preflight through the MCP handshake and writes no file",
+  "fails cancellation before reading an SVG",
+  "rejects non-SVG input through the stable MCP error boundary",
+  'name: "vector_preflight_svg_print"',
+  "VECTOR_MCP_SERVER_CONTRACT_VERSION",
+  "printPreflightWritesFiles",
+  "productionApproval",
+  "assert.deepEqual(await readdir(root), before)",
+]);
+requireTokens(files.mcpServer, sources.mcpServer, [
+  'VECTOR_MCP_SERVER_CONTRACT_VERSION = "1.6"',
+  "registerVectorMcpPrintTools",
+  "extendVectorMcpPrintCapabilities",
+  "printOperations",
+  "print preflight",
+]);
+
 requireTokens(files.route, sources.route, [
   'export const runtime = "nodejs"',
   'export const dynamic = "force-dynamic"',
@@ -170,6 +218,8 @@ forbidTokens(files.route, sources.route, [
 
 requireTokens(files.capabilities, sources.capabilities, [
   "SVG_PRINT_PREFLIGHT_CONTRACT_VERSION",
+  'MCP_CONTRACT_VERSION = "1.6"',
+  "MCP_TOOL_COUNT = 16",
   'printPreflight: "/api/v1/print/preflight"',
   'printPreflight: "evavo-vector-print"',
   "printPreflight: Object.freeze({",
@@ -200,12 +250,21 @@ requireTokens(files.documentation, sources.documentation, [
   "review-required",
   "pnpm print-api:check",
 ]);
+requireTokens(files.capabilityDocumentation, sources.capabilityDocumentation, [
+  "vector_preflight_svg_print",
+  "MCP contract `1.6`",
+  "16 tools",
+  "writes no file",
+  "never places SVG markup in model context",
+]);
 
 requireTokens(files.workflow, sources.workflow, [
   "name: Vector Studio print preflight",
   '"apps/web/app/api/v1/print/preflight/**"',
   '"packages/vector-core/src/print-preflight.ts"',
   '"packages/cli/src/print-cli.ts"',
+  '"packages/mcp/src/print-tools.ts"',
+  '"packages/mcp/src/print-tools.test.ts"',
   "node scripts/check-print-preflight-api-contract.mjs",
   "pnpm install --frozen-lockfile",
   "Build canonical workspace packages",
@@ -215,6 +274,7 @@ requireTokens(files.workflow, sources.workflow, [
   'test "$DEPENDENCIES_OUTCOME" = "success"',
   "pnpm --filter @evavo/vector-core test",
   "pnpm --filter @evavo/vector-cli test",
+  "pnpm --filter @evavo/vector-mcp test",
   "pnpm --filter @evavo/vector-web typecheck",
   "pnpm exec turbo run build --filter=@evavo/vector-web",
   '"print/vector-preflight-contract"',
@@ -243,10 +303,13 @@ process.stdout.write(`${JSON.stringify({
   contractVersion: "1.0",
   endpoint: "/api/v1/print/preflight",
   cli: "evavo-vector-print",
+  mcpTool: "vector_preflight_svg_print",
+  mcpContractVersion: "1.6",
   profiles: ["commercial", "large-format", "cut-vinyl", "screen-print"],
   deterministic: true,
   readOnly: true,
-  workspaceDependenciesBuiltBeforeCliTests: true,
+  receiptOnly: true,
+  workspaceDependenciesBuiltBeforeCliAndMcpTests: true,
   productionApproval: false,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
