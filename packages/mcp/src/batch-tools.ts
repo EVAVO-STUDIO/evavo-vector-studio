@@ -204,6 +204,7 @@ function itemSummary(item: BatchItemState): Readonly<Record<string, unknown>> {
     startedAt: item.startedAt,
     finishedAt: item.finishedAt,
     outputs: item.outputs,
+    evidence: item.evidence,
     error: item.error,
   });
 }
@@ -421,6 +422,12 @@ export function extendVectorMcpBatchCapabilities(
       contractVersion: VECTOR_MCP_BATCH_CONTRACT_VERSION,
       manifestContractVersion: BATCH_CONTRACT_VERSION,
       operations: VECTOR_BATCH_OPERATION_NAMES,
+      deliveryProfiles: Object.freeze(["editable", "web", "motion", "print"]),
+      defaultDeliveryProfile: "editable",
+      stableIdProfiles: Object.freeze(["editable", "motion"]),
+      alphaAwareRasterAnalysis: true,
+      deliveryEvidenceRetained: true,
+      sharedWorkerRegistry: true,
       maximumManifestItems: VECTOR_MCP_BATCH_MAX_ITEMS,
       itemPageLimit: MAX_ITEM_LIMIT,
       eventLimit: MAX_EVENT_LIMIT,
@@ -435,6 +442,7 @@ export function extendVectorMcpBatchCapabilities(
     outputs: Object.freeze({
       ...baseOutputs,
       durableBatch: true,
+      batchDeliveryEvidence: true,
       hostedBackgroundQueue: false,
     }),
   });
@@ -463,7 +471,7 @@ export function registerVectorMcpBatchTools(
     {
       title: "Run or Resume Durable Vector Batch",
       description:
-        "Run or resume one bounded batch-v1 manifest using persistent local state. Returns paginated status and file receipts, never generated SVG, PNG, Lottie JSON or archive bodies.",
+        "Run or resume one bounded batch-v1 manifest using persistent local state. Returns paginated status, delivery evidence and file receipts, never generated SVG, PNG, Lottie JSON or archive bodies.",
       inputSchema: sharedSchema,
     },
     async (input, extra) =>
@@ -475,7 +483,7 @@ export function registerVectorMcpBatchTools(
     {
       title: "Inspect Durable Vector Batch",
       description:
-        "Inspect retained batch progress, paginated item receipts, failures, lock state and recent events without executing production work.",
+        "Inspect retained batch progress, paginated delivery evidence, item receipts, failures, lock state and recent events without executing production work.",
       inputSchema: sharedSchema,
     },
     async (input, extra) =>
