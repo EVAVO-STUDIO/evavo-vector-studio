@@ -1,6 +1,7 @@
 import { inspectSvgTopology, type SvgTopologyInspection } from "./svg-topology.js";
 
 export type SvgFindingSeverity = "error" | "warning" | "info";
+export type SvgDeliveryProfile = "editable" | "web" | "motion" | "print";
 
 export type SvgFinding = Readonly<{
   code: string;
@@ -55,15 +56,43 @@ export type SvgInspection = Readonly<{
   findings: readonly SvgFinding[];
 }>;
 
+export type SvgOptimisationOptions = Readonly<{
+  profile?: SvgDeliveryProfile;
+  stableIdPrefix?: string;
+}>;
+
+export type SvgOptimisationEvidence = Readonly<{
+  profile: SvgDeliveryProfile;
+  passes: readonly string[];
+  stableIds: Readonly<{
+    enabled: boolean;
+    prefix: string | null;
+    added: number;
+    preserved: number;
+    collisionSkips: number;
+  }>;
+  metadataElementsRemoved: number;
+  paintValuesNormalised: number;
+  rootDimensions: "preserved" | "removed-responsive" | "not-present";
+  safetyRollbackApplied: boolean;
+  inputValid: boolean;
+  outputValid: boolean;
+  localReferenceCountPreserved: boolean;
+  unresolvedReferenceCountPreserved: boolean;
+}>;
+
 export type SvgOptimisationResult = Readonly<{
   svg: string;
   beforeBytes: number;
   afterBytes: number;
   bytesSaved: number;
+  bytesDelta: number;
   inspection: SvgInspection;
+  evidence: SvgOptimisationEvidence;
 }>;
 
 const NUMBER = "[-+]?(?:(?:\\d+\\.?\\d*)|(?:\\.\\d+))(?:[eE][-+]?\\d+)?";
+const STABLE_ID_PREFIX = /^[A-Za-z_][A-Za-z0-9_.-]{0,47}$/;
 const PATH_COMMAND_PARAMETERS: Readonly<Record<string, number>> = Object.freeze({
   M: 2,
   L: 2,
@@ -261,22 +290,197 @@ export function inspectSvg(source: string): SvgInspection {
   });
 }
 
-export function optimiseSvg(source: string): SvgOptimisationResult {
-  const beforeBytes = Buffer.byteLength(source, "utf8");
-  const svg = source
+function normaliseDocument(source: string): string {
+  return source
     .replace(/^\uFEFF/, "")
     .replace(/<\?xml[^>]*>\s*/gi, "")
     .replace(/<!--(?!\[if)[\s\S]*?-->/g, "")
     .replace(/>\s+</g, "><")
-    .replace(/\s{2,}/g, " ")
     .replace(/\s+\/>/g, "/>")
     .trim();
+}
+
+function profileAddsStableIds(profile: SvgDeliveryProfile): boolean {
+  return profile === "editable" || profile === "motion";
+}
+
+function resolveStableIdPrefix(profile: SvgDeliveryProfile, requested?: string): string {
+  const prefix = requested?.trim() || (profile === "motion" ? "motion-shape" : "vector-shape");
+  if (!STABLE_ID_PREFIX.test(prefix)) {
+    throw new Error("SVG_STABLE_ID_PREFIX_INVALID");
+  }
+  return prefix;
+}
+
+function addStablePathIds(
+  source: string,
+  enabled: boolean,
+  prefix: string | null,
+): Readonly<{ svg: string; added: number; preserved: number; collisionSkips: number }> {
+  const existingIds = new Set<string>();
+  for (const match of source.matchAll(/\sid\s*=\s*(["'])([\s\S]*?)\1/gi)) {
+    const id = match[2]?.trim();
+    if (id) existingIds.add(id);
+  }
+
+  let added = 0;
+  let preserved = 0;
+  let collisionSkips = 0;
+  let pathPosition = 0;
+  const svg = source.replace(/<path\b[^>]*>/gi, (tag) => {
+    pathPosition += 1;
+    if (/\sid\s*=\s*(["'])/i.test(tag)) {
+      preserved += 1;
+      return tag;
+    }
+    if (!enabled || !prefix) return tag;
+
+    const base = `${prefix}-${String(pathPosition).padStart(4, "0")}`;
+    let candidate = base;
+    let suffix = 2;
+    while (existingIds.has(candidate)) {
+      collisionSkips += 1;
+      candidate = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    existingIds.add(candidate);
+    added += 1;
+    return tag.replace(/^<path\b/i, `<path id="${candidate}"`);
+  });
+
+  return Object.freeze({ svg, added, preserved, collisionSkips });
+}
+
+function canonicalHex(value: string): string {
+  const lower = value.toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(lower)) {
+    const [, r1, r2, g1, g2, b1, b2] = lower;
+    if (r1 === r2 && g1 === g2 && b1 === b2) return `#${r1}${g1}${b1}`;
+  }
+  return lower;
+}
+
+function normalisePaintValues(source: string): Readonly<{ svg: string; count: number }> {
+  let normalised = 0;
+  const svg = source.replace(
+    /(\s)(fill|stroke|stop-color|flood-color|lighting-color|color)\s*=\s*(["'])(#[0-9a-fA-F]{3,8})\3/gi,
+    (_match, whitespace: string, name: string, quote: string, value: string) => {
+      const canonical = canonicalHex(value);
+      if (canonical !== value) normalised += 1;
+      return `${whitespace}${name.toLowerCase()}=${quote}${canonical}${quote}`;
+    },
+  );
+  return Object.freeze({ svg, count: normalised });
+}
+
+function removeMetadata(source: string): Readonly<{ svg: string; count: number }> {
+  let removed = 0;
+  const svg = source.replace(/<metadata\b[^>]*\/>|<metadata\b[^>]*>[\s\S]*?<\/metadata>/gi, () => {
+    removed += 1;
+    return "";
+  });
+  return Object.freeze({ svg, count: removed });
+}
+
+function removeResponsiveRootDimensions(source: string): Readonly<{
+  svg: string;
+  state: "preserved" | "removed-responsive" | "not-present";
+}> {
+  const root = source.match(/^<svg\b[^>]*>/i)?.[0] ?? "";
+  const hasWidthOrHeight = /\s(?:width|height)\s*=\s*(["'])/i.test(root);
+  if (!hasWidthOrHeight) return Object.freeze({ svg: source, state: "not-present" });
+  const updatedRoot = root.replace(/\s(?:width|height)\s*=\s*(["'])[^"']*\1/gi, "");
+  return Object.freeze({
+    svg: source.replace(root, updatedRoot),
+    state: updatedRoot === root ? "preserved" : "removed-responsive",
+  });
+}
+
+export function optimiseSvg(
+  source: string,
+  options: SvgOptimisationOptions = {},
+): SvgOptimisationResult {
+  const beforeBytes = Buffer.byteLength(source, "utf8");
+  const profile = options.profile ?? "editable";
+  const inputInspection = inspectSvg(source);
+  const passes: string[] = ["document-normalisation"];
+  let svg = normaliseDocument(source);
+
+  const stableIdsEnabled = profileAddsStableIds(profile);
+  const stableIdPrefix = stableIdsEnabled ? resolveStableIdPrefix(profile, options.stableIdPrefix) : null;
+  const stable = addStablePathIds(svg, stableIdsEnabled, stableIdPrefix);
+  svg = stable.svg;
+  if (stableIdsEnabled) passes.push("stable-path-ids");
+
+  let metadataElementsRemoved = 0;
+  let paintValuesNormalised = 0;
+  let rootDimensions: SvgOptimisationEvidence["rootDimensions"] = /\s(?:width|height)\s*=\s*(["'])/i.test(svg.match(/^<svg\b[^>]*>/i)?.[0] ?? "")
+    ? "preserved"
+    : "not-present";
+  const stableInspection = inspectSvg(svg);
+
+  if (profile === "web" || profile === "motion") {
+    const metadata = removeMetadata(svg);
+    svg = metadata.svg;
+    metadataElementsRemoved = metadata.count;
+    if (metadata.count > 0) passes.push("metadata-removal");
+  }
+
+  const paint = normalisePaintValues(svg);
+  svg = paint.svg;
+  paintValuesNormalised = paint.count;
+  if (paint.count > 0) passes.push("paint-value-normalisation");
+
+  if ((profile === "web" || profile === "motion") && stableInspection.viewBox) {
+    const dimensions = removeResponsiveRootDimensions(svg);
+    svg = dimensions.svg;
+    rootDimensions = dimensions.state;
+    if (dimensions.state === "removed-responsive") passes.push("responsive-root-dimensions");
+  }
+
+  let inspection = inspectSvg(svg);
+  let safetyRollbackApplied = false;
+  if (stableInspection.valid && !inspection.valid) {
+    svg = stable.svg;
+    inspection = stableInspection;
+    metadataElementsRemoved = 0;
+    paintValuesNormalised = 0;
+    rootDimensions = /\s(?:width|height)\s*=\s*(["'])/i.test(svg.match(/^<svg\b[^>]*>/i)?.[0] ?? "")
+      ? "preserved"
+      : "not-present";
+    passes.splice(stableIdsEnabled ? 2 : 1);
+    passes.push("safety-rollback");
+    safetyRollbackApplied = true;
+  }
+
   const afterBytes = Buffer.byteLength(svg, "utf8");
   return Object.freeze({
     svg,
     beforeBytes,
     afterBytes,
     bytesSaved: Math.max(0, beforeBytes - afterBytes),
-    inspection: inspectSvg(svg),
+    bytesDelta: afterBytes - beforeBytes,
+    inspection,
+    evidence: Object.freeze({
+      profile,
+      passes: Object.freeze(passes),
+      stableIds: Object.freeze({
+        enabled: stableIdsEnabled,
+        prefix: stableIdPrefix,
+        added: stable.added,
+        preserved: stable.preserved,
+        collisionSkips: stable.collisionSkips,
+      }),
+      metadataElementsRemoved,
+      paintValuesNormalised,
+      rootDimensions,
+      safetyRollbackApplied,
+      inputValid: inputInspection.valid,
+      outputValid: inspection.valid,
+      localReferenceCountPreserved:
+        inputInspection.topology.localReferenceCount === inspection.topology.localReferenceCount,
+      unresolvedReferenceCountPreserved:
+        inputInspection.topology.unresolvedReferenceCount === inspection.topology.unresolvedReferenceCount,
+    }),
   });
 }
