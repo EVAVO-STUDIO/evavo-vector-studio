@@ -4,6 +4,7 @@ import path from "node:path";
 const root = process.cwd();
 const errors = [];
 const checkedFiles = new Set();
+const MCP_CONTRACT_VERSION = "1.5";
 
 function fail(message) {
   errors.push(message);
@@ -60,6 +61,7 @@ const files = {
   serverBatchTests: "packages/mcp/src/server-batch.test.ts",
   batchToolTests: "packages/mcp/src/batch-tools.test.ts",
   docs: "docs/MCP.md",
+  deliveryDocs: "docs/DELIVERY-PROFILES.md",
   batchDocs: "docs/BATCH.md",
   lottieDocs: "docs/LOTTIE.md",
   dotLottieDocs: "docs/DOTLOTTIE.md",
@@ -131,11 +133,16 @@ requireTokens(files.index, sources.index, [
 forbidTokens(files.index, sources.index, ["process.stdout", "console.log("]);
 
 requireTokens(files.server, sources.server, [
-  'VECTOR_MCP_SERVER_CONTRACT_VERSION = "1.4"',
+  'VECTOR_MCP_SERVER_CONTRACT_VERSION = "1.5"',
   "new McpServer(",
   "structuredContent: payload",
   "isError: true",
   "extra.signal",
+  'const deliveryProfileSchema = z.enum(["editable", "web", "motion", "print"]).optional()',
+  "stableIdPrefixSchema",
+  "deliveryProfile: deliveryProfileSchema",
+  "stableIdPrefix: stableIdPrefixSchema",
+  "Tracing and optimisation support editable, web, motion and print delivery profiles",
   "registerVectorMcpLottieTools",
   "registerVectorMcpDotLottieTools",
   "registerVectorMcpBatchTools",
@@ -147,24 +154,39 @@ requireTokens(files.server, sources.server, [
   "batchOperations",
   ...toolNames.slice(0, 9).map((name) => `"${name}"`),
 ]);
+forbidTokens(files.server, sources.server, [
+  "z.any()",
+  "z.unknown().optional(),\n        deliveryProfile",
+  'approval: "approved"',
+]);
 
 requireTokens(files.operations, sources.operations, [
-  'VECTOR_MCP_CONTRACT_VERSION = "1.1"',
+  'VECTOR_MCP_CONTRACT_VERSION = "1.2"',
   'transport: "stdio"',
   'outputMode: "new-files-only"',
   "atomicMultiFileCommit: true",
   "commitNewVectorFiles",
+  "RasterDeliveryProfile",
+  "resolveDeliveryOptions",
+  'deliveryProfile: result.evidence.output.deliveryProfile',
+  "stablePathIdCount: result.evidence.output.stablePathIdCount",
+  "optimiseSvg(source, delivery)",
   "includeDifferenceArtifact: Boolean(resolvedDifferencePath)",
   'evidenceLevel === "full"',
   "validateAnimatedSvgMotionSpec",
   "createAnimatedSvg(source, plan.normalized)",
   "inspectAnimatedSvg(source)",
-  "animatedSvg: true",
+  "alphaAwareAnalysis: true",
+  "deliveryProfiles: Object.freeze([\"editable\", \"web\", \"motion\", \"print\"])",
+  "responsiveWebSvg: true",
+  "motionReadySvg: true",
+  "printSafeSvg: true",
   'approval: "human-review-required"',
 ]);
 forbidTokens(files.operations, sources.operations, [
   "svg: result.svg",
   "differencePng: result.artifacts.differencePng",
+  'approval: "approved"',
 ]);
 
 requireTokens(files.lottieTools, sources.lottieTools, [
@@ -262,15 +284,8 @@ requireTokens(files.transaction, sources.transaction, [
   "...committed.map((item) => rm(item.targetPath, { force: true }))",
   'createHash("sha256")',
 ]);
-requireTokens(files.pathTests, sources.pathTests, [
-  "VECTOR_MCP_PATH_OUTSIDE_ROOT",
-  "VECTOR_MCP_OUTPUT_EXISTS",
-  "symlink",
-]);
-requireTokens(files.transactionTests, sources.transactionTests, [
-  "rolls back files already committed",
-  "returns byte and SHA-256 receipts",
-]);
+requireTokens(files.pathTests, sources.pathTests, ["VECTOR_MCP_PATH_OUTSIDE_ROOT", "VECTOR_MCP_OUTPUT_EXISTS", "symlink"]);
+requireTokens(files.transactionTests, sources.transactionTests, ["rolls back files already committed", "returns byte and SHA-256 receipts"]);
 
 requireTokens(files.serverTests, sources.serverTests, [
   "InMemoryTransport.createLinkedPair()",
@@ -302,16 +317,16 @@ requireTokens(files.serverBatchTests, sources.serverBatchTests, [
   '"VECTOR_MCP_BATCH_TOO_LARGE"',
   "doesNotMatch(JSON.stringify(firstPayload), /<svg",
 ]);
-requireTokens(files.batchToolTests, sources.batchToolTests, [
-  "AbortController",
-  "VECTOR_MCP_CANCELLED",
-  "retryable",
-  ".evavo-vector-jobs",
-  'error.code === "ENOENT"',
-]);
+requireTokens(files.batchToolTests, sources.batchToolTests, ["AbortController", "VECTOR_MCP_CANCELLED", "retryable", ".evavo-vector-jobs", 'error.code === "ENOENT"']);
 
 requireTokens(files.docs, sources.docs, [
-  "MCP contract version `1.4`",
+  "MCP contract version `1.5`",
+  "editable master",
+  "web compact",
+  "motion ready",
+  "print safe",
+  "deliveryProfile",
+  "stableIdPrefix",
   "vector_trace_raster",
   "vector_animate_svg",
   "vector_export_lottie",
@@ -326,26 +341,20 @@ requireTokens(files.docs, sources.docs, [
   "generated dotLottie archive bytes",
   "Human review",
 ]);
-requireTokens(files.batchDocs, sources.batchDocs, [
-  "MCP contract `1.4`",
-  "vector_run_batch",
-  "vector_inspect_batch",
-  "100 items",
-  "itemOffset",
-  "itemLimit",
-  "eventLimit",
-  "not a hosted background queue",
+requireTokens(files.deliveryDocs, sources.deliveryDocs, [
+  "# Vector delivery profiles",
+  "alpha-aware",
+  "editable",
+  "web",
+  "motion",
+  "print",
+  "stable path IDs",
+  "safety rollback",
+  "human review",
 ]);
-requireTokens(files.lottieDocs, sources.lottieDocs, [
-  "vector_export_lottie",
-  "vector_inspect_lottie",
-  "playerRenderValidation: not-yet-performed",
-]);
-requireTokens(files.dotLottieDocs, sources.dotLottieDocs, [
-  "vector_package_dotlottie",
-  "vector_inspect_dotlottie",
-  "browserArchiveLoadValidation: not-yet-performed",
-]);
+requireTokens(files.batchDocs, sources.batchDocs, ["MCP contract `1.5`", "vector_run_batch", "vector_inspect_batch", "100 items", "itemOffset", "itemLimit", "eventLimit", "not a hosted background queue"]);
+requireTokens(files.lottieDocs, sources.lottieDocs, ["vector_export_lottie", "vector_inspect_lottie", "playerRenderValidation: not-yet-performed"]);
+requireTokens(files.dotLottieDocs, sources.dotLottieDocs, ["vector_package_dotlottie", "vector_inspect_dotlottie", "browserArchiveLoadValidation: not-yet-performed"]);
 requireTokens(files.readme, sources.readme, [
   "vector_export_lottie",
   "vector_inspect_lottie",
@@ -353,7 +362,8 @@ requireTokens(files.readme, sources.readme, [
   "vector_inspect_dotlottie",
   "vector_run_batch",
   "vector_inspect_batch",
-  "MCP contract `1.4`",
+  "MCP contract `1.5`",
+  "editable, web, motion and print delivery profiles",
 ]);
 requireTokens(files.environment, sources.environment, ["VECTOR_MCP_ALLOWED_ROOTS"]);
 
@@ -361,7 +371,7 @@ if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-studio-mcp-contract",
     ok: false,
-    mcpContractVersion: "1.4",
+    mcpContractVersion: MCP_CONTRACT_VERSION,
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -370,8 +380,10 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-mcp-contract",
   ok: true,
-  mcpContractVersion: "1.4",
+  mcpContractVersion: MCP_CONTRACT_VERSION,
   tools: toolNames,
+  deliveryProfiles: ["editable", "web", "motion", "print"],
+  alphaAwareRasterAnalysis: true,
   generatedBodiesInModelContext: false,
   hostedBackgroundQueue: false,
   checkedFiles: [...checkedFiles].sort(),
