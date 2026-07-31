@@ -6,7 +6,12 @@ import {
   vectorizeRaw,
   type ImageData,
 } from "@neplex/vectorizer";
-import { inspectSvg, optimiseSvg, type SvgInspection } from "@evavo/vector-core";
+import {
+  inspectSvg,
+  optimiseSvg,
+  type SvgInspection,
+  type SvgOptimisationEvidence,
+} from "@evavo/vector-core";
 import { analyseDecodedRaster } from "./analysis.js";
 import { compareRasterToSvg } from "./comparison.js";
 import { createDifferenceArtifact } from "./difference.js";
@@ -28,6 +33,7 @@ import type {
   DecodedRaster,
   RasterAnalysis,
   RasterCandidateMode,
+  RasterDeliveryProfile,
   RasterInspectionOptions,
   RasterRenderComparison,
   RasterTraceEvidence,
@@ -72,7 +78,11 @@ function roundedDuration(start: number, end: number): number {
   return Math.round((end - start) * 100) / 100;
 }
 
-function outputEvidence(svg: string, inspection: SvgInspection): TraceOutputEvidence {
+function outputEvidence(
+  svg: string,
+  inspection: SvgInspection,
+  optimisation: SvgOptimisationEvidence,
+): TraceOutputEvidence {
   return Object.freeze({
     mimeType: "image/svg+xml",
     bytes: Buffer.byteLength(svg, "utf8"),
@@ -86,6 +96,13 @@ function outputEvidence(svg: string, inspection: SvgInspection): TraceOutputEvid
     subpathCount: inspection.geometry.subpathCount,
     straightSegmentCount: inspection.geometry.straightSegmentCount,
     curveSegmentCount: inspection.geometry.curveSegmentCount,
+    deliveryProfile: optimisation.profile,
+    stablePathIdCount: optimisation.stableIds.added + optimisation.stableIds.preserved,
+    stableIdPrefix: optimisation.stableIds.prefix,
+    optimisationPasses: optimisation.passes,
+    metadataElementsRemoved: optimisation.metadataElementsRemoved,
+    paintValuesNormalised: optimisation.paintValuesNormalised,
+    rootDimensions: optimisation.rootDimensions,
   });
 }
 
@@ -164,7 +181,25 @@ async function executeCandidate(
       throw rasterFailure("RASTER_TRACE_FAILED", `Trace candidate ${definition.id} failed during safe optimisation.`, error, 422);
     }
   }
-  svg = applyTitle(optimiseSvg(svg).svg, options.title);
+
+  let packaged;
+  try {
+    packaged = optimiseSvg(svg, {
+      profile: options.deliveryProfile ?? "editable",
+      stableIdPrefix: options.stableIdPrefix,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "SVG_STABLE_ID_PREFIX_INVALID") {
+      throw new RasterEngineError(
+        "RASTER_OPTIONS_INVALID",
+        "stableIdPrefix must begin with a letter or underscore and contain only letters, numbers, underscores, periods or hyphens.",
+        400,
+        { stableIdPrefix: options.stableIdPrefix },
+      );
+    }
+    throw rasterFailure("RASTER_OUTPUT_INVALID", `Trace candidate ${definition.id} failed during governed delivery packaging.`, error, 422);
+  }
+  svg = applyTitle(packaged.svg, options.title);
   const optimiseFinished = performance.now();
   const inspection = inspectSvg(svg);
   if (!inspection.valid) {
@@ -180,7 +215,7 @@ async function executeCandidate(
     definition,
     svg,
     inspection,
-    output: outputEvidence(svg, inspection),
+    output: outputEvidence(svg, inspection, packaged.evidence),
     comparison,
     timingsMs: Object.freeze({
       trace: roundedDuration(traceStarted, traceFinished),
@@ -261,6 +296,15 @@ export async function traceRaster(
       "differenceMaxDimension requires includeDifferenceArtifact=true.",
       400,
       { differenceMaxDimension: options.differenceMaxDimension },
+    );
+  }
+  const deliveryProfile: RasterDeliveryProfile = options.deliveryProfile ?? "editable";
+  if (options.stableIdPrefix !== undefined && deliveryProfile !== "editable" && deliveryProfile !== "motion") {
+    throw new RasterEngineError(
+      "RASTER_OPTIONS_INVALID",
+      "stableIdPrefix is available only for editable or motion delivery profiles.",
+      400,
+      { deliveryProfile, stableIdPrefix: options.stableIdPrefix },
     );
   }
 
@@ -363,6 +407,13 @@ export async function traceRaster(
       message: "The selected SVG exceeds 2 MiB and may be unsuitable for direct web delivery without further reconstruction or simplification.",
     });
   }
+  if (deliveryProfile === "motion" && selected.output.pathCount === 0) {
+    warnings.push({
+      code: "TRACE_MOTION_TARGETS_UNAVAILABLE",
+      severity: "review",
+      message: "The motion-ready profile produced no path targets; convert supported shapes to paths or review the source before motion authoring.",
+    });
+  }
 
   const differenceStarted = performance.now();
   const differenceArtifact = options.includeDifferenceArtifact
@@ -376,6 +427,8 @@ export async function traceRaster(
   const differenceFinished = performance.now();
   const totalFinished = differenceFinished;
 
+  const motionTargetIdsAvailable =
+    selected.output.pathCount > 0 && selected.output.stablePathIdCount === selected.output.pathCount;
   const evidence: RasterTraceEvidence = Object.freeze({
     contractVersion: "1.4",
     engine: Object.freeze({ name: "@neplex/vectorizer", adapterVersion: "0.4.0" }),
@@ -424,6 +477,8 @@ export async function traceRaster(
       renderComparison: selected.comparison.quality === "review" ? "review-required" : "passed",
       visualEvidenceAvailable: true,
       differenceArtifact: differenceArtifact ? "available" : "not-requested",
+      deliveryProfile: "passed",
+      motionTargetIds: motionTargetIdsAvailable ? "available" : "not-requested",
       productionApproval: "review-required",
       byteStableOutputGuaranteed: false,
     }),
