@@ -30,6 +30,7 @@ function forbidTokens(relativePath, source, tokens) {
 const files = {
   package: "package.json",
   provisioner: "scripts/provision-vector-studio-vercel.mjs",
+  planWrapper: "scripts/plan-vector-studio-vercel-provisioning.mjs",
   workflow: ".github/workflows/vector-vercel-project-provisioning.yml",
   deploymentWorkflow: ".github/workflows/vercel-deployment-contract.yml",
   docs: "docs/VERCEL-DEPLOYMENT.md",
@@ -106,6 +107,45 @@ forbidTokens(files.provisioner, sources.provisioner, [
   "VERCEL_TOKEN: process.env.VERCEL_TOKEN",
 ]);
 
+requireTokens(files.planWrapper, sources.planWrapper, [
+  'const CONTRACT_VERSION = "1.0"',
+  'const CHILD_SCRIPT = "scripts/provision-vector-studio-vercel.mjs"',
+  'const REQUIRED_SECRETS = Object.freeze([',
+  'const AUTHORITY_KEYS = Object.freeze([',
+  "function credentialReadiness(environment = process.env)",
+  'createHash("sha256").update(value)',
+  "spawnSync(",
+  "CHILD_SCRIPT",
+  '"--mode"',
+  '"plan"',
+  "async function writeDiagnosticReceipt(options, result, readiness, startedAtMs)",
+  'check: "vector-studio-vercel-provisioning-plan"',
+  "readyToApply: false",
+  "inspectionAvailable: false",
+  'action: "inspection-unavailable"',
+  'code: "VERCEL_PROVISION_CREDENTIALS_INVALID"',
+  "canonicalReceiptProduced: false",
+  "diagnosticReceipt: true",
+  "mutationAttempted: false",
+  "mutationPerformed: false",
+  "assertSecretFree(serialized, readiness)",
+  'writeFile(temporary, source, { encoding: "utf8", flag: "wx", mode: 0o600 })',
+  "diagnosticReceiptWritten: true",
+  'check: "vector-studio-vercel-provision-plan-self-test"',
+  "diagnosticReceiptOnFailure: true",
+]);
+forbidTokens(files.planWrapper, sources.planWrapper, [
+  '"apply"',
+  "VECTOR_VERCEL_APPLY_CONFIRM",
+  'method: "POST"',
+  'method: "PATCH"',
+  "fetch(",
+  "console.log(process.env",
+  "JSON.stringify(process.env",
+  "mutationAttempted: true",
+  "mutationPerformed: true",
+]);
+
 requireTokens(files.workflow, sources.workflow, [
   "Vector Studio Vercel project provisioning",
   "workflow_dispatch:",
@@ -118,11 +158,15 @@ requireTokens(files.workflow, sources.workflow, [
   "persist-credentials: false",
   'test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"',
   "environment: vector-studio-production",
+  "Verify provisioner and plan-wrapper self-tests",
+  "node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test",
+  "Create bounded no-mutation plan",
+  "node scripts/plan-vector-studio-vercel-provisioning.mjs",
+  "if-no-files-found: error",
   "Create exact source proof before mutation",
   "node scripts/create-source-proof.mjs",
   "Apply idempotent Vercel project transaction",
   "node scripts/provision-vector-studio-vercel.mjs",
-  "--mode plan",
   "--mode apply",
   'VECTOR_VERCEL_APPLY_CONFIRM: ${{ inputs.confirmation }}',
   'VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}',
@@ -152,9 +196,11 @@ forbidTokens(files.workflow, sources.workflow, [
 requireTokens(files.deploymentWorkflow, sources.deploymentWorkflow, [
   '"scripts/check-vercel-project-provisioning-contract.mjs"',
   '"scripts/provision-vector-studio-vercel.mjs"',
+  '"scripts/plan-vector-studio-vercel-provisioning.mjs"',
   '".github/workflows/vector-vercel-project-provisioning.yml"',
   "node scripts/check-vercel-project-provisioning-contract.mjs",
   "node scripts/provision-vector-studio-vercel.mjs --self-test",
+  "node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test",
 ]);
 
 requireTokens(files.docs, sources.docs, [
@@ -184,6 +230,7 @@ process.stdout.write(`${JSON.stringify({
   project: "evavo-vector-studio",
   productionDomain: "vector.evavo.com.au",
   modes: ["plan", "apply"],
+  diagnosticPlanWrapper: true,
   deploymentPerformedByProvisioner: false,
   clientReleaseEligible: false,
   checkedFiles: [...checkedFiles].sort(),
