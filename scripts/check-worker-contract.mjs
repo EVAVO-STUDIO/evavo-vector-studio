@@ -137,7 +137,7 @@ requireTokens(files.payloads, sources.payloads, [
   "AnimateSvgWorkerPayload",
   "ExportLottieWorkerPayload",
   "PackageDotLottieWorkerPayload",
-  "type RasterDeliveryProfile",
+  "RasterDeliveryProfile,",
   "type WorkerDeliveryOptions",
   "const DELIVERY_PROFILES",
   "const STABLE_ID_PREFIX",
