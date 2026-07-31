@@ -20,7 +20,7 @@ It contains:
 - atomic multi-object output commit;
 - no-overwrite semantics;
 - byte and SHA-256 receipts;
-- governed trace, SVG optimisation, animated SVG, Lottie and dotLottie execution;
+- governed trace, delivery-aware SVG optimisation, animated SVG, Lottie and dotLottie execution;
 - cancellation checks before source reads, engine calls and object commits;
 - stable retryability-aware worker errors.
 
@@ -57,6 +57,32 @@ A source is read only when its exact bytes match the retained SHA-256. Mismatch 
 VECTOR_WORKER_OBJECT_HASH_MISMATCH
 ```
 
+## Delivery-aware SVG jobs
+
+`trace-raster` and `optimise-svg` use the same governed delivery vocabulary as the browser, API, CLI, MCP and durable batch surfaces:
+
+```text
+editable  default; stable path IDs and explicit root dimensions
+web       responsive compact SVG without generated path IDs
+motion    responsive SVG with deterministic motion-target IDs
+print     conservative dimensions-preserving packaging
+```
+
+The normalized worker payload always contains an explicit `deliveryProfile`, defaulting to `editable`. `stableIdPrefix` is accepted only for `editable` and `motion`; web and print jobs reject it before source execution or object writes. Prefixes must begin with a letter or underscore, contain only portable SVG ID characters and remain within 48 characters.
+
+Compact completion evidence retains:
+
+```text
+deliveryProfile
+stablePathIdCount
+stableIdPrefix
+rootDimensions
+optimisationPasses
+safetyRollbackApplied
+```
+
+Full delivery and engine evidence is written to the declared immutable evidence object.
+
 ### Optimise SVG example
 
 ```json
@@ -66,8 +92,37 @@ VECTOR_WORKER_OBJECT_HASH_MISMATCH
     "sha256": "replace-with-lowercase-source-sha256"
   },
   "outputs": {
-    "svgObjectKey": "workspace/primary-mark/revision-01.optimised.svg",
-    "evidenceObjectKey": "workspace/primary-mark/revision-01.optimised.evidence.json"
+    "svgObjectKey": "workspace/primary-mark/revision-01.motion.svg",
+    "evidenceObjectKey": "workspace/primary-mark/revision-01.motion.evidence.json"
+  },
+  "options": {
+    "deliveryProfile": "motion",
+    "stableIdPrefix": "primary-mark"
+  }
+}
+```
+
+### Trace raster example
+
+```json
+{
+  "source": {
+    "objectKey": "workspace/primary-mark/source.png",
+    "sha256": "replace-with-lowercase-source-sha256"
+  },
+  "outputs": {
+    "svgObjectKey": "workspace/primary-mark/revision-01.editable.svg",
+    "differenceObjectKey": "workspace/primary-mark/revision-01.difference.png",
+    "evidenceObjectKey": "workspace/primary-mark/revision-01.trace.evidence.json"
+  },
+  "options": {
+    "profile": "logo",
+    "candidateMode": "adaptive",
+    "deliveryProfile": "editable",
+    "stableIdPrefix": "primary-mark",
+    "preservePalette": true,
+    "optimise": true,
+    "differenceMaxDimension": 512
   }
 }
 ```
@@ -105,7 +160,7 @@ VECTOR_WORKER_OBJECT_HASH_MISMATCH
 }
 ```
 
-Trace, Lottie and dotLottie payloads use the same source-reference and explicit output-key model. Unknown fields and unsupported options are rejected.
+Lottie and dotLottie payloads use the same source-reference and explicit output-key model. Unknown fields and unsupported options are rejected.
 
 ## Limits
 
@@ -115,6 +170,7 @@ Inline motion JSON           256 KiB
 Single generated object      32 MiB
 Objects per transaction      16
 Object key length            1 to 1,024 characters
+Stable ID prefix             1 to 48 characters
 ```
 
 The underlying engines retain their smaller format-specific limits where applicable.
@@ -153,6 +209,7 @@ outputs[]
 evidence
   source revision
   operation evidence summary
+  delivery evidence for SVG jobs
   output object identities
   approval: human-review-required
 ```
@@ -173,22 +230,20 @@ An `AbortSignal` is checked:
 
 Pre-cancelled work creates no output objects.
 
-A future lease-aware process runner must continue heartbeat and cancellation polling while an engine is running. That orchestration is intentionally separate from this asset executor.
+A lease-aware process runner continues heartbeat and cancellation polling while an engine is running. Local and HTTP-coordinated runners both invoke this same validated executor, so delivery behavior does not diverge between shared-file and verified object-transfer modes.
 
 ## Current deployment boundary
 
-The worker engine is available as a tested package. A hosted worker process is not yet released.
+The worker engine, local worker process and HTTP-coordinated worker are available as tested components. Managed queue delivery and autoscaled remote execution are not released.
 
-Still required:
+Still required for a managed hosted service:
 
-- queue or lease polling process;
-- worker identity and authentication;
-- object-store provider adapter shared with API upload flows;
-- lease heartbeat scheduling;
-- cancellation polling;
-- process shutdown and recovery;
-- operation metrics and logs;
-- deployment and native-binary smoke tests;
+- provider queue delivery and visibility timeouts;
+- managed worker identity and deployment;
+- provider-backed object storage shared with API upload flows;
+- distributed dead-letter, retry and backoff policy;
+- operation metrics, logs and alerting;
+- production deployment and native-binary smoke tests;
 - distributed queue and storage guarantees.
 
 Until those are implemented, `remoteExecutionAvailable` remains `false` and hosted record creation retains `executionScheduled: false`.
