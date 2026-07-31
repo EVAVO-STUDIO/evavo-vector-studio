@@ -273,7 +273,7 @@ requireTokens(files.cliTests, sources.cliTests, [
   "BATCH_ITEM_REVISION_MISMATCH",
   'deliveryProfile: "motion"',
   'stableIdPrefix: "batch-mark"',
-  'id=\\"batch-mark-0001\\"',
+  "batch-mark-0001",
   "rejects a stable ID prefix for a compact web delivery batch",
   "deliveryEvidenceRetained",
   'deepEqual(contract.delivery?.profiles, ["editable", "web", "motion", "print"])',
@@ -299,11 +299,14 @@ requireTokens(files.docs, sources.docs, [
   "not yet a hosted background queue",
 ]);
 requireTokens(files.deliveryDocs, sources.deliveryDocs, [
-  "Editable master",
-  "Web compact",
-  "Motion ready",
-  "Print safe",
+  "Editable master (`editable`)",
+  "Web compact (`web`)",
+  "Motion ready (`motion`)",
+  "Print safe (`print`)",
   "Durable batch manifests",
+  '"deliveryProfile": "motion"',
+  '"stableIdPrefix": "primary-mark"',
+  "Object-backed worker jobs",
 ]);
 requireTokens(files.pathDocs, sources.pathDocs, [
   "canonical execution root",
