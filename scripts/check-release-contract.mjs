@@ -87,8 +87,12 @@ if (!String(rootPackage?.scripts?.check ?? "").startsWith("pnpm contract:check &
 
 const files = {
   coreIndex: "packages/vector-core/src/index.ts",
+  svg: "packages/vector-core/src/svg.ts",
+  svgTests: "packages/vector-core/src/svg.test.ts",
   verifier: "packages/vector-core/src/difference-artifact-verification.ts",
   types: "packages/raster-engine/src/types.ts",
+  analysis: "packages/raster-engine/src/analysis.ts",
+  analysisTests: "packages/raster-engine/src/analysis.test.ts",
   engine: "packages/raster-engine/src/engine.ts",
   difference: "packages/raster-engine/src/difference.ts",
   inputPolicy: "packages/raster-engine/src/input-policy.ts",
@@ -115,6 +119,22 @@ requireTokens(files.coreIndex, sources.coreIndex, [
   'export * from "./svg-topology.js"',
 ]);
 
+requireTokens(files.svg, sources.svg, [
+  'export type SvgDeliveryProfile = "editable" | "web" | "motion" | "print"',
+  "SvgOptimisationEvidence",
+  "stable-path-ids",
+  "responsive-root-dimensions",
+  "safety-rollback",
+  "SVG_STABLE_ID_PREFIX_INVALID",
+  "localReferenceCountPreserved",
+]);
+requireTokens(files.svgTests, sources.svgTests, [
+  "editable delivery adds deterministic collision-safe path IDs",
+  "web delivery removes responsive dimensions and unreferenced metadata without adding IDs",
+  "profile transforms roll back when removing metadata would break a local reference",
+  "document normalisation preserves meaningful text whitespace",
+]);
+
 requireTokens(files.verifier, sources.verifier, [
   "DifferenceArtifactVerificationError",
   "verifyDifferenceArtifactPayload",
@@ -126,6 +146,13 @@ requireTokens(files.verifier, sources.verifier, [
 requireTokens(files.types, sources.types, [
   'contractVersion: "1.4"',
   'adapterVersion: "0.4.0"',
+  'RasterDeliveryProfile = "editable" | "web" | "motion" | "print"',
+  'strategy: "alpha-aware-visible-pixel-stride"',
+  "deliveryProfile?: RasterDeliveryProfile",
+  "stableIdPrefix?: string",
+  "stablePathIdCount: number",
+  'deliveryProfile: "passed"',
+  'motionTargetIds: "available" | "not-requested"',
   "includeDifferenceArtifact?: boolean",
   "differenceMaxDimension?: number",
   "differenceArtifact: DifferenceArtifactEvidence | null",
@@ -133,10 +160,31 @@ requireTokens(files.types, sources.types, [
   "differencePng?: Uint8Array",
 ]);
 
+requireTokens(files.analysis, sources.analysis, [
+  "TRANSPARENT_ALPHA_MAXIMUM",
+  "scanAlphaBounds",
+  '"RASTER_NO_VISIBLE_CONTENT"',
+  "visualDifference",
+  "alphaWeight",
+  "RASTER_TRANSPARENT_PADDING",
+  "RASTER_SPARSE_VISIBLE_CONTENT",
+]);
+requireTokens(files.analysisTests, sources.analysisTests, [
+  "ignores hidden RGB beneath fully transparent pixels",
+  "weights partially transparent colours by visible alpha",
+  "records exact visible bounds and warns about excessive transparent padding",
+  "rejects a decoded source with no visible content",
+]);
+
 requireTokens(files.engine, sources.engine, [
   'import { createDifferenceArtifact } from "./difference.js"',
   'contractVersion: "1.4"',
   'adapterVersion: "0.4.0"',
+  'options.deliveryProfile ?? "editable"',
+  "stableIdPrefix: options.stableIdPrefix",
+  "optimisation.stableIds.added + optimisation.stableIds.preserved",
+  'deliveryProfile: "passed"',
+  "motionTargetIdsAvailable",
   "options.includeDifferenceArtifact",
   "differenceArtifact?.evidence ?? null",
   'differenceArtifact: differenceArtifact ? "available" : "not-requested"',
@@ -190,6 +238,11 @@ requireTokens(files.cli, sources.cli, [
 
 requireTokens(files.api, sources.api, [
   'contractVersion: "1.4"',
+  'const DELIVERY_PROFILES = new Set<RasterDeliveryProfile>(["editable", "web", "motion", "print"])',
+  'const rawDeliveryProfile = stringField(form, "deliveryProfile") ?? "editable"',
+  "stableIdPrefix",
+  'x-vector-delivery-profile',
+  'x-vector-stable-path-ids',
   'booleanField(form, "includeDifference", false)',
   'integerField(form, "differenceMaxDimension")',
   'includeDifferenceArtifact: includeDifference',
@@ -207,12 +260,18 @@ requireTokens(files.inputPolicyApi, sources.inputPolicyApi, [
 requireTokens(files.workspace, sources.workspace, [
   "verifyDifferenceArtifactPayload,",
   "type DifferenceArtifactPayload",
+  'form.set("deliveryProfile", deliveryProfile)',
   'form.set("includeDifference", String(includeDifference))',
   'form.set("differenceMaxDimension", String(differenceMaxDimension))',
   "await verifyDifferenceArtifactPayload(",
   "White-to-red visual difference heatmap",
   "Download difference PNG",
-  "Animated containers and multi-page TIFF are rejected before decoding",
+  "Hidden RGB beneath transparent pixels is ignored",
+  "animated containers and multi-page TIFF are rejected before decoding",
+  "Editable master · stable shape IDs",
+  "Motion ready · stable target IDs",
+  "Visible bounds",
+  "Packaging passes",
 ]);
 
 requireTokens(files.workspaceStyles, sources.workspaceStyles, [
