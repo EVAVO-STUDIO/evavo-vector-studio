@@ -12,6 +12,7 @@
   },
   "bin": {
     "evavo-vector": "./dist/index.js",
+    "evavo-vector-print": "./dist/print-cli.js",
     "evavo-dotlottie": "./dist/dotlottie-cli.js",
     "evavo-vector-batch": "./dist/batch-cli.js"
   },
