@@ -27,12 +27,18 @@ import {
   type VectorMcpPathPolicy,
   type VectorMcpPathPolicyOptions,
 } from "./path-policy.js";
+import {
+  extendVectorMcpPrintCapabilities,
+  registerVectorMcpPrintTools,
+  type VectorMcpPrintOperations,
+} from "./print-tools.js";
 
-export const VECTOR_MCP_SERVER_CONTRACT_VERSION = "1.5" as const;
+export const VECTOR_MCP_SERVER_CONTRACT_VERSION = "1.6" as const;
 
 export type VectorMcpServerBundle = Readonly<{
   server: McpServer;
   operations: VectorMcpOperations;
+  printOperations: VectorMcpPrintOperations;
   lottieOperations: VectorMcpLottieOperations;
   dotLottieOperations: VectorMcpDotLottieOperations;
   batchOperations: VectorMcpBatchOperations;
@@ -115,14 +121,15 @@ export async function createVectorMcpServer(
         "Call vector_capabilities and vector_input_policy before the first raster trace in a workspace.",
         "Raster tools accept one static image at a time, ignore hidden RGB beneath fully transparent pixels and never flatten animation frames or TIFF pages.",
         "Tracing and optimisation support editable, web, motion and print delivery profiles with governed stable IDs and responsive packaging evidence.",
+        "Print preflight checks one allowed SVG against commercial, large-format, cut-vinyl or screen-print requirements without writing a file or claiming physical production approval.",
         "Motion tools accept a validated inline plan or one JSON plan file and produce script-free CSS animated SVG.",
         "Lottie tools accept the governed path-based SVG subset and create or inspect Lottie JSON without placing generated animation bodies in model context.",
         "dotLottie tools package or inspect deterministic manifest-v2 archives without placing archive bytes or embedded animation JSON in model context.",
         "Durable batch tools run or inspect bounded batch-v1 manifests through persistent local state, canonical allowed roots and paginated receipt-only results.",
         "Batch execution is resumable when invoked again but is not a hosted background queue and does not continue after the MCP server process stops.",
         "All filesystem paths must remain within the configured allowed roots.",
-        "Output tools create new files only, never overwrite, and commit related outputs atomically.",
-        "Trace, delivery packaging, motion, Lottie, dotLottie and batch completion are not production approval. Inspect render, topology, editability, timing, archive safety, player compatibility and brand fidelity evidence before publication.",
+        "Output tools create new files only, never overwrite, and commit related outputs atomically. Print preflight is read-only and creates no output file.",
+        "Trace, delivery packaging, print preflight, motion, Lottie, dotLottie and batch completion are not production approval. Inspect render, topology, editability, physical colour, line weight, timing, archive safety, player compatibility and brand fidelity evidence before publication.",
       ].join(" "),
     },
   );
@@ -131,13 +138,15 @@ export async function createVectorMcpServer(
     "vector_capabilities",
     {
       title: "Vector Studio Capabilities",
-      description: "Return the current MCP, filesystem, tracing, delivery-profile, motion, Lottie, dotLottie, durable batch, output and approval contract without reading a file.",
+      description: "Return the current MCP, filesystem, tracing, delivery-profile, print-preflight, motion, Lottie, dotLottie, durable batch, output and approval contract without reading a file.",
       inputSchema: {},
     },
     async () => executeTool(() =>
       extendVectorMcpBatchCapabilities(
         extendVectorMcpDotLottieCapabilities(
-          extendVectorMcpCapabilities(operations.capabilities()),
+          extendVectorMcpPrintCapabilities(
+            extendVectorMcpCapabilities(operations.capabilities()),
+          ),
         ),
       )),
   );
@@ -273,6 +282,7 @@ export async function createVectorMcpServer(
       executeTool(() => operations.inspectAnimatedSvg(inputPath)),
   );
 
+  const printOperations = registerVectorMcpPrintTools(server, pathPolicy);
   const lottieOperations = registerVectorMcpLottieTools(server, pathPolicy);
   const dotLottieOperations = registerVectorMcpDotLottieTools(
     server,
@@ -283,6 +293,7 @@ export async function createVectorMcpServer(
   return Object.freeze({
     server,
     operations,
+    printOperations,
     lottieOperations,
     dotLottieOperations,
     batchOperations,
