@@ -117,6 +117,9 @@ if (packageJson?.scripts?.["capabilities-api:check"] !== "node scripts/check-cap
 if (!String(packageJson?.scripts?.check ?? "").includes("pnpm capabilities-api:check")) {
   errors.push("package.json check must include capability discovery before dependency-backed gates.");
 }
+if (packageJson?.scripts?.["build:packages"] === undefined) {
+  errors.push("package.json must expose build:packages for focused web dependency compilation.");
+}
 
 const routeVersion = stringConstant(files.route, sources.route, "VECTOR_STUDIO_VERSION");
 if (routeVersion && packageJson?.version !== routeVersion) {
@@ -269,6 +272,8 @@ requireTokens(files.documentation, sources.documentation, [
   "batch contract version and maximum item count",
   "MCP contract version, tool count and MCP batch ceiling",
   "packages/mcp/**",
+  "pnpm build:packages",
+  "compiled workspace entrypoints",
   "providerQueueDelivery: false",
   "managedRemoteExecution: false",
   "distributedAutoscaling: false",
@@ -288,9 +293,12 @@ requireTokens(files.workflow, sources.workflow, [
   "Verify capability discovery contract",
   "node scripts/check-capability-discovery.mjs",
   "pnpm install --frozen-lockfile",
+  "Build Vector workspace dependencies",
+  "pnpm build:packages",
   "pnpm --filter @evavo/vector-web typecheck",
   "pnpm --filter @evavo/vector-web build",
   "api/vector-capabilities-contract",
+  "api/vector-capabilities-dependencies",
   "api/vector-capabilities-typecheck",
   "api/vector-capabilities-build",
 ]);
@@ -320,6 +328,7 @@ process.stdout.write(`${JSON.stringify({
   managedRemoteExecution: false,
   productionAutoApprovalAvailable: false,
   focusedTypecheckAndBuild: true,
+  workspaceDependencyBuildRequired: true,
   dependencyLightRoute: true,
   workspaceImportDependencyClosure: true,
   batchMetadataSourceAgreement: true,
