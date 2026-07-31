@@ -15,6 +15,7 @@ import {
   resolveRasterRuntimeGuardConfigFromEnvironment,
   traceRaster,
   type RasterCandidateMode,
+  type RasterDeliveryProfile,
   type RasterTraceProfileSelection,
 } from "@evavo/raster-engine";
 
@@ -24,6 +25,8 @@ export const maxDuration = 60;
 
 const PROFILES = new Set<RasterTraceProfileSelection>(["auto", "logo", "icon", "line-art", "illustration", "photo"]);
 const CANDIDATE_MODES = new Set<RasterCandidateMode>(["adaptive", "single"]);
+const DELIVERY_PROFILES = new Set<RasterDeliveryProfile>(["editable", "web", "motion", "print"]);
+const STABLE_ID_PREFIX = /^[A-Za-z_][A-Za-z0-9_.-]{0,47}$/;
 const MULTIPART_OVERHEAD_ALLOWANCE = 1024 * 1024;
 const TRACE_RUNTIME_GUARD = createRasterRuntimeGuard(resolveRasterRuntimeGuardConfigFromEnvironment());
 const TRACE_PAYLOAD_POLICY = resolveVectorInteractivePayloadPolicy({
@@ -118,6 +121,14 @@ export function GET(): Response {
     input: "multipart/form-data with a file field",
     supportedProfiles: [...PROFILES],
     candidateModes: [...CANDIDATE_MODES],
+    deliveryProfiles: [...DELIVERY_PROFILES],
+    defaultDeliveryProfile: "editable",
+    deliveryProfileEvidence: {
+      editable: "deterministic collision-safe path IDs and preserved root dimensions",
+      web: "responsive root dimensions, compact metadata policy and no generated path IDs",
+      motion: "deterministic collision-safe motion target IDs and responsive root dimensions",
+      print: "preserved root dimensions with conservative document normalisation",
+    },
     adaptiveCandidateBudget: { threeCandidatesThroughPixels: 4_000_000, twoCandidatesThroughPixels: 12_000_000, otherwise: 1 },
     limits: {
       maxInputBytes: DEFAULT_MAX_INPUT_BYTES,
@@ -125,6 +136,7 @@ export function GET(): Response {
       maxInteractiveRequestBytes: TRACE_PAYLOAD_POLICY.maxRequestBytes,
       maxInteractiveResponseBytes: TRACE_PAYLOAD_POLICY.maxResponseBytes,
       maxDecodedPixels: 40_000_000,
+      stableIdPrefixMaximumCharacters: 48,
     },
     hosting: TRACE_PAYLOAD_POLICY,
     runtimeGuard: TRACE_RUNTIME_GUARD.snapshot(),
@@ -190,6 +202,27 @@ export async function POST(request: Request): Promise<Response> {
     if (!CANDIDATE_MODES.has(rawCandidateMode as RasterCandidateMode)) {
       return json({ error: "RASTER_OPTIONS_INVALID", field: "candidateMode", allowed: [...CANDIDATE_MODES] }, 400);
     }
+    const rawDeliveryProfile = stringField(form, "deliveryProfile") ?? "editable";
+    if (!DELIVERY_PROFILES.has(rawDeliveryProfile as RasterDeliveryProfile)) {
+      return json({ error: "RASTER_OPTIONS_INVALID", field: "deliveryProfile", allowed: [...DELIVERY_PROFILES] }, 400);
+    }
+    const deliveryProfile = rawDeliveryProfile as RasterDeliveryProfile;
+    const stableIdPrefix = stringField(form, "stableIdPrefix");
+    if (stableIdPrefix && !STABLE_ID_PREFIX.test(stableIdPrefix)) {
+      return json({
+        error: "RASTER_OPTIONS_INVALID",
+        field: "stableIdPrefix",
+        message: "The prefix must begin with a letter or underscore and use only letters, numbers, underscores, periods or hyphens.",
+      }, 400);
+    }
+    if (stableIdPrefix && deliveryProfile !== "editable" && deliveryProfile !== "motion") {
+      return json({
+        error: "RASTER_OPTIONS_INVALID",
+        field: "stableIdPrefix",
+        message: "A custom stable ID prefix requires the editable or motion delivery profile.",
+      }, 400);
+    }
+
     const format = stringField(form, "format") ?? "json";
     if (format !== "json" && format !== "svg") {
       return json({ error: "RASTER_OPTIONS_INVALID", field: "format", allowed: ["json", "svg"] }, 400);
@@ -224,6 +257,8 @@ export async function POST(request: Request): Promise<Response> {
       sourceName: file.name,
       profile: rawProfile as RasterTraceProfileSelection,
       candidateMode: rawCandidateMode as RasterCandidateMode,
+      deliveryProfile,
+      stableIdPrefix,
       maxColours,
       preservePalette: booleanField(form, "preservePalette", true),
       optimise: booleanField(form, "optimise", true),
@@ -253,6 +288,9 @@ export async function POST(request: Request): Promise<Response> {
           "x-vector-mismatch-fraction": String(result.evidence.comparison.aggregate.mismatchFraction),
           "x-vector-selected-candidate": result.evidence.selection.selectedCandidateId,
           "x-vector-candidate-count": String(result.evidence.selection.attemptedCandidateCount),
+          "x-vector-delivery-profile": result.evidence.output.deliveryProfile,
+          "x-vector-stable-path-ids": String(result.evidence.output.stablePathIdCount),
+          "x-vector-root-dimensions": result.evidence.output.rootDimensions,
           "x-vector-runtime-timeout-ms": String(runtimeState.timeoutMs),
           "x-vector-runtime-max-concurrent": String(runtimeState.maxConcurrent),
           "x-vector-response-bytes": String(responseBytes),
@@ -302,7 +340,11 @@ export async function POST(request: Request): Promise<Response> {
     if (responseBytes > TRACE_PAYLOAD_POLICY.maxResponseBytes) {
       return payloadLimitResponse("json-response", responseBytes);
     }
-    return json(payload, 200, { "x-vector-response-bytes": String(responseBytes) });
+    return json(payload, 200, {
+      "x-vector-response-bytes": String(responseBytes),
+      "x-vector-delivery-profile": result.evidence.output.deliveryProfile,
+      "x-vector-stable-path-ids": String(result.evidence.output.stablePathIdCount),
+    });
   } catch (error) {
     if (lease.timedOut()) return runtimeTimeoutResponse();
     if (error instanceof RasterEngineError) {
