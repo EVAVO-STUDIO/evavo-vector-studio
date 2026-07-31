@@ -20,16 +20,19 @@ on:
       - "apps/web/public/hub/evavo-vector-studio.deployment.json"
       - "scripts/check-vercel-deployment-contract.mjs"
       - "scripts/check-vercel-project-provisioning-contract.mjs"
+      - "scripts/check-vercel-provisioning-plan-receipt-contract.mjs"
       - "scripts/check-vercel-deployment-plan-receipt-contract.mjs"
       - "scripts/check-vercel-production-deployment-contract.mjs"
       - "scripts/check-private-response-contract.mjs"
       - "scripts/provision-vector-studio-vercel.mjs"
+      - "scripts/plan-vector-studio-vercel-provisioning.mjs"
       - "scripts/deploy-vector-studio-vercel.mjs"
       - "scripts/create-vector-live-launch-token.mjs"
       - "scripts/verify-live-private-response.mjs"
       - "scripts/verify-live-deployment.mjs"
       - "scripts/verify-live-capability-discovery.mjs"
       - "docs/VERCEL-DEPLOYMENT.md"
+      - "docs/VERCEL-PROVISIONING-PLAN-RECEIPTS.md"
       - "docs/VERCEL-DEPLOYMENT-PLAN-RECEIPTS.md"
       - "docs/PRIVATE-APPLICATION-SECURITY.md"
       - ".github/workflows/public-deployment-proof.yml"
@@ -53,16 +56,19 @@ on:
       - "apps/web/public/hub/evavo-vector-studio.deployment.json"
       - "scripts/check-vercel-deployment-contract.mjs"
       - "scripts/check-vercel-project-provisioning-contract.mjs"
+      - "scripts/check-vercel-provisioning-plan-receipt-contract.mjs"
       - "scripts/check-vercel-deployment-plan-receipt-contract.mjs"
       - "scripts/check-vercel-production-deployment-contract.mjs"
       - "scripts/check-private-response-contract.mjs"
       - "scripts/provision-vector-studio-vercel.mjs"
+      - "scripts/plan-vector-studio-vercel-provisioning.mjs"
       - "scripts/deploy-vector-studio-vercel.mjs"
       - "scripts/create-vector-live-launch-token.mjs"
       - "scripts/verify-live-private-response.mjs"
       - "scripts/verify-live-deployment.mjs"
       - "scripts/verify-live-capability-discovery.mjs"
       - "docs/VERCEL-DEPLOYMENT.md"
+      - "docs/VERCEL-PROVISIONING-PLAN-RECEIPTS.md"
       - "docs/VERCEL-DEPLOYMENT-PLAN-RECEIPTS.md"
       - "docs/PRIVATE-APPLICATION-SECURITY.md"
       - ".github/workflows/public-deployment-proof.yml"
@@ -104,6 +110,9 @@ jobs:
       - name: Verify Vercel project provisioning contract
         run: node scripts/check-vercel-project-provisioning-contract.mjs
 
+      - name: Verify diagnostic provisioning-plan receipt contract
+        run: node scripts/check-vercel-provisioning-plan-receipt-contract.mjs
+
       - name: Verify exact production deployment contract
         run: node scripts/check-vercel-production-deployment-contract.mjs
 
@@ -112,6 +121,9 @@ jobs:
 
       - name: Verify Vercel provisioner self-test
         run: node scripts/provision-vector-studio-vercel.mjs --self-test
+
+      - name: Verify Vercel provisioning plan-wrapper self-test
+        run: node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test
 
       - name: Verify exact Vercel deployer self-test
         run: node scripts/deploy-vector-studio-vercel.mjs --self-test
