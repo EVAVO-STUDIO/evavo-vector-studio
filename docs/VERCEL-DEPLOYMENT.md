@@ -4,7 +4,7 @@ Vector Studio is designed to run as a protected standalone Next.js application a
 
 ## Live platform audit
 
-The connected EVAVO Vercel team was inspected on 30 July 2026.
+The connected EVAVO Vercel team was inspected on 31 July 2026.
 
 ```text
 Team                    EVAVO's projects
@@ -95,6 +95,18 @@ Before deployment, the workflow performs a no-mutation project plan with all sev
 
 After the alias is proven, the workflow runs the live private-response verifier and the public runtime verifier against the canonical HTTPS origin. It preserves bounded source, deployment, header and runtime receipts without storing secret values. A READY deployment alone is not release evidence if the commit, production alias, response headers or public capabilities are unproven.
 
+The workflow then performs live capability discovery at:
+
+```text
+GET /api/v1/capabilities
+```
+
+That proof is source-proof bound to the exact frozen-installed, fully checked and production-built commit. It requires the deployed service version and capability contract, MCP version and tool count, delivery profiles, durable batch ceilings, worker operations, private response headers, and human-review approval boundary to match the checked source.
+
+The live proof also verifies deployment non-claims. The deployed document must continue to report provider queue delivery, managed remote execution, distributed autoscaling and production auto-approval as unavailable. A stale host cannot gain promotion by overstating infrastructure that has not been deployed.
+
+Only bounded headers, response byte count, SHA-256 and a compact capability summary enter the receipt. The response body is not retained, generated asset bodies are never requested, and no signing or API authority is supplied to the public discovery request.
+
 The same apply transaction then creates a fresh one-time owner signed launch and a separate one-time client signed launch using the shared `evavo-client-app-launch-v1` receiver contract. Each token is masked before use, stored only in a mode-0600 temporary file, removed by a shell trap, accepted once by `/launch`, rejected on replay, and used to render both protected workspaces. Only token SHA-256 and bounded claim identifiers are retained; the token body is never uploaded.
 
 These two profiles prove the deployed Vector Studio receiver, durable replay boundary and app-private session exchange. They do not by themselves prove that the central `next-website` owner and client UI issued the token from a real authenticated hub session. That final cross-application issuance and assignment proof remains separate. Client release remains withheld until it passes with the exact deployed commit.
@@ -179,6 +191,7 @@ Vercel deployment contract
 Vercel project provisioning contract and self-test
 exact production deployment contract and self-test
 live owner/client token generator self-test
+live capability discovery verifier self-test
 private-response security contract
 web TypeScript validation
 Turbo dependency build and web production build
@@ -192,13 +205,14 @@ Client release remains withheld until all of these are recorded against an exact
 2. `apps/web` is the verified project root;
 3. frozen install, full checks, and production build pass;
 4. `vector.evavo.com.au` is assigned and HTTPS verified;
-5. required production environment variables are configured without secret reuse;
-6. durable replay succeeds once and rejects replay;
-7. central hub-issued owner and client signed launches each pass exactly once;
-8. wrong-host, wrong-app, expiry, and provider-failure tests fail closed;
-9. hosted trace and motion requests remain inside transfer and duration limits;
-10. larger objects use a verified private transport rather than function bodies;
-11. no credential, local path, or generated body appears in hub responses;
-12. human review remains required for every generated production asset.
+5. `/api/v1/capabilities` is source-proof bound and reports the governed capability and deployment non-claims;
+6. required production environment variables are configured without secret reuse;
+7. durable replay succeeds once and rejects replay;
+8. central hub-issued owner and client signed launches each pass exactly once;
+9. wrong-host, wrong-app, expiry, and provider-failure tests fail closed;
+10. hosted trace and motion requests remain inside transfer and duration limits;
+11. larger objects use a verified private transport rather than function bodies;
+12. no credential, local path, discovery response body, or generated body appears in hub responses;
+13. human review remains required for every generated production asset.
 
 Only after that evidence exists should the central registry move from `federated-candidate` to `federated` and include `vector-studio` in the client release allowlist.
