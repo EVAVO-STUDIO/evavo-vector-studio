@@ -38,9 +38,45 @@ function forbidTokens(relativePath, source, tokens) {
   }
 }
 
+function stringConstant(relativePath, source, name) {
+  const expression = new RegExp(`(?:export\\s+)?const\\s+${name}\\s*=\\s*\"([^\"]+)\"(?:\\s+as\\s+const)?\\s*;`);
+  const value = source.match(expression)?.[1] ?? null;
+  if (!value) errors.push(`${relativePath} does not expose ${name} as a canonical string constant.`);
+  return value;
+}
+
+function integerConstant(relativePath, source, name) {
+  const expression = new RegExp(`(?:export\\s+)?const\\s+${name}\\s*=\\s*([0-9_]+)\\s*;`);
+  const raw = source.match(expression)?.[1] ?? null;
+  if (!raw) {
+    errors.push(`${relativePath} does not expose ${name} as a canonical integer constant.`);
+    return null;
+  }
+  const value = Number(raw.replaceAll("_", ""));
+  if (!Number.isSafeInteger(value)) {
+    errors.push(`${relativePath} exposes an unsafe integer for ${name}.`);
+    return null;
+  }
+  return value;
+}
+
+async function requireAbsent(relativePath) {
+  checkedFiles.add(relativePath);
+  try {
+    await fs.access(path.join(root, relativePath));
+    errors.push(`${relativePath} is superseded and must remain absent.`);
+  } catch (error) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+      errors.push(`Could not verify absence of ${relativePath} (${error instanceof Error ? error.message : String(error)}).`);
+    }
+  }
+}
+
 const files = {
   package: "package.json",
+  webPackage: "apps/web/package.json",
   route: "apps/web/app/api/v1/capabilities/route.ts",
+  batchTypes: "packages/job-engine/src/types.ts",
   documentation: "docs/CAPABILITIES.md",
   workflow: ".github/workflows/capabilities-api-contract.yml",
 };
@@ -48,12 +84,49 @@ const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
 );
 const packageJson = await readJson(files.package);
+const webPackageJson = await readJson(files.webPackage);
+await requireAbsent("scripts/check-capabilities-api-contract.mjs");
 
 if (packageJson?.scripts?.["capabilities-api:check"] !== "node scripts/check-capability-discovery.mjs") {
-  errors.push("package.json must expose the capability-discovery contract.");
+  errors.push("package.json must expose the canonical capability-discovery contract.");
 }
 if (!String(packageJson?.scripts?.check ?? "").includes("pnpm capabilities-api:check")) {
   errors.push("package.json check must include capability discovery before dependency-backed gates.");
+}
+
+const routeVersion = stringConstant(files.route, sources.route, "VECTOR_STUDIO_VERSION");
+if (routeVersion && packageJson?.version !== routeVersion) {
+  errors.push(`Capability service version ${routeVersion} does not match root package version ${String(packageJson?.version)}.`);
+}
+
+const canonicalBatchVersion = stringConstant(files.batchTypes, sources.batchTypes, "BATCH_CONTRACT_VERSION");
+const routeBatchVersion = stringConstant(files.route, sources.route, "BATCH_CONTRACT_VERSION");
+if (canonicalBatchVersion && routeBatchVersion && canonicalBatchVersion !== routeBatchVersion) {
+  errors.push(`Capability batch contract ${routeBatchVersion} does not match job-engine ${canonicalBatchVersion}.`);
+}
+const canonicalMaximumBatchItems = integerConstant(files.batchTypes, sources.batchTypes, "MAX_BATCH_ITEMS");
+const routeMaximumBatchItems = integerConstant(files.route, sources.route, "MAX_BATCH_ITEMS");
+if (
+  canonicalMaximumBatchItems !== null &&
+  routeMaximumBatchItems !== null &&
+  canonicalMaximumBatchItems !== routeMaximumBatchItems
+) {
+  errors.push(`Capability maximum batch items ${routeMaximumBatchItems} does not match job-engine ${canonicalMaximumBatchItems}.`);
+}
+
+const declaredDependencies = new Set([
+  ...Object.keys(webPackageJson?.dependencies ?? {}),
+  ...Object.keys(webPackageJson?.devDependencies ?? {}),
+  ...Object.keys(webPackageJson?.peerDependencies ?? {}),
+  ...Object.keys(webPackageJson?.optionalDependencies ?? {}),
+]);
+const workspaceImports = [...new Set(
+  [...sources.route.matchAll(/\bfrom\s+["'](@evavo\/[^"']+)["']/g)].map((match) => match[1]),
+)].sort();
+for (const dependency of workspaceImports) {
+  if (!declaredDependencies.has(dependency)) {
+    errors.push(`${files.route} imports undeclared web workspace dependency: ${dependency}`);
+  }
 }
 
 requireTokens(files.route, sources.route, [
@@ -61,6 +134,8 @@ requireTokens(files.route, sources.route, [
   'export const dynamic = "force-dynamic"',
   'CAPABILITIES_CONTRACT_VERSION = "1.0"',
   'MCP_CONTRACT_VERSION = "1.5"',
+  "BATCH_CONTRACT_VERSION",
+  "MAX_BATCH_ITEMS",
   'endpoint: "/api/v1/capabilities"',
   'authentication: "public non-sensitive capability metadata"',
   'headers.set("cache-control", "no-store, max-age=0")',
@@ -77,9 +152,10 @@ requireTokens(files.route, sources.route, [
   "MOTION_CONTRACT_VERSION",
   "LOTTIE_CONTRACT_VERSION",
   "DOTLOTTIE_CONTRACT_VERSION",
-  "BATCH_CONTRACT_VERSION",
   "VECTOR_WORKER_CONTRACT_VERSION",
   "VECTOR_WORKER_SUPPORTED_OPERATIONS",
+  'hostedRecordControlPlane: "configured-runtime-dependent"',
+  'workerObjectTransfer: "configured-runtime-dependent"',
   'providerQueueDelivery: false',
   'managedRemoteExecution: false',
   'distributedAutoscaling: false',
@@ -87,11 +163,22 @@ requireTokens(files.route, sources.route, [
   "export function GET(): Response",
 ]);
 forbidTokens(files.route, sources.route, [
+  'from "@evavo/job-engine"',
   "process.env",
+  "VECTOR_API_TOKEN",
+  "VECTOR_WORKER_API_TOKEN",
+  "EVAVO_CLIENT_APP_LAUNCH_SECRET",
+  "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
+  "UPSTASH_REDIS_REST_TOKEN",
   "console.log(",
   "remoteExecutionAvailable: true",
   "productionAutoApprovalAvailable: true",
   'state: "approved"',
+]);
+
+requireTokens(files.batchTypes, sources.batchTypes, [
+  'export const BATCH_CONTRACT_VERSION = "1.0" as const;',
+  "export const MAX_BATCH_ITEMS = 1_000;",
 ]);
 
 requireTokens(files.documentation, sources.documentation, [
@@ -102,6 +189,9 @@ requireTokens(files.documentation, sources.documentation, [
   "alpha-aware source analysis and visible-content bounds",
   "editable, web, motion and print delivery profiles",
   "safety rollback evidence",
+  "dependency-light runtime route",
+  "workspace import is declared",
+  "batch contract version and maximum item count",
   "providerQueueDelivery: false",
   "managedRemoteExecution: false",
   "distributedAutoscaling: false",
@@ -150,5 +240,9 @@ process.stdout.write(`${JSON.stringify({
   managedRemoteExecution: false,
   productionAutoApprovalAvailable: false,
   focusedTypecheckAndBuild: true,
+  dependencyLightRoute: true,
+  workspaceImportDependencyClosure: true,
+  batchMetadataSourceAgreement: true,
+  obsoleteCheckerAbsent: true,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
