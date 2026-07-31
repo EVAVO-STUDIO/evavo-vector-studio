@@ -39,7 +39,7 @@ const files = {
   deployer: "scripts/deploy-vector-studio-vercel.mjs",
   workflow: ".github/workflows/vector-vercel-production-deployment.yml",
   deploymentWorkflow: ".github/workflows/vercel-deployment-contract.yml",
-  docs: "docs/VERCEL-DEPLOYMENT.md",
+  docs: "docs/VERCEL-DEPLOYMENT-PLAN-RECEIPTS.md",
 };
 const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
@@ -148,6 +148,7 @@ forbidTokens(files.workflow, sources.workflow, [
 
 requireTokens(files.deploymentWorkflow, sources.deploymentWorkflow, [
   '"scripts/check-vercel-deployment-plan-receipt-contract.mjs"',
+  '"docs/VERCEL-DEPLOYMENT-PLAN-RECEIPTS.md"',
   "Verify diagnostic deployment-plan receipt contract",
   "node scripts/check-vercel-deployment-plan-receipt-contract.mjs",
 ]);
@@ -162,6 +163,7 @@ requireTokens(files.docs, sources.docs, [
   "mutationPerformed",
   "exits non-zero",
   "receipt is still uploaded",
+  "pnpm vercel-plan:check",
 ]);
 
 async function executableReceiptTest() {
