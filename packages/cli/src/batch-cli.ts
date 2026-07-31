@@ -80,6 +80,14 @@ function capabilities() {
     batchContractVersion: BATCH_CONTRACT_VERSION,
     commands: Object.freeze(["run", "inspect", "capabilities"]),
     operations: VECTOR_BATCH_OPERATION_NAMES,
+    delivery: Object.freeze({
+      profiles: Object.freeze(["editable", "web", "motion", "print"]),
+      defaultProfile: "editable",
+      stableIdProfiles: Object.freeze(["editable", "motion"]),
+      stableIdPrefixMaximumCharacters: 48,
+      alphaAwareRasterAnalysis: true,
+      immutableManifestRevision: true,
+    }),
     durability: Object.freeze({
       persistentState: true,
       appendOnlyEvents: true,
@@ -96,6 +104,7 @@ function capabilities() {
       existingFilesOverwritten: false,
       receipts: Object.freeze(["path", "mimeType", "bytes", "sha256"]),
       evidenceFilesRequired: true,
+      deliveryEvidenceRetained: true,
     }),
     approval: "human-review-required",
   });
