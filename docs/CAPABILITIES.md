@@ -66,9 +66,12 @@ The raster section separately advertises the read-only `print-preflight-v1` cont
 ```text
 POST /api/v1/print/preflight
 evavo-vector-print
+vector_preflight_svg_print
 ```
 
 Discovery reports the `commercial`, `large-format`, `cut-vinyl` and `screen-print` profiles plus physical-dimension, trim-and-bleed, minimum-line-weight and process-colour-token checks.
+
+The MCP tool reads one existing SVG within a configured allowed root, returns source SHA-256 and bounded preflight evidence, writes no file and never places SVG markup in model context.
 
 The capability contract deliberately reports:
 
@@ -79,6 +82,20 @@ approval: review-required
 ```
 
 Print preflight can detect structural production risks, but it cannot prove ICC conversion, spot-colour libraries, trapping, overprint, RIP behaviour or a physical proof.
+
+## MCP metadata
+
+The public MCP contract is:
+
+```text
+MCP contract `1.6`
+16 tools
+stdio transport
+```
+
+Contract `1.6` adds `vector_preflight_svg_print` while retaining the existing raster inspection, tracing, SVG packaging, motion, Lottie, dotLottie and durable-batch tools. The print tool is deterministic, cancellation-aware, allowed-root constrained, read-only and receipt-only.
+
+Capability discovery derives the 16-tool inventory from direct server registrations and the canonical print, Lottie, dotLottie and durable-batch tool-name arrays. A stale version, missing print tool, duplicate tool name or wrong count fails before dependency installation.
 
 ## Motion and animation metadata
 
@@ -143,11 +160,11 @@ The HTTP endpoint is intentionally a dependency-light runtime route. It imports 
 
 The dependency-free contract checks that every `@evavo/*` workspace import is declared by the Vector web package. It compares the locally exposed batch contract version and maximum item count with the canonical job-engine source constants.
 
-It also derives the canonical MCP tool inventory from direct server registrations and the Lottie, dotLottie and durable-batch tool-name contracts. The exposed MCP contract version, tool count and MCP batch ceiling must agree with those source files. Duplicate tool names, stale counts or stale limits fail before dependency installation, TypeScript or the production build.
+It derives the canonical MCP tool inventory from direct server registrations and the print, Lottie, dotLottie and durable-batch tool-name contracts. The exposed MCP contract version, 16-tool count and MCP batch ceiling must agree with those source files. Duplicate tool names, stale counts or stale limits fail before dependency installation, TypeScript or the production build.
 
 The focused capability workflow watches `packages/mcp/**` as well as the route and other capability-bearing packages. An MCP capability change therefore cannot bypass the focused contract, frozen dependency installation, web typecheck and production build.
 
-The separate print-preflight workflow watches the print core, CLI, authenticated API route, discovery metadata and print documentation. It runs the print contract, exact dependency installation, executable core and CLI tests, Vector web typecheck and the workspace-aware production build.
+The separate print-preflight workflow watches the print core, CLI, authenticated API route, MCP print tool, discovery metadata and print documentation. It runs the print contract, exact dependency installation, executable core, CLI and MCP tests, Vector web typecheck and the workspace-aware production build.
 
 The service version in the capability response is checked against the root package version. The obsolete duplicate checker is required to remain absent so there is one canonical discovery contract.
 
@@ -172,8 +189,9 @@ The dependency-free contracts are:
 ```powershell
 pnpm capabilities-api:check
 pnpm print-api:check
+pnpm mcp:check
 ```
 
 The focused GitHub workflows run their contracts, exact dependency installation, required workspace builds, executable tests, Vector web typecheck and production build whenever their source capability surfaces change.
 
-The full repository quality chain includes both contracts before dependency-backed lint, typecheck, tests and build.
+The full repository quality chain includes all three contracts before dependency-backed lint, typecheck, tests and build.
