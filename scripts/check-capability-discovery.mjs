@@ -60,6 +60,26 @@ function integerConstant(relativePath, source, name) {
   return value;
 }
 
+function stringArrayConstant(relativePath, source, name) {
+  const expression = new RegExp(
+    `(?:export\\s+)?const\\s+${name}\\s*=\\s*Object\\.freeze\\(\\[([\\s\\S]*?)\\]\\s*as\\s+const\\s*\\)\\s*;`,
+  );
+  const block = source.match(expression)?.[1] ?? null;
+  if (block === null) {
+    errors.push(`${relativePath} does not expose ${name} as a canonical frozen string array.`);
+    return [];
+  }
+  const values = [...block.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+  if (values.length < 1) errors.push(`${relativePath} exposes an empty ${name} array.`);
+  return values;
+}
+
+function directlyRegisteredToolNames(relativePath, source) {
+  const values = [...source.matchAll(/server\.registerTool\(\s*"([^"]+)"/g)].map((match) => match[1]);
+  if (values.length < 1) errors.push(`${relativePath} does not directly register any MCP tools.`);
+  return values;
+}
+
 async function requireAbsent(relativePath) {
   checkedFiles.add(relativePath);
   try {
@@ -77,6 +97,10 @@ const files = {
   webPackage: "apps/web/package.json",
   route: "apps/web/app/api/v1/capabilities/route.ts",
   batchTypes: "packages/job-engine/src/types.ts",
+  mcpServer: "packages/mcp/src/server.ts",
+  mcpLottieTools: "packages/mcp/src/lottie-tools.ts",
+  mcpDotLottieTools: "packages/mcp/src/dotlottie-tools.ts",
+  mcpBatchTools: "packages/mcp/src/batch-tools.ts",
   documentation: "docs/CAPABILITIES.md",
   workflow: ".github/workflows/capabilities-api-contract.yml",
 };
@@ -114,6 +138,44 @@ if (
   errors.push(`Capability maximum batch items ${routeMaximumBatchItems} does not match job-engine ${canonicalMaximumBatchItems}.`);
 }
 
+const canonicalMcpVersion = stringConstant(
+  files.mcpServer,
+  sources.mcpServer,
+  "VECTOR_MCP_SERVER_CONTRACT_VERSION",
+);
+const routeMcpVersion = stringConstant(files.route, sources.route, "MCP_CONTRACT_VERSION");
+if (canonicalMcpVersion && routeMcpVersion && canonicalMcpVersion !== routeMcpVersion) {
+  errors.push(`Capability MCP contract ${routeMcpVersion} does not match MCP server ${canonicalMcpVersion}.`);
+}
+const canonicalMcpMaximumBatchItems = integerConstant(
+  files.mcpBatchTools,
+  sources.mcpBatchTools,
+  "VECTOR_MCP_BATCH_MAX_ITEMS",
+);
+const routeMcpMaximumBatchItems = integerConstant(files.route, sources.route, "MCP_MAX_BATCH_ITEMS");
+if (
+  canonicalMcpMaximumBatchItems !== null &&
+  routeMcpMaximumBatchItems !== null &&
+  canonicalMcpMaximumBatchItems !== routeMcpMaximumBatchItems
+) {
+  errors.push(`Capability MCP batch maximum ${routeMcpMaximumBatchItems} does not match MCP source ${canonicalMcpMaximumBatchItems}.`);
+}
+
+const mcpToolNames = [
+  ...directlyRegisteredToolNames(files.mcpServer, sources.mcpServer),
+  ...stringArrayConstant(files.mcpLottieTools, sources.mcpLottieTools, "VECTOR_MCP_LOTTIE_TOOL_NAMES"),
+  ...stringArrayConstant(files.mcpDotLottieTools, sources.mcpDotLottieTools, "VECTOR_MCP_DOTLOTTIE_TOOL_NAMES"),
+  ...stringArrayConstant(files.mcpBatchTools, sources.mcpBatchTools, "VECTOR_MCP_BATCH_TOOL_NAMES"),
+].sort();
+const uniqueMcpToolNames = [...new Set(mcpToolNames)];
+if (uniqueMcpToolNames.length !== mcpToolNames.length) {
+  errors.push("MCP capability sources contain duplicate tool names.");
+}
+const routeMcpToolCount = integerConstant(files.route, sources.route, "MCP_TOOL_COUNT");
+if (routeMcpToolCount !== null && routeMcpToolCount !== uniqueMcpToolNames.length) {
+  errors.push(`Capability MCP tool count ${routeMcpToolCount} does not match ${uniqueMcpToolNames.length} source tool names.`);
+}
+
 const declaredDependencies = new Set([
   ...Object.keys(webPackageJson?.dependencies ?? {}),
   ...Object.keys(webPackageJson?.devDependencies ?? {}),
@@ -133,7 +195,9 @@ requireTokens(files.route, sources.route, [
   'export const runtime = "nodejs"',
   'export const dynamic = "force-dynamic"',
   'CAPABILITIES_CONTRACT_VERSION = "1.0"',
-  'MCP_CONTRACT_VERSION = "1.5"',
+  "MCP_CONTRACT_VERSION",
+  "MCP_TOOL_COUNT",
+  "MCP_MAX_BATCH_ITEMS",
   "BATCH_CONTRACT_VERSION",
   "MAX_BATCH_ITEMS",
   'endpoint: "/api/v1/capabilities"',
@@ -164,6 +228,7 @@ requireTokens(files.route, sources.route, [
 ]);
 forbidTokens(files.route, sources.route, [
   'from "@evavo/job-engine"',
+  'from "@evavo/vector-mcp"',
   "process.env",
   "VECTOR_API_TOKEN",
   "VECTOR_WORKER_API_TOKEN",
@@ -180,6 +245,16 @@ requireTokens(files.batchTypes, sources.batchTypes, [
   'export const BATCH_CONTRACT_VERSION = "1.0" as const;',
   "export const MAX_BATCH_ITEMS = 1_000;",
 ]);
+requireTokens(files.mcpServer, sources.mcpServer, [
+  'export const VECTOR_MCP_SERVER_CONTRACT_VERSION = "1.5" as const;',
+  "registerVectorMcpLottieTools",
+  "registerVectorMcpDotLottieTools",
+  "registerVectorMcpBatchTools",
+]);
+requireTokens(files.mcpBatchTools, sources.mcpBatchTools, [
+  "VECTOR_MCP_BATCH_MAX_ITEMS",
+  "VECTOR_MCP_BATCH_TOOL_NAMES",
+]);
 
 requireTokens(files.documentation, sources.documentation, [
   "# Unified capability discovery",
@@ -192,6 +267,8 @@ requireTokens(files.documentation, sources.documentation, [
   "dependency-light runtime route",
   "workspace import is declared",
   "batch contract version and maximum item count",
+  "MCP contract version, tool count and MCP batch ceiling",
+  "packages/mcp/**",
   "providerQueueDelivery: false",
   "managedRemoteExecution: false",
   "distributedAutoscaling: false",
@@ -207,6 +284,7 @@ forbidTokens(files.documentation, sources.documentation, [
 
 requireTokens(files.workflow, sources.workflow, [
   "name: Vector Studio capability discovery",
+  '"packages/mcp/**"',
   "Verify capability discovery contract",
   "node scripts/check-capability-discovery.mjs",
   "pnpm install --frozen-lockfile",
@@ -236,13 +314,16 @@ process.stdout.write(`${JSON.stringify({
   generatedBodiesIncluded: false,
   sensitiveValuesIncluded: false,
   deliveryProfiles: ["editable", "web", "motion", "print"],
-  mcpContractVersion: "1.5",
+  mcpContractVersion: routeMcpVersion,
+  mcpToolCount: uniqueMcpToolNames.length,
+  mcpMaximumBatchItems: routeMcpMaximumBatchItems,
   managedRemoteExecution: false,
   productionAutoApprovalAvailable: false,
   focusedTypecheckAndBuild: true,
   dependencyLightRoute: true,
   workspaceImportDependencyClosure: true,
   batchMetadataSourceAgreement: true,
+  mcpMetadataSourceAgreement: true,
   obsoleteCheckerAbsent: true,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
