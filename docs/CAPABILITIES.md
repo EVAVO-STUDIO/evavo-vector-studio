@@ -128,6 +128,20 @@ The focused workflow watches `packages/mcp/**` as well as the route and other ca
 
 The service version in the capability response is checked against the root package version. The obsolete duplicate checker is required to remain absent so there is one canonical discovery contract.
 
+## Workspace-first production build
+
+The Vector web application consumes workspace packages whose runtime exports point to compiled `dist` entrypoints. A standalone `next build` after dependency installation is therefore not sufficient in a clean checkout, even when TypeScript can resolve source declarations.
+
+The focused workflow runs:
+
+```powershell
+pnpm build:packages
+pnpm --filter @evavo/vector-web typecheck
+pnpm --filter @evavo/vector-web build
+```
+
+This builds the canonical workspace dependency graph before Webpack resolves the web application. The contract requires both the dependency-build step and its dedicated `api/vector-capabilities-dependencies` status, preventing a future workflow change from skipping compiled workspace entrypoints while still claiming a production build.
+
 ## Validation
 
 The dependency-free contract is:
@@ -136,6 +150,6 @@ The dependency-free contract is:
 pnpm capabilities-api:check
 ```
 
-The focused GitHub workflow runs the contract, exact dependency installation, Vector web typecheck and production build whenever capability route, contract, documentation or source capability packages change.
+The focused GitHub workflow runs the contract, exact dependency installation, canonical workspace package build, Vector web typecheck and production build whenever capability route, contract, documentation or source capability packages change.
 
 The full repository quality chain also includes `capabilities-api:check` before dependency-backed lint, typecheck, tests and build.
