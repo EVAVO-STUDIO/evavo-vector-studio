@@ -83,7 +83,7 @@ jobs:
         with:
           name: vector-vercel-production-plan-${{ inputs.commit }}
           path: .ci/vector-vercel-production-plan.json
-          if-no-files-found: warn
+          if-no-files-found: error
           include-hidden-files: true
           retention-days: 7
 
