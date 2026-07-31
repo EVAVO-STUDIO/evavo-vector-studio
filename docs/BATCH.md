@@ -18,6 +18,13 @@ The same operation registry is used by the local batch CLI and MCP:
 
 Every operation uses the same governed raster, SVG, motion, Lottie or dotLottie engine as the single-file surfaces. Every operation requires an explicit evidence JSON output.
 
+Raster tracing and SVG optimisation share the governed delivery profiles documented in [`DELIVERY-PROFILES.md`](./DELIVERY-PROFILES.md):
+
+- `editable` for an editable master with deterministic stable path IDs;
+- `web` for compact responsive SVG packaging;
+- `motion` for stable animation-target IDs and responsive packaging;
+- `print` for conservative packaging with explicit root dimensions preserved.
+
 ## Local CLI
 
 ```powershell
@@ -47,7 +54,7 @@ evavo-vector-batch capabilities
 
 ## MCP workflow
 
-MCP contract `1.4` exposes:
+MCP contract `1.5` exposes:
 
 - `vector_run_batch`;
 - `vector_inspect_batch`.
@@ -101,11 +108,13 @@ Example:
       "operation": "trace-raster",
       "spec": {
         "inputPath": "source/primary-mark.png",
-        "outputSvgPath": "output/primary-mark.vector.svg",
+        "outputSvgPath": "output/primary-mark.editable.svg",
         "differenceOutputPath": "output/primary-mark.difference.png",
         "evidenceOutputPath": "output/primary-mark.trace.evidence.json",
         "profile": "logo",
         "candidateMode": "adaptive",
+        "deliveryProfile": "editable",
+        "stableIdPrefix": "primary-mark-shape",
         "maxColours": 8,
         "preservePalette": true,
         "optimise": true,
@@ -114,10 +123,31 @@ Example:
       }
     },
     {
+      "id": "primary-mark-web",
+      "operation": "optimise-svg",
+      "spec": {
+        "inputPath": "output/primary-mark.editable.svg",
+        "outputPath": "output/primary-mark.web.svg",
+        "evidenceOutputPath": "output/primary-mark.web.evidence.json",
+        "deliveryProfile": "web"
+      }
+    },
+    {
+      "id": "primary-mark-motion-source",
+      "operation": "optimise-svg",
+      "spec": {
+        "inputPath": "output/primary-mark.editable.svg",
+        "outputPath": "output/primary-mark.motion.svg",
+        "evidenceOutputPath": "output/primary-mark.motion-source.evidence.json",
+        "deliveryProfile": "motion",
+        "stableIdPrefix": "motion-shape"
+      }
+    },
+    {
       "id": "primary-mark-motion",
       "operation": "animate-svg",
       "spec": {
-        "inputPath": "output/primary-mark.vector.svg",
+        "inputPath": "output/primary-mark.motion.svg",
         "motionPath": "plans/primary-mark.motion.json",
         "outputPath": "output/primary-mark.animated.svg",
         "evidenceOutputPath": "output/primary-mark.motion.evidence.json"
@@ -127,7 +157,7 @@ Example:
       "id": "primary-mark-lottie",
       "operation": "export-lottie",
       "spec": {
-        "inputPath": "output/primary-mark.vector.svg",
+        "inputPath": "output/primary-mark.motion.svg",
         "motionPath": "plans/primary-mark.motion.json",
         "outputPath": "output/primary-mark.lottie.json",
         "evidenceOutputPath": "output/primary-mark.lottie.evidence.json",
@@ -154,7 +184,7 @@ Manifest root and item fields are strict. Item IDs must be unique. A manifest su
 
 The optional `$schema` editor annotation is accepted but excluded from the canonical production identity.
 
-A job ID permanently binds to the canonical manifest SHA-256 once state exists. Changing item order, operation, spec, name or failure mode under the same job ID is rejected as `BATCH_MANIFEST_CHANGED`. Create a new revisioned job ID for a changed manifest.
+A job ID permanently binds to the canonical manifest SHA-256 once state exists. Changing item order, operation, spec, name, failure mode, delivery profile or stable ID prefix under the same job ID is rejected as `BATCH_MANIFEST_CHANGED`. Create a new revisioned job ID for a changed manifest.
 
 ## Operation specs
 
@@ -171,11 +201,15 @@ Optional:
 - `differenceOutputPath`;
 - `profile`: `auto`, `logo`, `icon`, `line-art`, `illustration` or `photo`;
 - `candidateMode`: `adaptive` or `single`;
+- `deliveryProfile`: `editable`, `web`, `motion` or `print`; default `editable`;
+- `stableIdPrefix`: only with `editable` or `motion`;
 - `maxColours`: 1 to 256;
 - `preservePalette`;
 - `optimise`;
 - `title`;
 - `differenceMaxDimension`: 32 to 1024 when a difference output is requested.
+
+Trace evidence records alpha-aware visible bounds, the selected candidate, delivery profile, stable path IDs, root-dimension policy, optimisation passes and render comparison.
 
 ### `optimise-svg`
 
@@ -184,6 +218,13 @@ Required:
 - `inputPath`;
 - `outputPath`;
 - `evidenceOutputPath`.
+
+Optional:
+
+- `deliveryProfile`: `editable`, `web`, `motion` or `print`; default `editable`;
+- `stableIdPrefix`: only with `editable` or `motion`.
+
+The operation packages an existing safe SVG. It does not overwrite the source, and a profile transform rolls back when it would introduce an invalid or unresolved reference.
 
 ### `animate-svg`
 
@@ -259,7 +300,7 @@ A separate state root can be selected by the local CLI.
 Before executing an item, its handler computes a lowercase SHA-256 revision from:
 
 - operation name;
-- canonical operation spec;
+- canonical operation spec, including delivery intent;
 - canonical relative input paths;
 - exact input bytes.
 
@@ -319,7 +360,7 @@ sha256
 
 Full engine evidence is written to the explicit evidence JSON output. Durable state keeps compact evidence so large batches do not duplicate generated bodies.
 
-Successful completion proves that handlers executed, revisions matched and receipts verified. It does not grant artistic, brand, accessibility, geometry, motion or player-equivalence approval.
+Successful completion proves that handlers executed, revisions matched and receipts verified. It does not grant artistic, brand, accessibility, geometry, motion, print-production or player-equivalence approval.
 
 Every production output remains `human-review-required` or `review-required` according to its underlying engine contract.
 
