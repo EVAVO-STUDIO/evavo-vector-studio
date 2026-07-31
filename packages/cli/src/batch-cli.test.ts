@@ -185,8 +185,18 @@ test("reports capabilities and rejects input revision drift", async () => {
   const contract = JSON.parse(capabilities.stdout) as {
     batchContractVersion?: string;
     operations?: string[];
+    delivery?: {
+      profiles?: string[];
+      defaultProfile?: string;
+      stableIdProfiles?: string[];
+      alphaAwareRasterAnalysis?: boolean;
+      immutableManifestRevision?: boolean;
+    };
     durability?: { completedOutputReverification?: boolean };
-    outputs?: { existingFilesOverwritten?: boolean };
+    outputs?: {
+      existingFilesOverwritten?: boolean;
+      deliveryEvidenceRetained?: boolean;
+    };
   };
   assert.equal(contract.batchContractVersion, "1.0");
   assert.deepEqual(contract.operations, [
@@ -196,8 +206,14 @@ test("reports capabilities and rejects input revision drift", async () => {
     "export-lottie",
     "package-dotlottie",
   ]);
+  assert.deepEqual(contract.delivery?.profiles, ["editable", "web", "motion", "print"]);
+  assert.equal(contract.delivery?.defaultProfile, "editable");
+  assert.deepEqual(contract.delivery?.stableIdProfiles, ["editable", "motion"]);
+  assert.equal(contract.delivery?.alphaAwareRasterAnalysis, true);
+  assert.equal(contract.delivery?.immutableManifestRevision, true);
   assert.equal(contract.durability?.completedOutputReverification, true);
   assert.equal(contract.outputs?.existingFilesOverwritten, false);
+  assert.equal(contract.outputs?.deliveryEvidenceRetained, true);
 
   const root = await mkdtemp(path.join(os.tmpdir(), "evavo-vector-batch-drift-"));
   try {
