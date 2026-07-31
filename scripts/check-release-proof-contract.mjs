@@ -122,7 +122,7 @@ requireTokens(files.docs, sources.docs, [
 ]);
 requireTokens(files.sourceWorkflow, sources.sourceWorkflow, [
   "Vector Studio source release proof",
-  "pnpm install --frozen-lockfile",
+  "node scripts/check-release-proof-contract.mjs",
   "node scripts/create-source-proof.mjs",
   "actions/upload-artifact@v4",
   "release/vector-source-proof",
