@@ -59,8 +59,10 @@ jobs:
           node-version: 22
           package-manager-cache: false
 
-      - name: Verify provisioner self-test
-        run: node scripts/provision-vector-studio-vercel.mjs --self-test
+      - name: Verify provisioner and plan-wrapper self-tests
+        run: |
+          node scripts/provision-vector-studio-vercel.mjs --self-test
+          node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test
 
       - name: Create bounded no-mutation plan
         id: provision
@@ -74,8 +76,7 @@ jobs:
           VECTOR_API_TOKEN: ${{ secrets.VECTOR_API_TOKEN }}
           VECTOR_WORKER_API_TOKEN: ${{ secrets.VECTOR_WORKER_API_TOKEN }}
         run: |
-          node scripts/provision-vector-studio-vercel.mjs \
-            --mode plan \
+          node scripts/plan-vector-studio-vercel-provisioning.mjs \
             --commit "${{ inputs.commit }}" \
             --out .ci/vector-vercel-provision-plan.json
 
@@ -85,7 +86,7 @@ jobs:
         with:
           name: vector-vercel-provision-plan-${{ inputs.commit }}
           path: .ci/vector-vercel-provision-plan.json
-          if-no-files-found: warn
+          if-no-files-found: error
           include-hidden-files: true
           retention-days: 7
 
@@ -152,8 +153,10 @@ jobs:
           node-version: 22
           package-manager-cache: false
 
-      - name: Verify provisioner self-test
-        run: node scripts/provision-vector-studio-vercel.mjs --self-test
+      - name: Verify provisioner and plan-wrapper self-tests
+        run: |
+          node scripts/provision-vector-studio-vercel.mjs --self-test
+          node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test
 
       - name: Create exact source proof before mutation
         run: |
