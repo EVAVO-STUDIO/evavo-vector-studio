@@ -22,6 +22,7 @@ const PROFILE_COLOURS = {
 
 type Profile = keyof typeof PROFILE_COLOURS;
 type CandidateMode = "adaptive" | "single";
+type DeliveryProfile = "editable" | "web" | "motion" | "print";
 type ComparisonQuality = "excellent" | "good" | "review";
 
 type ComparisonSummary = {
@@ -47,12 +48,21 @@ type DifferenceEvidence = {
 
 type DifferencePayload = DifferenceEvidence & DifferenceArtifactPayload;
 
+type CandidateOutput = {
+  bytes: number;
+  pathCount: number;
+  commandCount: number;
+  estimatedAnchorCount: number;
+  deliveryProfile: DeliveryProfile;
+  stablePathIdCount: number;
+};
+
 type CompleteCandidate = {
   id: string;
   role: string;
   status: "complete";
   selected: boolean;
-  output: { bytes: number; pathCount: number; commandCount: number; estimatedAnchorCount: number };
+  output: CandidateOutput;
   comparison: ComparisonSummary;
   visualCost: number;
   geometryCost: number;
@@ -70,18 +80,27 @@ type FailedCandidate = {
 type TraceEvidence = {
   analysis: {
     source: { width: number; height: number; inputBytes: number; mimeType: string; sha256: string };
+    sampling: { strategy: string; stride: number; sampleCount: number; alphaWeight: number };
+    content: {
+      bounds: { x: number; y: number; width: number; height: number };
+      visiblePixelCount: number;
+      visibleCoverage: number;
+      boundingBoxCoverage: number;
+      aspectRatio: number;
+    };
     suggestedProfile: string;
     colour: { estimatedColours: number; dominantColours: Array<{ hex: string; share: number }> };
     detail: { edgeDensity: number };
   };
   trace: { requestedProfile: string; resolvedProfile: string };
-  output: {
-    bytes: number;
-    pathCount: number;
+  output: CandidateOutput & {
     groupCount: number;
-    commandCount: number;
-    estimatedAnchorCount: number;
     viewBox: [number, number, number, number] | null;
+    stableIdPrefix: string | null;
+    optimisationPasses: string[];
+    metadataElementsRemoved: number;
+    paintValuesNormalised: number;
+    rootDimensions: "preserved" | "removed-responsive" | "not-present";
   };
   comparison: ComparisonSummary;
   candidates: Array<CompleteCandidate | FailedCandidate>;
@@ -98,6 +117,8 @@ type TraceEvidence = {
   qualityGates: {
     renderComparison: "passed" | "review-required";
     differenceArtifact: "available" | "not-requested";
+    deliveryProfile: "passed";
+    motionTargetIds: "available" | "not-requested";
     productionApproval: "review-required";
   };
   warnings: Array<{ code: string; severity: string; message: string }>;
@@ -139,6 +160,13 @@ function selectionReason(reason: string): string {
   return reason;
 }
 
+function deliveryLabel(profile: DeliveryProfile): string {
+  if (profile === "editable") return "Editable master";
+  if (profile === "web") return "Web compact";
+  if (profile === "motion") return "Motion ready";
+  return "Print safe";
+}
+
 function baseName(file: File | null): string {
   return file?.name.replace(/\.[^.]+$/, "") || "vector";
 }
@@ -150,6 +178,7 @@ export default function TraceWorkspace() {
   const [svgUrl, setSvgUrl] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile>("auto");
   const [candidateMode, setCandidateMode] = useState<CandidateMode>("adaptive");
+  const [deliveryProfile, setDeliveryProfile] = useState<DeliveryProfile>("editable");
   const [maxColours, setMaxColours] = useState<number>(PROFILE_COLOURS.auto);
   const [preservePalette, setPreservePalette] = useState(true);
   const [optimise, setOptimise] = useState(true);
@@ -228,6 +257,7 @@ export default function TraceWorkspace() {
       form.set("file", file);
       form.set("profile", profile);
       form.set("candidateMode", candidateMode);
+      form.set("deliveryProfile", deliveryProfile);
       form.set("maxColours", String(maxColours));
       form.set("preservePalette", String(preservePalette));
       form.set("optimise", String(optimise));
@@ -245,6 +275,9 @@ export default function TraceWorkspace() {
       if (!response.ok) throw new Error(payload.message || payload.error || `Trace failed with HTTP ${response.status}.`);
       if (!payload.inspection?.topology || !Array.isArray(payload.inspection.findings)) {
         throw new Error("The trace response is missing governed topology inspection evidence.");
+      }
+      if (!payload.evidence?.output?.deliveryProfile || !Array.isArray(payload.evidence.output.optimisationPasses)) {
+        throw new Error("The trace response is missing governed delivery-profile evidence.");
       }
       if (includeDifference && !payload.artifacts?.difference) {
         throw new Error("The trace completed without the requested visual difference artefact.");
@@ -283,7 +316,7 @@ export default function TraceWorkspace() {
           />
           {sourceUrl ? <img className={styles.sourcePreview} src={sourceUrl} alt="Selected raster source preview" /> : <span className={styles.uploadMark}>+</span>}
           <span className={styles.dropPrompt}>{file ? "Choose a different source" : "Drop artwork or browse"}</span>
-          <small>One static image per trace. Animated containers and multi-page TIFF are rejected before decoding.</small>
+          <small>One static image per trace. Hidden RGB beneath transparent pixels is ignored; animated containers and multi-page TIFF are rejected before decoding.</small>
           {file ? <strong className={styles.fileBadge}>{file.name} · {readableBytes(file.size)}</strong> : null}
         </label>
 
@@ -303,6 +336,14 @@ export default function TraceWorkspace() {
               <select value={candidateMode} onChange={(event) => setCandidateMode(event.target.value as CandidateMode)}>
                 <option value="adaptive">Adaptive visual and geometry review</option>
                 <option value="single">Single deterministic candidate</option>
+              </select>
+            </label>
+            <label className={styles.field}>Delivery intent
+              <select value={deliveryProfile} onChange={(event) => setDeliveryProfile(event.target.value as DeliveryProfile)}>
+                <option value="editable">Editable master · stable shape IDs</option>
+                <option value="web">Web compact · responsive packaging</option>
+                <option value="motion">Motion ready · stable target IDs</option>
+                <option value="print">Print safe · preserve dimensions</option>
               </select>
             </label>
             <label className={styles.field}>Target colours
@@ -334,8 +375,8 @@ export default function TraceWorkspace() {
           </label>
 
           <div className={styles.submitRow}>
-            <button className={styles.submitButton} type="submit" disabled={!file || running}>{running ? "Building, comparing and auditing…" : "Create governed SVG"}</button>
-            <span>{file ? `${candidateMode === "adaptive" ? "Adaptive" : "Single"} reconstruction${includeDifference ? " with difference evidence" : ""} is ready.` : "Select a source to begin."}</span>
+            <button className={styles.submitButton} type="submit" disabled={!file || running}>{running ? "Building, comparing and packaging…" : `Create ${deliveryLabel(deliveryProfile)}`}</button>
+            <span>{file ? `${candidateMode === "adaptive" ? "Adaptive" : "Single"} reconstruction · ${deliveryLabel(deliveryProfile)}${includeDifference ? " · difference evidence" : ""}.` : "Select a source to begin."}</span>
           </div>
           {error ? <p className={styles.error} role="alert">{error}</p> : null}
         </form>
@@ -370,6 +411,7 @@ export default function TraceWorkspace() {
 
         <div className={styles.metrics} aria-live="polite">
           <span><b>Profile</b>{result ? `${result.evidence.trace.resolvedProfile}${result.evidence.trace.requestedProfile === "auto" ? " · auto" : " · directed"}` : "pending"}</span>
+          <span><b>Delivery</b>{result ? `${deliveryLabel(result.evidence.output.deliveryProfile)} · ${result.evidence.output.stablePathIdCount.toLocaleString()} stable IDs` : deliveryLabel(deliveryProfile)}</span>
           <span><b>Geometry</b>{result ? `${result.evidence.output.estimatedAnchorCount.toLocaleString()} anchors · ${result.evidence.output.pathCount.toLocaleString()} paths` : "pending"}</span>
           <span><b>Render evidence</b>{result ? `${result.evidence.comparison.quality} · MAE ${percentage(result.evidence.comparison.aggregate.visualMae)}` : "pending"}</span>
           <span><b>Difference</b>{difference ? `${difference.width} × ${difference.height} · verified` : includeDifference ? "pending" : "not requested"}</span>
@@ -380,18 +422,22 @@ export default function TraceWorkspace() {
             <div className={styles.resultHeader}>
               <div>
                 <small>JOB {result.id}</small>
-                <strong>Selected {result.evidence.selection.selectedCandidateId} candidate · {result.evidence.comparison.quality} render evidence</strong>
+                <strong>Selected {result.evidence.selection.selectedCandidateId} candidate · {deliveryLabel(result.evidence.output.deliveryProfile)} · {result.evidence.comparison.quality} render evidence</strong>
                 <span>{selectionReason(result.evidence.selection.reason)}. Compared {result.evidence.comparison.aggregate.comparedPixelCount.toLocaleString()} rendered pixels across {result.evidence.comparison.scales.length} scale{result.evidence.comparison.scales.length === 1 ? "" : "s"}. Human production approval remains required.</span>
               </div>
               <div className={styles.downloadGroup}>
-                {svgUrl ? <a className={styles.download} href={svgUrl} download={`${baseName(file)}.svg`}>Download SVG</a> : null}
+                {svgUrl ? <a className={styles.download} href={svgUrl} download={`${baseName(file)}.${result.evidence.output.deliveryProfile}.svg`}>Download SVG</a> : null}
                 {differenceUrl ? <a className={styles.download} href={differenceUrl} download={`${baseName(file)}.difference.png`}>Download difference PNG</a> : null}
               </div>
             </div>
             <dl className={styles.evidenceGrid}>
               <div><dt>Source</dt><dd>{result.evidence.analysis.source.width} × {result.evidence.analysis.source.height}</dd></div>
+              <div><dt>Visible bounds</dt><dd>{result.evidence.analysis.content.bounds.width} × {result.evidence.analysis.content.bounds.height} · {percentage(result.evidence.analysis.content.visibleCoverage)}</dd></div>
               <div><dt>Detected colours</dt><dd>{result.evidence.analysis.colour.estimatedColours.toLocaleString()}</dd></div>
               <div><dt>Estimated anchors</dt><dd>{result.evidence.output.estimatedAnchorCount.toLocaleString()}</dd></div>
+              <div><dt>Stable path IDs</dt><dd>{result.evidence.output.stablePathIdCount.toLocaleString()} · {result.evidence.output.stableIdPrefix ?? "not requested"}</dd></div>
+              <div><dt>Root dimensions</dt><dd>{result.evidence.output.rootDimensions.replaceAll("-", " ")}</dd></div>
+              <div><dt>Packaging passes</dt><dd>{result.evidence.output.optimisationPasses.join(" · ")}</dd></div>
               <div><dt>Mismatch pixels</dt><dd>{percentage(result.evidence.comparison.aggregate.mismatchFraction)}</dd></div>
             </dl>
 
@@ -419,6 +465,7 @@ export default function TraceWorkspace() {
                       <>
                         <span><b>{candidate.comparison.quality}</b>MAE {percentage(candidate.comparison.aggregate.visualMae)}</span>
                         <span><b>{candidate.output.estimatedAnchorCount.toLocaleString()}</b>estimated anchors</span>
+                        <span><b>{candidate.output.stablePathIdCount.toLocaleString()}</b>stable path IDs</span>
                         <span><b>{readableBytes(candidate.output.bytes)}</b>SVG output</span>
                       </>
                     ) : (
