@@ -130,6 +130,14 @@ async function executeTrace(
     includeDifferenceArtifact: Boolean(payload.outputs.differenceObjectKey),
     signal: context.signal,
   });
+  const delivery = Object.freeze({
+    deliveryProfile: result.evidence.output.deliveryProfile,
+    stablePathIdCount: result.evidence.output.stablePathIdCount,
+    stableIdPrefix: result.evidence.output.stableIdPrefix,
+    rootDimensions: result.evidence.output.rootDimensions,
+    optimisationPasses: result.evidence.output.optimisationPasses,
+    safetyRollbackApplied: result.evidence.output.safetyRollbackApplied,
+  });
   const writes: ObjectWrite[] = [
     Object.freeze({
       objectKey: payload.outputs.svgObjectKey,
@@ -148,6 +156,7 @@ async function executeTrace(
           bytes: source.byteCount,
           sha256: source.sha256,
         },
+        delivery,
         inspection: result.inspection,
         evidence: result.evidence,
         approval: "human-review-required",
@@ -178,6 +187,7 @@ async function executeTrace(
       sourceSha256: source.sha256,
       selectedCandidateId: result.evidence.selection.selectedCandidateId,
       renderQuality: result.evidence.comparison.quality,
+      ...delivery,
       outputObjects: compactOutputs(receipts),
       approval: "human-review-required",
     }),
@@ -193,7 +203,20 @@ async function executeOptimise(
   const source = await sourceObject(store, payload.source, context);
   const sourceText = decodeUtf8(source.bytes, source.objectKey);
   throwIfWorkerAborted(context.signal);
-  const result = optimiseSvg(sourceText);
+  const result = optimiseSvg(sourceText, {
+    profile: payload.options.deliveryProfile,
+    ...(payload.options.stableIdPrefix
+      ? { stableIdPrefix: payload.options.stableIdPrefix }
+      : {}),
+  });
+  const delivery = Object.freeze({
+    deliveryProfile: result.evidence.profile,
+    stablePathIdCount: result.evidence.stableIds.added,
+    stableIdPrefix: result.evidence.stableIds.prefix,
+    rootDimensions: result.evidence.rootDimensions,
+    optimisationPasses: result.evidence.passes,
+    safetyRollbackApplied: result.evidence.safetyRollbackApplied,
+  });
   const receipts = await commit(store, [
     Object.freeze({
       objectKey: payload.outputs.svgObjectKey,
@@ -215,6 +238,8 @@ async function executeOptimise(
         beforeBytes: result.beforeBytes,
         afterBytes: result.afterBytes,
         bytesSaved: result.bytesSaved,
+        bytesDelta: result.bytesDelta,
+        delivery: result.evidence,
         inspection: result.inspection,
         approval: "human-review-required",
       }),
@@ -228,6 +253,8 @@ async function executeOptimise(
     evidence: Object.freeze({
       sourceSha256: source.sha256,
       bytesSaved: result.bytesSaved,
+      bytesDelta: result.bytesDelta,
+      ...delivery,
       outputObjects: compactOutputs(receipts),
       approval: "human-review-required",
     }),
