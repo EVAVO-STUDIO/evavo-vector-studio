@@ -48,6 +48,7 @@ on:
       - "docs/CAPABILITIES.md"
       - "docs/MCP.md"
       - ".github/workflows/print-preflight-contract.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -62,86 +63,127 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - name: Checkout exact commit
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Install pnpm 10.14.0
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.1.0
+        uses: pnpm/action-setup@08c4be7e2e672a47d11bd04269e27e5f3e8529cb # v6.0.0
         with:
           version: 10.14.0
+          run_install: false
 
       - name: Use Node.js 22
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Verify print preflight source contract
         id: contract
         continue-on-error: true
-        run: node scripts/check-print-preflight-api-contract.mjs
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          node scripts/check-print-preflight-api-contract.mjs 2>&1 | tee .ci/print-contract.log
+          node scripts/check-capability-discovery.mjs 2>&1 | tee -a .ci/print-contract.log
+          node scripts/check-mcp-contract.mjs 2>&1 | tee -a .ci/print-contract.log
 
       - name: Install exact dependencies
         id: install
         continue-on-error: true
-        run: pnpm install --frozen-lockfile
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          pnpm install --frozen-lockfile 2>&1 | tee .ci/print-install.log
 
       - name: Build canonical workspace packages
         id: dependencies
-        if: ${{ steps.install.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         continue-on-error: true
-        run: pnpm build:packages
-
-      - name: Run core, CLI and MCP print tests
-        id: tests
-        if: ${{ steps.dependencies.outcome == 'success' }}
-        continue-on-error: true
+        shell: bash
         run: |
-          pnpm --filter @evavo/vector-core test
-          pnpm --filter @evavo/vector-cli test
-          pnpm --filter @evavo/vector-mcp test
+          set -o pipefail
+          pnpm build:packages 2>&1 | tee .ci/print-dependencies.log
+
+      - name: Run Vector core print tests
+        id: core_tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @evavo/vector-core test 2>&1 | tee .ci/print-core-tests.log
+
+      - name: Run Vector CLI print tests
+        id: cli_tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @evavo/vector-cli test 2>&1 | tee .ci/print-cli-tests.log
+
+      - name: Run Vector MCP print tests
+        id: mcp_tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @evavo/vector-mcp test 2>&1 | tee .ci/print-mcp-tests.log
 
       - name: Typecheck Vector web
         id: typecheck
-        if: ${{ steps.dependencies.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         continue-on-error: true
-        run: pnpm --filter @evavo/vector-web typecheck
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @evavo/vector-web typecheck 2>&1 | tee .ci/print-web-typecheck.log
 
       - name: Build Vector web through workspace dependencies
         id: build
-        if: ${{ steps.dependencies.outcome == 'success' && steps.typecheck.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         continue-on-error: true
-        run: pnpm exec turbo run build --filter=@evavo/vector-web
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm exec turbo run build --filter=@evavo/vector-web 2>&1 | tee .ci/print-web-build.log
 
       - name: Publish print preflight statuses
-        if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.0.1
+        if: ${{ always() }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           DEPENDENCIES_OUTCOME: ${{ steps.dependencies.outcome }}
-          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          CORE_TESTS_OUTCOME: ${{ steps.core_tests.outcome }}
+          CLI_TESTS_OUTCOME: ${{ steps.cli_tests.outcome }}
+          MCP_TESTS_OUTCOME: ${{ steps.mcp_tests.outcome }}
           TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
         with:
           script: |
-            const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const dependenciesPassed =
               process.env.INSTALL_OUTCOME === "success" &&
               process.env.DEPENDENCIES_OUTCOME === "success";
+            const testsPassed =
+              dependenciesPassed &&
+              process.env.CORE_TESTS_OUTCOME === "success" &&
+              process.env.CLI_TESTS_OUTCOME === "success" &&
+              process.env.MCP_TESTS_OUTCOME === "success";
             const gates = [
-              [
-                "print/vector-preflight-contract",
-                process.env.CONTRACT_OUTCOME === "success",
-                "print preflight contract",
-              ],
-              [
-                "print/vector-preflight-tests",
-                dependenciesPassed && process.env.TESTS_OUTCOME === "success",
-                "print preflight tests",
-              ],
+              ["print/vector-preflight-contract", process.env.CONTRACT_OUTCOME === "success", "print preflight contract"],
+              ["print/vector-preflight-core", dependenciesPassed && process.env.CORE_TESTS_OUTCOME === "success", "Vector core print tests"],
+              ["print/vector-preflight-cli", dependenciesPassed && process.env.CLI_TESTS_OUTCOME === "success", "Vector CLI print tests"],
+              ["print/vector-preflight-mcp", dependenciesPassed && process.env.MCP_TESTS_OUTCOME === "success", "Vector MCP print tests"],
+              ["print/vector-preflight-tests", testsPassed, "print preflight tests"],
               [
                 "print/vector-preflight-build",
                 dependenciesPassed &&
@@ -162,19 +204,34 @@ jobs:
               });
             }
 
+      - name: Preserve print diagnostics
+        if: ${{ always() && (steps.contract.outcome != 'success' || steps.install.outcome != 'success' || steps.dependencies.outcome != 'success' || steps.core_tests.outcome != 'success' || steps.cli_tests.outcome != 'success' || steps.mcp_tests.outcome != 'success' || steps.typecheck.outcome != 'success' || steps.build.outcome != 'success') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vector-print-preflight-${{ github.sha }}
+          path: .ci/print-*.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Enforce print preflight validation
-        if: always()
+        if: ${{ always() }}
         env:
           CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           DEPENDENCIES_OUTCOME: ${{ steps.dependencies.outcome }}
-          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          CORE_TESTS_OUTCOME: ${{ steps.core_tests.outcome }}
+          CLI_TESTS_OUTCOME: ${{ steps.cli_tests.outcome }}
+          MCP_TESTS_OUTCOME: ${{ steps.mcp_tests.outcome }}
           TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
+        shell: bash
         run: |
           test "$CONTRACT_OUTCOME" = "success"
           test "$INSTALL_OUTCOME" = "success"
           test "$DEPENDENCIES_OUTCOME" = "success"
-          test "$TESTS_OUTCOME" = "success"
+          test "$CORE_TESTS_OUTCOME" = "success"
+          test "$CLI_TESTS_OUTCOME" = "success"
+          test "$MCP_TESTS_OUTCOME" = "success"
           test "$TYPECHECK_OUTCOME" = "success"
           test "$BUILD_OUTCOME" = "success"
