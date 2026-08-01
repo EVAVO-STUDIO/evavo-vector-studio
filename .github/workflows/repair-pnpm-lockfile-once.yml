@@ -1,0 +1,148 @@
+name: Repair duplicated pnpm lockfile once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/repair-pnpm-lockfile-once.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+  statuses: write
+
+concurrency:
+  group: vector-pnpm-lockfile-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact repair revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Install pnpm 10.14.0
+        uses: pnpm/action-setup@08c4be7e2e672a47d11bd04269e27e5f3e8529cb # v6.0.0
+        with:
+          version: 10.14.0
+          run_install: false
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Extract only the canonical second YAML document
+        id: extract
+        shell: bash
+        run: |
+          mkdir -p .ci
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import json
+          import re
+
+          lockfile = Path("pnpm-lock.yaml")
+          raw = lockfile.read_text(encoding="utf-8")
+          lines = raw.splitlines()
+          markers = [index + 1 for index, line in enumerate(lines) if line.strip() == "---"]
+          versions = [index + 1 for index, line in enumerate(lines) if line.startswith("lockfileVersion:")]
+          if markers != [1, 94] or versions != [2, 95]:
+              raise SystemExit(
+                  f"Refusing repair: expected markers [1, 94] and versions [2, 95], got {markers} and {versions}."
+              )
+          parts = re.split(r"(?m)^---[ \t]*\r?\n", raw)
+          if len(parts) != 3 or parts[0] != "":
+              raise SystemExit(f"Refusing repair: expected exactly two YAML documents, got {len(parts) - 1}.")
+          obsolete, candidate = parts[1], parts[2]
+          if not obsolete.startswith("lockfileVersion:") or not candidate.startswith("lockfileVersion:"):
+              raise SystemExit("Refusing repair: both documents must begin with lockfileVersion.")
+          if candidate.count("lockfileVersion:") != 1:
+              raise SystemExit("Refusing repair: retained document contains a duplicate lockfileVersion.")
+          if re.search(r"(?m)^(?:---|\.\.\.)[ \t]*$", candidate):
+              raise SystemExit("Refusing repair: retained document still contains a YAML document marker.")
+          lockfile.write_text(candidate, encoding="utf-8", newline="")
+          evidence = {
+              "check": "pnpm-lockfile-two-document-repair",
+              "ok": True,
+              "sourceMarkers": markers,
+              "sourceVersionLines": versions,
+              "obsoleteBytes": len(obsolete.encode("utf-8")),
+              "retainedBytes": len(candidate.encode("utf-8")),
+              "retainedSha256": hashlib.sha256(candidate.encode("utf-8")).hexdigest(),
+              "mutation": "retain-second-document-only",
+          }
+          Path(".ci/lockfile-repair.json").write_text(
+              json.dumps(evidence, indent=2) + "\n", encoding="utf-8"
+          )
+          print(json.dumps(evidence, indent=2))
+          PY
+
+      - name: Verify repaired lockfile integrity
+        shell: bash
+        run: node scripts/check-lockfile-integrity.mjs
+
+      - name: Verify exact dependency graph from repaired lockfile
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repair changed only the lockfile
+        shell: bash
+        run: |
+          git diff --check
+          changed="$(git diff --name-only)"
+          test "$changed" = "pnpm-lock.yaml"
+          git diff --stat -- pnpm-lock.yaml
+
+      - name: Commit repaired lockfile directly to main
+        id: commit
+        shell: bash
+        run: |
+          git config user.name "EVAVO Automation"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          git commit -m "fix(build): restore single-document pnpm lockfile"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish repair status
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          REPAIRED_SHA: ${{ steps.commit.outputs.sha }}
+        with:
+          script: |
+            const sha = String(process.env.REPAIRED_SHA || "").trim();
+            if (!/^[a-f0-9]{40}$/.test(sha)) {
+              throw new Error("The repaired lockfile commit SHA is unavailable.");
+            }
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha,
+              state: "success",
+              context: "vector/lockfile-repair",
+              description: "duplicated YAML document removed and frozen install passed",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Dispatch full quality validation on repaired main
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            for (const workflow_id of ["quality.yml", "print-preflight-contract.yml"]) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id,
+                ref: "main",
+              });
+            }
