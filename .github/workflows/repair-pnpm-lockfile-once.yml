@@ -20,7 +20,7 @@ jobs:
   repair:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - name: Checkout exact repair revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,107 +40,131 @@ jobs:
           node-version: 22
           package-manager-cache: false
 
-      - name: Extract only the canonical second YAML document when required
-        id: extract
+      - name: Capture dependency inputs and lockfile evidence
+        id: capture
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p .ci
+          node scripts/check-lockfile-integrity.mjs > .ci/lockfile-integrity-before.json
           python - <<'PY'
           from pathlib import Path
           import hashlib
           import json
-          import re
 
-          lockfile = Path("pnpm-lock.yaml")
-          raw = lockfile.read_text(encoding="utf-8")
-          lines = raw.splitlines()
-          markers = [index + 1 for index, line in enumerate(lines) if line.strip() == "---"]
-          versions = [index + 1 for index, line in enumerate(lines) if line.startswith("lockfileVersion:")]
-          repaired = False
-
-          if markers == [] and versions == [1]:
-              candidate = raw
-              mode = "already-single-document"
-          elif markers == [1, 94] and versions == [2, 95]:
-              parts = re.split(r"(?m)^---[ \t]*\r?\n", raw)
-              if len(parts) != 3 or parts[0] != "":
-                  raise SystemExit(
-                      f"Refusing repair: expected exactly two YAML documents, got {len(parts) - 1}."
-                  )
-              obsolete, candidate = parts[1], parts[2]
-              if not obsolete.startswith("lockfileVersion:") or not candidate.startswith("lockfileVersion:"):
-                  raise SystemExit("Refusing repair: both documents must begin with lockfileVersion.")
-              if candidate.count("lockfileVersion:") != 1:
-                  raise SystemExit("Refusing repair: retained document contains a duplicate lockfileVersion.")
-              if re.search(r"(?m)^(?:---|\.\.\.)[ \t]*$", candidate):
-                  raise SystemExit("Refusing repair: retained document still contains a YAML document marker.")
-              lockfile.write_text(candidate, encoding="utf-8", newline="")
-              repaired = True
-              mode = "retain-second-document-only"
-          else:
-              raise SystemExit(
-                  f"Refusing repair: expected an already-valid lockfile or markers [1, 94] and versions [2, 95], got {markers} and {versions}."
-              )
-
+          manifests = sorted(
+              path for path in Path(".").rglob("package.json")
+              if "node_modules" not in path.parts and ".git" not in path.parts
+          )
           evidence = {
-              "check": "pnpm-lockfile-two-document-repair",
+              "check": "pnpm-lockfile-repair-inputs",
               "ok": True,
-              "sourceMarkers": markers,
-              "sourceVersionLines": versions,
-              "retainedBytes": len(candidate.encode("utf-8")),
-              "retainedSha256": hashlib.sha256(candidate.encode("utf-8")).hexdigest(),
-              "repaired": repaired,
-              "mutation": mode,
+              "packageManager": "pnpm@10.14.0",
+              "manifestCount": len(manifests),
+              "manifests": [
+                  {
+                      "path": str(path),
+                      "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  }
+                  for path in manifests
+              ],
+              "lockfileSha256": hashlib.sha256(
+                  Path("pnpm-lock.yaml").read_bytes()
+              ).hexdigest(),
           }
-          Path(".ci/lockfile-repair.json").write_text(
+          Path(".ci/lockfile-repair-inputs.json").write_text(
               json.dumps(evidence, indent=2) + "\n", encoding="utf-8"
           )
           print(json.dumps(evidence, indent=2))
+          if len(manifests) != 17:
+              raise SystemExit(
+                  f"Expected 17 workspace package manifests; found {len(manifests)}."
+              )
           PY
-          if git diff --quiet -- pnpm-lock.yaml; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
 
-      - name: Verify repaired lockfile integrity
-        id: integrity
-        if: ${{ !cancelled() }}
+      - name: Try the checked-in lockfile exactly
+        id: initial_install
+        continue-on-error: true
         shell: bash
-        run: node scripts/check-lockfile-integrity.mjs
+        run: |
+          set -o pipefail
+          pnpm install --frozen-lockfile 2>&1 | tee .ci/initial-frozen-install.log
 
-      - name: Verify exact dependency graph from repaired lockfile
-        id: install
-        if: ${{ !cancelled() && steps.integrity.outcome == 'success' }}
+      - name: Regenerate lockfile from the 17 workspace manifests
+        id: regenerate
+        if: ${{ steps.initial_install.outcome == 'failure' }}
         shell: bash
-        run: pnpm install --frozen-lockfile
+        run: |
+          set -euo pipefail
+          cp pnpm-lock.yaml .ci/pnpm-lock.original.yaml
+          rm -f pnpm-lock.yaml
+          rm -rf node_modules
+          find apps packages workers -type d -name node_modules -prune -exec rm -rf '{}' + 2>/dev/null || true
+          pnpm install --lockfile-only --frozen-lockfile=false 2>&1 | tee .ci/lockfile-regeneration.log
+          node scripts/check-lockfile-integrity.mjs | tee .ci/lockfile-integrity-after.json
+          test -f pnpm-lock.yaml
+          test "$(grep -c '^lockfileVersion:' pnpm-lock.yaml)" -eq 1
+          test "$(grep -c '^importers:' pnpm-lock.yaml)" -eq 1
+          test "$(grep -c '^packages:' pnpm-lock.yaml)" -eq 1
+          test "$(grep -c '^snapshots:' pnpm-lock.yaml)" -eq 1
+          echo "regenerated=true" >> "$GITHUB_OUTPUT"
 
-      - name: Verify bounded repair scope
+      - name: Prove the retained or regenerated dependency graph is frozen-installable
+        id: frozen_install
+        if: ${{ !cancelled() && (steps.initial_install.outcome == 'success' || steps.regenerate.outcome == 'success') }}
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm install --frozen-lockfile 2>&1 | tee .ci/final-frozen-install.log
+
+      - name: Verify exact manifest preservation and bounded source mutation
         id: scope
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.frozen_install.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
           git diff --check
-          if [ "${{ steps.extract.outputs.changed }}" = "true" ]; then
-            changed="$(git diff --name-only)"
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import json
+
+          before = json.loads(
+              Path(".ci/lockfile-repair-inputs.json").read_text(encoding="utf-8")
+          )
+          current = {
+              str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+              for path in sorted(
+                  path for path in Path(".").rglob("package.json")
+                  if "node_modules" not in path.parts and ".git" not in path.parts
+              )
+          }
+          expected = {
+              item["path"]: item["sha256"]
+              for item in before["manifests"]
+          }
+          if current != expected:
+              raise SystemExit("A package manifest changed during lockfile repair.")
+          PY
+          changed="$(git diff --name-only)"
+          if [ -n "$changed" ]; then
             test "$changed" = "pnpm-lock.yaml"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
             git diff --stat -- pnpm-lock.yaml
           else
-            git diff --exit-code
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit repaired lockfile directly to main
+      - name: Commit regenerated lockfile directly to main
         id: commit
-        if: ${{ steps.scope.outcome == 'success' && steps.extract.outputs.changed == 'true' }}
+        if: ${{ steps.scope.outcome == 'success' && steps.scope.outputs.changed == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "EVAVO Automation"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add pnpm-lock.yaml
-          git commit -m "fix(build): restore single-document pnpm lockfile"
+          git commit -m "fix(build): regenerate deterministic pnpm lockfile"
           git push origin HEAD:main
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -154,47 +178,58 @@ jobs:
           if [ -z "$sha" ]; then
             sha="$(git rev-parse HEAD)"
           fi
-          test "${#sha}" -eq 40
+          [[ "$sha" =~ ^[a-f0-9]{40}$ ]]
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Preserve bounded repair diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        with:
+          name: vector-lockfile-repair-${{ github.sha }}
+          path: .ci/*
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Publish bounded repair status
         if: always()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           RESOLVED_SHA: ${{ steps.resolved.outputs.sha }}
-          EXTRACT_OUTCOME: ${{ steps.extract.outcome }}
-          INTEGRITY_OUTCOME: ${{ steps.integrity.outcome }}
-          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          CAPTURE_OUTCOME: ${{ steps.capture.outcome }}
+          INITIAL_INSTALL_OUTCOME: ${{ steps.initial_install.outcome }}
+          REGENERATE_OUTCOME: ${{ steps.regenerate.outcome }}
+          FROZEN_INSTALL_OUTCOME: ${{ steps.frozen_install.outcome }}
           SCOPE_OUTCOME: ${{ steps.scope.outcome }}
           COMMIT_OUTCOME: ${{ steps.commit.outcome }}
           RESOLVED_OUTCOME: ${{ steps.resolved.outcome }}
         with:
           script: |
-            const outcomes = [
-              process.env.EXTRACT_OUTCOME,
-              process.env.INTEGRITY_OUTCOME,
-              process.env.INSTALL_OUTCOME,
-              process.env.SCOPE_OUTCOME,
-              process.env.RESOLVED_OUTCOME,
-            ];
-            const commitAcceptable = ["success", "skipped"].includes(
+            const initialAccepted =
+              process.env.INITIAL_INSTALL_OUTCOME === "success" ||
+              process.env.REGENERATE_OUTCOME === "success";
+            const commitAccepted = ["success", "skipped"].includes(
               process.env.COMMIT_OUTCOME,
             );
             const passed =
-              outcomes.every((value) => value === "success") &&
-              commitAcceptable;
+              process.env.CAPTURE_OUTCOME === "success" &&
+              initialAccepted &&
+              process.env.FROZEN_INSTALL_OUTCOME === "success" &&
+              process.env.SCOPE_OUTCOME === "success" &&
+              commitAccepted &&
+              process.env.RESOLVED_OUTCOME === "success";
             const candidate = String(process.env.RESOLVED_SHA || "").trim();
             const sha = /^[a-f0-9]{40}$/.test(candidate)
               ? candidate
               : context.sha;
             const failedGate = [
-              ["extract", process.env.EXTRACT_OUTCOME],
-              ["integrity", process.env.INTEGRITY_OUTCOME],
-              ["install", process.env.INSTALL_OUTCOME],
+              ["capture", process.env.CAPTURE_OUTCOME],
+              ["initial-or-regenerate", initialAccepted ? "success" : "failure"],
+              ["frozen-install", process.env.FROZEN_INSTALL_OUTCOME],
               ["scope", process.env.SCOPE_OUTCOME],
-              ["commit", process.env.COMMIT_OUTCOME],
+              ["commit", commitAccepted ? "success" : process.env.COMMIT_OUTCOME],
               ["resolve", process.env.RESOLVED_OUTCOME],
-            ].find(([, outcome]) => !["success", "skipped"].includes(outcome));
+            ].find(([, outcome]) => outcome !== "success");
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -202,7 +237,7 @@ jobs:
               state: passed ? "success" : "failure",
               context: "vector/lockfile-repair",
               description: passed
-                ? "single-document lockfile and frozen install verified"
+                ? "manifest-derived lockfile and frozen install verified"
                 : `lockfile repair failed at ${failedGate?.[0] || "unknown"}`,
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
@@ -225,16 +260,17 @@ jobs:
         if: always()
         shell: bash
         env:
-          EXTRACT_OUTCOME: ${{ steps.extract.outcome }}
-          INTEGRITY_OUTCOME: ${{ steps.integrity.outcome }}
-          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          CAPTURE_OUTCOME: ${{ steps.capture.outcome }}
+          INITIAL_INSTALL_OUTCOME: ${{ steps.initial_install.outcome }}
+          REGENERATE_OUTCOME: ${{ steps.regenerate.outcome }}
+          FROZEN_INSTALL_OUTCOME: ${{ steps.frozen_install.outcome }}
           SCOPE_OUTCOME: ${{ steps.scope.outcome }}
           COMMIT_OUTCOME: ${{ steps.commit.outcome }}
           RESOLVED_OUTCOME: ${{ steps.resolved.outcome }}
         run: |
-          test "$EXTRACT_OUTCOME" = "success"
-          test "$INTEGRITY_OUTCOME" = "success"
-          test "$INSTALL_OUTCOME" = "success"
+          test "$CAPTURE_OUTCOME" = "success"
+          test "$INITIAL_INSTALL_OUTCOME" = "success" -o "$REGENERATE_OUTCOME" = "success"
+          test "$FROZEN_INSTALL_OUTCOME" = "success"
           test "$SCOPE_OUTCOME" = "success"
           test "$COMMIT_OUTCOME" = "success" -o "$COMMIT_OUTCOME" = "skipped"
           test "$RESOLVED_OUTCOME" = "success"
