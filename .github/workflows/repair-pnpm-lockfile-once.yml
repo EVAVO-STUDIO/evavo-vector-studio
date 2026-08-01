@@ -1,5 +1,4 @@
 name: Repair duplicated pnpm lockfile once
-# Re-triggered after the workflow was first added so GitHub can evaluate it from the default branch.
 
 on:
   push:
@@ -41,10 +40,11 @@ jobs:
           node-version: 22
           package-manager-cache: false
 
-      - name: Extract only the canonical second YAML document
+      - name: Extract only the canonical second YAML document when required
         id: extract
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p .ci
           python - <<'PY'
           from pathlib import Path
@@ -57,57 +57,86 @@ jobs:
           lines = raw.splitlines()
           markers = [index + 1 for index, line in enumerate(lines) if line.strip() == "---"]
           versions = [index + 1 for index, line in enumerate(lines) if line.startswith("lockfileVersion:")]
-          if markers != [1, 94] or versions != [2, 95]:
+          repaired = False
+
+          if markers == [] and versions == [1]:
+              candidate = raw
+              mode = "already-single-document"
+          elif markers == [1, 94] and versions == [2, 95]:
+              parts = re.split(r"(?m)^---[ \t]*\r?\n", raw)
+              if len(parts) != 3 or parts[0] != "":
+                  raise SystemExit(
+                      f"Refusing repair: expected exactly two YAML documents, got {len(parts) - 1}."
+                  )
+              obsolete, candidate = parts[1], parts[2]
+              if not obsolete.startswith("lockfileVersion:") or not candidate.startswith("lockfileVersion:"):
+                  raise SystemExit("Refusing repair: both documents must begin with lockfileVersion.")
+              if candidate.count("lockfileVersion:") != 1:
+                  raise SystemExit("Refusing repair: retained document contains a duplicate lockfileVersion.")
+              if re.search(r"(?m)^(?:---|\.\.\.)[ \t]*$", candidate):
+                  raise SystemExit("Refusing repair: retained document still contains a YAML document marker.")
+              lockfile.write_text(candidate, encoding="utf-8", newline="")
+              repaired = True
+              mode = "retain-second-document-only"
+          else:
               raise SystemExit(
-                  f"Refusing repair: expected markers [1, 94] and versions [2, 95], got {markers} and {versions}."
+                  f"Refusing repair: expected an already-valid lockfile or markers [1, 94] and versions [2, 95], got {markers} and {versions}."
               )
-          parts = re.split(r"(?m)^---[ \t]*\r?\n", raw)
-          if len(parts) != 3 or parts[0] != "":
-              raise SystemExit(f"Refusing repair: expected exactly two YAML documents, got {len(parts) - 1}.")
-          obsolete, candidate = parts[1], parts[2]
-          if not obsolete.startswith("lockfileVersion:") or not candidate.startswith("lockfileVersion:"):
-              raise SystemExit("Refusing repair: both documents must begin with lockfileVersion.")
-          if candidate.count("lockfileVersion:") != 1:
-              raise SystemExit("Refusing repair: retained document contains a duplicate lockfileVersion.")
-          if re.search(r"(?m)^(?:---|\.\.\.)[ \t]*$", candidate):
-              raise SystemExit("Refusing repair: retained document still contains a YAML document marker.")
-          lockfile.write_text(candidate, encoding="utf-8", newline="")
+
           evidence = {
               "check": "pnpm-lockfile-two-document-repair",
               "ok": True,
               "sourceMarkers": markers,
               "sourceVersionLines": versions,
-              "obsoleteBytes": len(obsolete.encode("utf-8")),
               "retainedBytes": len(candidate.encode("utf-8")),
               "retainedSha256": hashlib.sha256(candidate.encode("utf-8")).hexdigest(),
-              "mutation": "retain-second-document-only",
+              "repaired": repaired,
+              "mutation": mode,
           }
           Path(".ci/lockfile-repair.json").write_text(
               json.dumps(evidence, indent=2) + "\n", encoding="utf-8"
           )
           print(json.dumps(evidence, indent=2))
           PY
+          if git diff --quiet -- pnpm-lock.yaml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Verify repaired lockfile integrity
+        id: integrity
+        if: ${{ !cancelled() }}
         shell: bash
         run: node scripts/check-lockfile-integrity.mjs
 
       - name: Verify exact dependency graph from repaired lockfile
+        id: install
+        if: ${{ !cancelled() && steps.integrity.outcome == 'success' }}
         shell: bash
         run: pnpm install --frozen-lockfile
 
-      - name: Verify repair changed only the lockfile
+      - name: Verify bounded repair scope
+        id: scope
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         shell: bash
         run: |
+          set -euo pipefail
           git diff --check
-          changed="$(git diff --name-only)"
-          test "$changed" = "pnpm-lock.yaml"
-          git diff --stat -- pnpm-lock.yaml
+          if [ "${{ steps.extract.outputs.changed }}" = "true" ]; then
+            changed="$(git diff --name-only)"
+            test "$changed" = "pnpm-lock.yaml"
+            git diff --stat -- pnpm-lock.yaml
+          else
+            git diff --exit-code
+          fi
 
       - name: Commit repaired lockfile directly to main
         id: commit
+        if: ${{ steps.scope.outcome == 'success' && steps.extract.outputs.changed == 'true' }}
         shell: bash
         run: |
+          set -euo pipefail
           git config user.name "EVAVO Automation"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add pnpm-lock.yaml
@@ -115,27 +144,71 @@ jobs:
           git push origin HEAD:main
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Publish repair status
+      - name: Resolve validated lockfile SHA
+        id: resolved
+        if: ${{ !cancelled() && steps.scope.outcome == 'success' && (steps.commit.outcome == 'success' || steps.commit.outcome == 'skipped') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="${{ steps.commit.outputs.sha }}"
+          if [ -z "$sha" ]; then
+            sha="$(git rev-parse HEAD)"
+          fi
+          test "${#sha}" -eq 40
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Publish bounded repair status
+        if: always()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          REPAIRED_SHA: ${{ steps.commit.outputs.sha }}
+          RESOLVED_SHA: ${{ steps.resolved.outputs.sha }}
+          EXTRACT_OUTCOME: ${{ steps.extract.outcome }}
+          INTEGRITY_OUTCOME: ${{ steps.integrity.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          SCOPE_OUTCOME: ${{ steps.scope.outcome }}
+          COMMIT_OUTCOME: ${{ steps.commit.outcome }}
+          RESOLVED_OUTCOME: ${{ steps.resolved.outcome }}
         with:
           script: |
-            const sha = String(process.env.REPAIRED_SHA || "").trim();
-            if (!/^[a-f0-9]{40}$/.test(sha)) {
-              throw new Error("The repaired lockfile commit SHA is unavailable.");
-            }
+            const outcomes = [
+              process.env.EXTRACT_OUTCOME,
+              process.env.INTEGRITY_OUTCOME,
+              process.env.INSTALL_OUTCOME,
+              process.env.SCOPE_OUTCOME,
+              process.env.RESOLVED_OUTCOME,
+            ];
+            const commitAcceptable = ["success", "skipped"].includes(
+              process.env.COMMIT_OUTCOME,
+            );
+            const passed =
+              outcomes.every((value) => value === "success") &&
+              commitAcceptable;
+            const candidate = String(process.env.RESOLVED_SHA || "").trim();
+            const sha = /^[a-f0-9]{40}$/.test(candidate)
+              ? candidate
+              : context.sha;
+            const failedGate = [
+              ["extract", process.env.EXTRACT_OUTCOME],
+              ["integrity", process.env.INTEGRITY_OUTCOME],
+              ["install", process.env.INSTALL_OUTCOME],
+              ["scope", process.env.SCOPE_OUTCOME],
+              ["commit", process.env.COMMIT_OUTCOME],
+              ["resolve", process.env.RESOLVED_OUTCOME],
+            ].find(([, outcome]) => !["success", "skipped"].includes(outcome));
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha,
-              state: "success",
+              state: passed ? "success" : "failure",
               context: "vector/lockfile-repair",
-              description: "duplicated YAML document removed and frozen install passed",
+              description: passed
+                ? "single-document lockfile and frozen install verified"
+                : `lockfile repair failed at ${failedGate?.[0] || "unknown"}`,
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
-      - name: Dispatch full quality validation on repaired main
+      - name: Dispatch full quality validation on verified main
+        if: ${{ steps.resolved.outcome == 'success' }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
@@ -147,3 +220,21 @@ jobs:
                 ref: "main",
               });
             }
+
+      - name: Enforce repair result
+        if: always()
+        shell: bash
+        env:
+          EXTRACT_OUTCOME: ${{ steps.extract.outcome }}
+          INTEGRITY_OUTCOME: ${{ steps.integrity.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          SCOPE_OUTCOME: ${{ steps.scope.outcome }}
+          COMMIT_OUTCOME: ${{ steps.commit.outcome }}
+          RESOLVED_OUTCOME: ${{ steps.resolved.outcome }}
+        run: |
+          test "$EXTRACT_OUTCOME" = "success"
+          test "$INTEGRITY_OUTCOME" = "success"
+          test "$INSTALL_OUTCOME" = "success"
+          test "$SCOPE_OUTCOME" = "success"
+          test "$COMMIT_OUTCOME" = "success" -o "$COMMIT_OUTCOME" = "skipped"
+          test "$RESOLVED_OUTCOME" = "success"
