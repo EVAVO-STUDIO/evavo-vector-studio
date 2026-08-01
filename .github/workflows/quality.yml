@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,277 +18,208 @@ concurrency:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+      - name: Install pnpm 10.14.0
+        uses: pnpm/action-setup@08c4be7e2e672a47d11bd04269e27e5f3e8529cb # v6.0.0
         with:
           version: 10.14.0
+          run_install: false
 
-      - name: Use Node.js
-        uses: actions/setup-node@v4
+      - name: Use Node.js 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
-      - name: Verify release contract
-        id: release_contract
-        shell: bash
-        run: |
-          set -o pipefail
-          node scripts/check-release-contract.mjs 2>&1 | tee release-contract.log
-
-      - name: Preserve release contract diagnostics
-        if: ${{ failure() && steps.release_contract.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: vector-release-contract-${{ github.sha }}
-          path: release-contract.log
-          if-no-files-found: error
-          retention-days: 3
-
-      - name: Verify topology contract
-        if: ${{ !cancelled() }}
-        run: node scripts/check-topology-contract.mjs
-
-      - name: Verify browser evidence contract
-        if: ${{ !cancelled() }}
-        run: node scripts/check-browser-evidence-contract.mjs
-
-      - name: Verify MCP contract
-        if: ${{ !cancelled() }}
-        run: node scripts/check-mcp-contract.mjs
-
-      - name: Verify motion contract
-        if: ${{ !cancelled() }}
-        run: node scripts/check-motion-contract.mjs
-
-      - name: Verify motion API contract
-        if: ${{ !cancelled() }}
-        run: node scripts/check-motion-api-contract.mjs
-
-      - name: Verify Motion Director contract
-        if: ${{ !cancelled() }}
-        run: node scripts/check-motion-workspace-contract.mjs
-
-      - name: Verify native runtime boundary
-        if: ${{ !cancelled() }}
-        run: node scripts/check-native-runtime-boundary.mjs
-
-      - name: Verify Lottie core contract
-        if: ${{ !cancelled() }}
-        run: node scripts/check-lottie-contract.mjs
-
-      - name: Verify Lottie API contract
-        if: ${{ !cancelled() }}
-        run: node scripts/check-lottie-api-contract.mjs
-
-      - name: Verify browser Lottie contract
-        if: ${{ !cancelled() }}
+      - name: Install exact dependencies
+        id: install
+        continue-on-error: true
         shell: bash
         run: |
           mkdir -p .ci
           set -o pipefail
-          node scripts/check-lottie-workspace-contract.mjs 2>&1 | tee .ci/lottie-workspace-contract.log
+          pnpm install --frozen-lockfile 2>&1 | tee .ci/install.log
 
-      - name: Verify dotLottie archive contract
-        if: ${{ !cancelled() }}
+      - name: Run governed source contracts
+        id: contracts
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
         shell: bash
         run: |
           mkdir -p .ci
-          set -o pipefail
-          node scripts/check-dotlottie-contract.mjs 2>&1 | tee .ci/dotlottie-contract.log
-
-      - name: Verify dotLottie API contract
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          mkdir -p .ci
-          set -o pipefail
-          node scripts/check-dotlottie-api-contract.mjs 2>&1 | tee .ci/dotlottie-api-contract.log
-
-      - name: Verify browser dotLottie contract
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          mkdir -p .ci
-          set -o pipefail
-          node scripts/check-dotlottie-workspace-contract.mjs 2>&1 | tee .ci/dotlottie-workspace-contract.log
-
-      - name: Verify durable batch contract
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          mkdir -p .ci
-          set -o pipefail
-          node scripts/check-batch-contract.mjs 2>&1 | tee .ci/batch-contract.log
-
-      - name: Verify hosted job control contract
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          mkdir -p .ci
-          set -o pipefail
-          node scripts/check-hosted-job-contract.mjs 2>&1 | tee .ci/hosted-job-contract.log
-
-      - name: Verify worker execution contract
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          mkdir -p .ci
-          set -o pipefail
-          node scripts/check-worker-contract.mjs 2>&1 | tee .ci/worker-contract.log
-
-      - name: Verify local worker process contract
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          mkdir -p .ci
-          set -o pipefail
-          node scripts/check-local-worker-contract.mjs 2>&1 | tee .ci/local-worker-contract.log
-
-      - name: Verify worker control API contract
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          mkdir -p .ci
-          set -o pipefail
-          node scripts/check-worker-api-contract.mjs 2>&1 | tee .ci/worker-api-contract.log
-
-      - name: Verify worker control client contract
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          mkdir -p .ci
-          set -o pipefail
-          node scripts/check-worker-client-contract.mjs 2>&1 | tee .ci/worker-client-contract.log
-
-      - name: Verify HTTP-coordinated worker contract
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          mkdir -p .ci
-          set -o pipefail
-          node scripts/check-http-worker-contract.mjs 2>&1 | tee .ci/http-worker-contract.log
-
-      - name: Verify worker object-transfer API contract
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          mkdir -p .ci
-          set -o pipefail
-          node scripts/check-object-transfer-api-contract.mjs 2>&1 | tee .ci/object-transfer-api-contract.log
-
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+          checks=(
+            scripts/check-release-contract.mjs
+            scripts/check-release-proof-contract.mjs
+            scripts/check-capability-discovery.mjs
+            scripts/check-print-preflight-api-contract.mjs
+            scripts/check-hub-integration-contract.mjs
+            scripts/check-private-response-contract.mjs
+            scripts/check-vercel-deployment-contract.mjs
+            scripts/check-vercel-project-provisioning-contract.mjs
+            scripts/check-vercel-provisioning-plan-receipt-contract.mjs
+            scripts/check-vercel-deployment-plan-receipt-contract.mjs
+            scripts/check-vercel-production-deployment-contract.mjs
+            scripts/check-topology-contract.mjs
+            scripts/check-browser-evidence-contract.mjs
+            scripts/check-mcp-contract.mjs
+            scripts/check-motion-contract.mjs
+            scripts/check-motion-api-contract.mjs
+            scripts/check-motion-workspace-contract.mjs
+            scripts/check-native-runtime-boundary.mjs
+            scripts/check-lottie-contract.mjs
+            scripts/check-lottie-api-contract.mjs
+            scripts/check-lottie-workspace-contract.mjs
+            scripts/check-dotlottie-contract.mjs
+            scripts/check-dotlottie-api-contract.mjs
+            scripts/check-dotlottie-workspace-contract.mjs
+            scripts/check-batch-contract.mjs
+            scripts/check-hosted-job-contract.mjs
+            scripts/check-worker-contract.mjs
+            scripts/check-local-worker-contract.mjs
+            scripts/check-worker-api-contract.mjs
+            scripts/check-worker-client-contract.mjs
+            scripts/check-http-worker-contract.mjs
+            scripts/check-object-transfer-api-contract.mjs
+          )
+          : > .ci/contracts.log
+          status=0
+          set +e
+          for check in "${checks[@]}"; do
+            printf '\n>>> node %s\n' "$check" | tee -a .ci/contracts.log
+            node "$check" 2>&1 | tee -a .ci/contracts.log
+            result=${PIPESTATUS[0]}
+            if [ "$result" -ne 0 ]; then
+              status=1
+            fi
+          done
+          exit "$status"
 
       - name: Run lint
         id: lint
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
         shell: bash
         run: |
           mkdir -p .ci
-          set +e
-          pnpm lint > .ci/lint.log 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            grep -E -m 8 "error TS[0-9]+|Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|Module not found|Type error|Cannot find|is not assignable|does not exist" .ci/lint.log || tail -n 40 .ci/lint.log
-          fi
-          exit "$status"
+          set -o pipefail
+          pnpm lint 2>&1 | tee .ci/lint.log
 
       - name: Run typecheck
         id: typecheck
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
         shell: bash
         run: |
           mkdir -p .ci
-          set +e
-          pnpm typecheck > .ci/typecheck.log 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            grep -E -m 8 "error TS[0-9]+|Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|Module not found|Type error|Cannot find|is not assignable|does not exist" .ci/typecheck.log || tail -n 40 .ci/typecheck.log
-          fi
-          exit "$status"
+          set -o pipefail
+          pnpm typecheck 2>&1 | tee .ci/typecheck.log
 
       - name: Run tests
         id: tests
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
         shell: bash
         run: |
           mkdir -p .ci
-          set +e
-          pnpm test > .ci/test.log 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            grep -E -A 18 -m 2 "AssertionError|error:|not ok|ERR_PNPM|ELIFECYCLE|Failed" .ci/test.log || tail -n 80 .ci/test.log
-          fi
-          exit "$status"
+          set -o pipefail
+          pnpm test 2>&1 | tee .ci/test.log
 
       - name: Run production build
         id: build
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
         shell: bash
         run: |
           mkdir -p .ci
-          set +e
-          pnpm build > .ci/build.log 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            grep -E -m 8 "error TS[0-9]+|Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|Module not found|Type error|Cannot find|is not assignable|does not exist" .ci/build.log || tail -n 40 .ci/build.log
-          fi
-          exit "$status"
+          set -o pipefail
+          pnpm build 2>&1 | tee .ci/build.log
 
-      - name: Publish governed quality diagnostics
+      - name: Publish stable quality statuses
         if: ${{ always() }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          CONTRACTS_OUTCOME: ${{ steps.contracts.outcome }}
           LINT_OUTCOME: ${{ steps.lint.outcome }}
           TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
-          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
         with:
           script: |
             const fs = require("node:fs");
             const gates = [
+              ["dependencies", ".ci/install.log", process.env.INSTALL_OUTCOME],
+              ["contracts", ".ci/contracts.log", process.env.CONTRACTS_OUTCOME],
               ["lint", ".ci/lint.log", process.env.LINT_OUTCOME],
               ["typecheck", ".ci/typecheck.log", process.env.TYPECHECK_OUTCOME],
-              ["tests", ".ci/test.log", process.env.TEST_OUTCOME],
+              ["tests", ".ci/test.log", process.env.TESTS_OUTCOME],
               ["build", ".ci/build.log", process.env.BUILD_OUTCOME],
             ];
-            const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             for (const [name, file, outcome] of gates) {
-              const source = fs.existsSync(file) ? fs.readFileSync(file, "utf8").replace(/\u001b\[[0-9;]*m/g, "") : "";
-              const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+              const source = fs.existsSync(file)
+                ? fs.readFileSync(file, "utf8").replace(/\u001b\[[0-9;]*m/g, "")
+                : "";
+              const lines = source
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter(Boolean);
               const diagnostic =
-                lines.find((line) => /error TS\d+|AssertionError|^error:|ERR_ASSERTION|Module not found|Type error|Cannot find|is not assignable|does not exist/i.test(line)) ||
-                lines.find((line) => /Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok/i.test(line)) ||
-                lines.at(-1) ||
+                lines.find((line) =>
+                  /error TS\d+|AssertionError|ERR_ASSERTION|Module not found|Type error|Cannot find|is not assignable|does not exist/i.test(line),
+                ) ||
+                lines.find((line) =>
+                  /Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|failed:/i.test(line),
+                ) ||
+                (outcome === "skipped"
+                  ? `${name} was skipped because dependencies were unavailable`
+                  : lines.at(-1)) ||
                 `${name} did not produce a diagnostic`;
-              const state = outcome === "success" ? "success" : "failure";
-              const slug = diagnostic
-                .normalize("NFKD")
-                .replace(/[^A-Za-z0-9._-]+/g, "-")
-                .replace(/^-+|-+$/g, "")
-                .slice(0, 150) || "unknown-diagnostic";
+              const passed = outcome === "success";
               await github.rest.repos.createCommitStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 sha: context.sha,
-                state,
-                context: state === "success" ? `vector/${name}` : `vector/${name}/${slug}`,
-                description: state === "success" ? `${name} passed` : diagnostic.slice(0, 140),
+                state: passed ? "success" : "failure",
+                context: `vector/${name}`,
+                description: passed
+                  ? `${name} passed`
+                  : diagnostic.slice(0, 140),
                 target_url: targetUrl,
               });
             }
 
       - name: Preserve governed quality diagnostics
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        if: ${{ always() && (steps.install.outcome != 'success' || steps.contracts.outcome != 'success' || steps.lint.outcome != 'success' || steps.typecheck.outcome != 'success' || steps.tests.outcome != 'success' || steps.build.outcome != 'success') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vector-governed-quality-${{ github.sha }}
           path: .ci/*.log
           include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 3
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Enforce quality result
+        if: ${{ always() }}
+        env:
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          CONTRACTS_OUTCOME: ${{ steps.contracts.outcome }}
+          LINT_OUTCOME: ${{ steps.lint.outcome }}
+          TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+        shell: bash
+        run: |
+          test "$INSTALL_OUTCOME" = "success"
+          test "$CONTRACTS_OUTCOME" = "success"
+          test "$LINT_OUTCOME" = "success"
+          test "$TYPECHECK_OUTCOME" = "success"
+          test "$TESTS_OUTCOME" = "success"
+          test "$BUILD_OUTCOME" = "success"
