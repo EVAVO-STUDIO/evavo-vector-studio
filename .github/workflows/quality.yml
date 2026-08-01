@@ -25,21 +25,29 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install pnpm 10.14.0
-        uses: pnpm/action-setup@08c4be7e2e672a47d11bd04269e27e5f3e8529cb # v6.0.0
-        with:
-          version: 10.14.0
-          run_install: false
-
-      - name: Use Node.js 22
+      - name: Use Node.js 22 without package-manager caching
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
+          package-manager-cache: false
+
+      - name: Activate exact pnpm through Corepack
+        id: pnpm
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          corepack enable 2>&1 | tee .ci/pnpm-bootstrap.log
+          corepack prepare pnpm@10.14.0 --activate 2>&1 | tee -a .ci/pnpm-bootstrap.log
+          version="$(pnpm --version)"
+          printf 'pnpm %s\n' "$version" | tee -a .ci/pnpm-bootstrap.log
+          test "$version" = "10.14.0"
+          git diff --exit-code
 
       - name: Verify lockfile bytes and YAML stream boundary
         id: lockfile
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -49,7 +57,7 @@ jobs:
 
       - name: Install exact dependencies
         id: install
-        if: ${{ !cancelled() && steps.lockfile.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' && steps.lockfile.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -155,6 +163,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
           LOCKFILE_OUTCOME: ${{ steps.lockfile.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           CONTRACTS_OUTCOME: ${{ steps.contracts.outcome }}
@@ -166,6 +175,7 @@ jobs:
           script: |
             const fs = require("node:fs");
             const gates = [
+              ["toolchain", ".ci/pnpm-bootstrap.log", process.env.PNPM_OUTCOME],
               ["lockfile", ".ci/lockfile.log", process.env.LOCKFILE_OUTCOME],
               ["dependencies", ".ci/install.log", process.env.INSTALL_OUTCOME],
               ["contracts", ".ci/contracts.log", process.env.CONTRACTS_OUTCOME],
@@ -209,7 +219,7 @@ jobs:
             }
 
       - name: Preserve governed quality diagnostics
-        if: ${{ always() && (steps.lockfile.outcome != 'success' || steps.install.outcome != 'success' || steps.contracts.outcome != 'success' || steps.lint.outcome != 'success' || steps.typecheck.outcome != 'success' || steps.tests.outcome != 'success' || steps.build.outcome != 'success') }}
+        if: ${{ always() && (steps.pnpm.outcome != 'success' || steps.lockfile.outcome != 'success' || steps.install.outcome != 'success' || steps.contracts.outcome != 'success' || steps.lint.outcome != 'success' || steps.typecheck.outcome != 'success' || steps.tests.outcome != 'success' || steps.build.outcome != 'success') }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vector-governed-quality-${{ github.sha }}
@@ -221,6 +231,7 @@ jobs:
       - name: Enforce quality result
         if: ${{ always() }}
         env:
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
           LOCKFILE_OUTCOME: ${{ steps.lockfile.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           CONTRACTS_OUTCOME: ${{ steps.contracts.outcome }}
@@ -230,6 +241,7 @@ jobs:
           BUILD_OUTCOME: ${{ steps.build.outcome }}
         shell: bash
         run: |
+          test "$PNPM_OUTCOME" = "success"
           test "$LOCKFILE_OUTCOME" = "success"
           test "$INSTALL_OUTCOME" = "success"
           test "$CONTRACTS_OUTCOME" = "success"
