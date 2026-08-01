@@ -111,11 +111,24 @@ jobs:
 
       - name: Commit verified alignment directly to main
         id: commit
-        if: ${{ always() && steps.final_scope.outcome == 'success' }}
+        if: always()
         continue-on-error: true
         shell: bash
+        env:
+          TOOLCHAIN_OUTCOME: ${{ steps.toolchain.outcome }}
+          PATCH_OUTCOME: ${{ steps.patch.outcome }}
+          SCOPE_OUTCOME: ${{ steps.scope.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+          FINAL_SCOPE_OUTCOME: ${{ steps.final_scope.outcome }}
         run: |
           set -euo pipefail
+          test "$TOOLCHAIN_OUTCOME" = "success"
+          test "$PATCH_OUTCOME" = "success"
+          test "$SCOPE_OUTCOME" = "success"
+          test "$INSTALL_OUTCOME" = "success"
+          test "$VALIDATE_OUTCOME" = "success"
+          test "$FINAL_SCOPE_OUTCOME" = "success"
           git config user.name "EVAVO Automation"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
@@ -163,10 +176,16 @@ jobs:
             });
 
       - name: Dispatch exact-head validation
-        if: ${{ always() && steps.commit.outcome == 'success' }}
+        if: always()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          COMMIT_OUTCOME: ${{ steps.commit.outcome }}
         with:
           script: |
+            if (process.env.COMMIT_OUTCOME !== "success") {
+              core.info("Alignment commit did not publish; exact-head dispatch remains withheld.");
+              return;
+            }
             for (const workflow_id of ["quality.yml", "print-preflight-contract.yml"]) {
               await github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
