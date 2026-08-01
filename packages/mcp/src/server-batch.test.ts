@@ -11,7 +11,10 @@ import {
   VECTOR_MCP_BATCH_MAX_ITEMS,
   VECTOR_MCP_BATCH_TOOL_NAMES,
 } from "./batch-tools.js";
-import { createVectorMcpServer } from "./server.js";
+import {
+  createVectorMcpServer,
+  VECTOR_MCP_SERVER_CONTRACT_VERSION,
+} from "./server.js";
 
 async function connectedServer(root: string) {
   const { server } = await createVectorMcpServer({
@@ -105,7 +108,10 @@ test("runs, paginates, inspects and safely resumes a receipt-only durable batch 
           hostedBackgroundQueue?: boolean;
         };
       } | undefined;
-      assert.equal(capabilityPayload?.mcpContractVersion, "1.5");
+      assert.equal(
+        capabilityPayload?.mcpContractVersion,
+        VECTOR_MCP_SERVER_CONTRACT_VERSION,
+      );
       assert.equal(
         capabilityPayload?.durableBatch?.contractVersion,
         VECTOR_MCP_BATCH_CONTRACT_VERSION,
