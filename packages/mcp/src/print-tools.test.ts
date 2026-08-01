@@ -116,7 +116,14 @@ test("exposes print preflight through the MCP handshake and writes no file", asy
         passed?: boolean;
         profile?: string;
         approval?: string;
-        evidence?: { trim?: { requested?: boolean; matched?: boolean } };
+        target?: {
+          trimWidthMm?: number | null;
+          trimHeightMm?: number | null;
+          bleedMm?: number;
+          expectedCanvasWidthMm?: number | null;
+          expectedCanvasHeightMm?: number | null;
+          dimensionsMatched?: boolean | null;
+        };
       };
       outputWritten?: boolean;
       generatedBodiesInModelContext?: boolean;
@@ -136,8 +143,12 @@ test("exposes print preflight through the MCP handshake and writes no file", asy
     assert.equal(payload?.result?.passed, true);
     assert.equal(payload?.result?.profile, "commercial");
     assert.equal(payload?.result?.approval, "review-required");
-    assert.equal(payload?.result?.evidence?.trim?.requested, true);
-    assert.equal(payload?.result?.evidence?.trim?.matched, true);
+    assert.equal(payload?.result?.target?.trimWidthMm, 210);
+    assert.equal(payload?.result?.target?.trimHeightMm, 297);
+    assert.equal(payload?.result?.target?.bleedMm, 3);
+    assert.equal(payload?.result?.target?.expectedCanvasWidthMm, 216);
+    assert.equal(payload?.result?.target?.expectedCanvasHeightMm, 303);
+    assert.equal(payload?.result?.target?.dimensionsMatched, true);
     assert.equal(payload?.outputWritten, false);
     assert.equal(payload?.generatedBodiesInModelContext, false);
     assert.equal(payload?.productionApproval, false);
