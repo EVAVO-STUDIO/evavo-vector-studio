@@ -1,4 +1,5 @@
 name: Repair duplicated pnpm lockfile once
+# Re-triggered after the workflow was first added so GitHub can evaluate it from the default branch.
 
 on:
   push:
