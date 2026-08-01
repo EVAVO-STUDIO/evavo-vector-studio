@@ -10,6 +10,7 @@ import { VECTOR_MCP_BATCH_TOOL_NAMES } from "./batch-tools.js";
 import { VECTOR_MCP_DOTLOTTIE_TOOL_NAMES } from "./dotlottie-tools.js";
 import { VECTOR_MCP_LOTTIE_TOOL_NAMES } from "./lottie-tools.js";
 import { VECTOR_MCP_TOOL_NAMES } from "./operations.js";
+import { VECTOR_MCP_PRINT_TOOL_NAMES } from "./print-tools.js";
 import {
   createVectorMcpServer,
   VECTOR_MCP_SERVER_CONTRACT_VERSION,
@@ -17,6 +18,7 @@ import {
 
 const ALL_TOOL_NAMES = Object.freeze([
   ...VECTOR_MCP_TOOL_NAMES,
+  ...VECTOR_MCP_PRINT_TOOL_NAMES,
   ...VECTOR_MCP_LOTTIE_TOOL_NAMES,
   ...VECTOR_MCP_DOTLOTTIE_TOOL_NAMES,
   ...VECTOR_MCP_BATCH_TOOL_NAMES,
@@ -68,6 +70,7 @@ test("performs an MCP handshake and exposes the governed tool set", async () => 
     );
     assert.equal(client.getServerVersion()?.name, "evavo-vector-studio");
     assert.match(client.getInstructions() ?? "", /new files only|new-files-only/i);
+    assert.match(client.getInstructions() ?? "", /print preflight/i);
     assert.match(client.getInstructions() ?? "", /Lottie/i);
     assert.match(client.getInstructions() ?? "", /dotLottie/i);
     assert.match(client.getInstructions() ?? "", /durable batch|resumable/i);
@@ -85,6 +88,8 @@ test("performs an MCP handshake and exposes the governed tool set", async () => 
       VECTOR_MCP_SERVER_CONTRACT_VERSION,
     );
     assert.equal(payload?.approval, "human-review-required");
+    const tools = payload?.tools as string[] | undefined;
+    assert.equal(tools?.includes("vector_preflight_svg_print"), true);
     const outputs = payload?.outputs as Record<string, unknown> | undefined;
     assert.equal(outputs?.animatedSvg, true);
     assert.equal(outputs?.lottie, true);
@@ -94,6 +99,19 @@ test("performs an MCP handshake and exposes the governed tool set", async () => 
     assert.equal(outputs?.dotLottieArchive, true);
     assert.equal(outputs?.dotLottiePlayerRenderValidation, false);
     assert.equal(outputs?.dotLottieBrowserArchiveLoadValidation, false);
+    assert.equal(outputs?.printPreflightEvidence, true);
+    assert.equal(outputs?.printPreflightWritesFiles, false);
+    assert.equal(outputs?.printProductionApproval, false);
+    const printPreflight = payload?.printPreflight as Record<string, unknown> | undefined;
+    assert.deepEqual(printPreflight?.profiles, [
+      "commercial",
+      "large-format",
+      "cut-vinyl",
+      "screen-print",
+    ]);
+    assert.equal(printPreflight?.outputWritten, false);
+    assert.equal(printPreflight?.productionApproval, false);
+    assert.equal(printPreflight?.approval, "review-required");
     const lottie = payload?.lottie as Record<string, unknown> | undefined;
     assert.equal(lottie?.structuralInspection, true);
     assert.equal(lottie?.playerRenderValidation, false);
