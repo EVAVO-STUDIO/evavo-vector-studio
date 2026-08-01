@@ -68,21 +68,29 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install pnpm 10.14.0
-        uses: pnpm/action-setup@08c4be7e2e672a47d11bd04269e27e5f3e8529cb # v6.0.0
-        with:
-          version: 10.14.0
-          run_install: false
-
-      - name: Use Node.js 22
+      - name: Use Node.js 22 without package-manager caching
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
+          package-manager-cache: false
+
+      - name: Activate exact pnpm through Corepack
+        id: pnpm
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          corepack enable 2>&1 | tee .ci/print-pnpm-bootstrap.log
+          corepack prepare pnpm@10.14.0 --activate 2>&1 | tee -a .ci/print-pnpm-bootstrap.log
+          version="$(pnpm --version)"
+          printf 'pnpm %s\n' "$version" | tee -a .ci/print-pnpm-bootstrap.log
+          test "$version" = "10.14.0"
+          git diff --exit-code
 
       - name: Verify print preflight source contract
         id: contract
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -94,6 +102,7 @@ jobs:
 
       - name: Install exact dependencies
         id: install
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -159,6 +168,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
           CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           DEPENDENCIES_OUTCOME: ${{ steps.dependencies.outcome }}
@@ -170,7 +180,9 @@ jobs:
         with:
           script: |
             const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const toolchainPassed = process.env.PNPM_OUTCOME === "success";
             const dependenciesPassed =
+              toolchainPassed &&
               process.env.INSTALL_OUTCOME === "success" &&
               process.env.DEPENDENCIES_OUTCOME === "success";
             const testsPassed =
@@ -179,7 +191,7 @@ jobs:
               process.env.CLI_TESTS_OUTCOME === "success" &&
               process.env.MCP_TESTS_OUTCOME === "success";
             const gates = [
-              ["print/vector-preflight-contract", process.env.CONTRACT_OUTCOME === "success", "print preflight contract"],
+              ["print/vector-preflight-contract", toolchainPassed && process.env.CONTRACT_OUTCOME === "success", "print preflight contract"],
               ["print/vector-preflight-core", dependenciesPassed && process.env.CORE_TESTS_OUTCOME === "success", "Vector core print tests"],
               ["print/vector-preflight-cli", dependenciesPassed && process.env.CLI_TESTS_OUTCOME === "success", "Vector CLI print tests"],
               ["print/vector-preflight-mcp", dependenciesPassed && process.env.MCP_TESTS_OUTCOME === "success", "Vector MCP print tests"],
@@ -205,7 +217,7 @@ jobs:
             }
 
       - name: Preserve print diagnostics
-        if: ${{ always() && (steps.contract.outcome != 'success' || steps.install.outcome != 'success' || steps.dependencies.outcome != 'success' || steps.core_tests.outcome != 'success' || steps.cli_tests.outcome != 'success' || steps.mcp_tests.outcome != 'success' || steps.typecheck.outcome != 'success' || steps.build.outcome != 'success') }}
+        if: ${{ always() && (steps.pnpm.outcome != 'success' || steps.contract.outcome != 'success' || steps.install.outcome != 'success' || steps.dependencies.outcome != 'success' || steps.core_tests.outcome != 'success' || steps.cli_tests.outcome != 'success' || steps.mcp_tests.outcome != 'success' || steps.typecheck.outcome != 'success' || steps.build.outcome != 'success') }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vector-print-preflight-${{ github.sha }}
@@ -217,6 +229,7 @@ jobs:
       - name: Enforce print preflight validation
         if: ${{ always() }}
         env:
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
           CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           DEPENDENCIES_OUTCOME: ${{ steps.dependencies.outcome }}
@@ -227,6 +240,7 @@ jobs:
           BUILD_OUTCOME: ${{ steps.build.outcome }}
         shell: bash
         run: |
+          test "$PNPM_OUTCOME" = "success"
           test "$CONTRACT_OUTCOME" = "success"
           test "$INSTALL_OUTCOME" = "success"
           test "$DEPENDENCIES_OUTCOME" = "success"
