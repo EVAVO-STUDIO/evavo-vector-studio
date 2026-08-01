@@ -1,32 +1,41 @@
-# EVAVO Vector Studio MCP Server
+# EVAVO Vector Studio MCP server
 
-The EVAVO Vector Studio MCP server exposes governed raster, SVG, motion, Lottie, dotLottie and durable batch production through local stdio tools for ChatGPT-compatible MCP hosts, Claude, editors and other agent runtimes.
+EVAVO Vector Studio exposes governed raster, SVG, print, motion, Lottie, dotLottie and durable-batch production through a local stdio MCP server for ChatGPT-compatible hosts, Claude, editors and other agent runtimes.
 
-MCP contract version `1.5` is a bounded local execution surface. It can retain resumable batch state between separate calls, but it is not a remote public endpoint, browser extension or hosted background queue.
+The current public contract is:
 
-The v1.5 addition is a shared delivery-intent contract. Raster tracing and existing-SVG packaging can now request an editable master, web compact, motion ready or print safe output without changing the underlying reconstruction and approval boundaries.
+```text
+MCP contract 1.6
+tools 16
+transport stdio
+execution local and bounded
+production approval false
+```
 
-## Current tool contract
+Contract `1.6` adds read-only SVG print preflight while retaining the `1.5` delivery-profile contract. It is not a browser extension, public HTTP endpoint, remote managed worker or hosted background queue.
+
+## Tool contract
 
 | Tool | Behaviour |
 | --- | --- |
-| `vector_capabilities` | Returns versions, tools, allowed roots, limits, delivery profiles, output availability and approval policy. |
+| `vector_capabilities` | Returns the current tool, root, limit, delivery, print, animation, batch and approval contract. |
 | `vector_input_policy` | Returns accepted static-image classes and pre-decode rejection rules. |
 | `vector_inspect_raster` | Inspects one existing static raster without creating output. |
-| `vector_trace_raster` | Creates one new governed SVG and, optionally, one new difference PNG. |
+| `vector_trace_raster` | Creates one new governed SVG and optionally one new difference PNG. |
 | `vector_inspect_svg` | Inspects SVG safety, geometry, topology and editability. |
 | `vector_optimise_svg` | Packages an existing SVG to a new editable, web, motion or print path. |
+| `vector_preflight_svg_print` | Runs commercial, large-format, cut-vinyl or screen-print preflight on one existing SVG. Writes no file. |
 | `vector_validate_motion_plan` | Validates and normalises one inline or file-based motion-v1 plan. |
 | `vector_animate_svg` | Creates one governed animated SVG plus optional evidence JSON. |
-| `vector_inspect_animated_svg` | Inspects motion identity, keyframes, target rules and reduced-motion fallback. |
+| `vector_inspect_animated_svg` | Inspects motion identity, keyframes, targets and reduced-motion fallback. |
 | `vector_export_lottie` | Creates governed Lottie JSON plus optional evidence and returns file receipts. |
 | `vector_inspect_lottie` | Inspects an existing Lottie JSON document against the governed subset. |
-| `vector_package_dotlottie` | Packages one governed Lottie JSON file into a deterministic `.lottie` archive. |
-| `vector_inspect_dotlottie` | Inspects ZIP safety, manifest-v2 semantics and embedded Lottie structure. |
-| `vector_run_batch` | Runs or resumes one bounded batch-v1 manifest with persistent local state and paginated receipts. |
-| `vector_inspect_batch` | Reads retained batch progress, failures, receipts, lock state and recent events without executing work. |
+| `vector_package_dotlottie` | Packages governed Lottie JSON into a deterministic `.lottie` archive. |
+| `vector_inspect_dotlottie` | Inspects archive safety, manifest-v2 semantics and embedded Lottie structure. |
+| `vector_run_batch` | Runs or resumes a bounded batch-v1 manifest with persistent local state and paginated receipts. |
+| `vector_inspect_batch` | Reads retained batch progress, failures, receipts, locks and recent events without executing work. |
 
-Every production result remains review-required. Structural success, archive loading, stable IDs and deterministic output do not establish artistic approval or independent source-to-player equivalence.
+Every result remains review-required. Deterministic execution, structural validity, stable IDs, print checks or archive loading do not establish artistic, colour, accessibility, player or physical-production approval.
 
 ## Build and run
 
@@ -38,7 +47,7 @@ pnpm install --frozen-lockfile
 pnpm vector:mcp
 ```
 
-The server communicates through stdin and stdout. Diagnostic startup and shutdown failures go to stderr so MCP protocol framing is not corrupted.
+The server communicates through stdin and stdout. Startup, shutdown and fatal diagnostics go to stderr so JSON-RPC framing is not corrupted.
 
 ## Allowed filesystem roots
 
@@ -53,7 +62,7 @@ pnpm vector:mcp
 
 When the variable is absent, the server working directory is the only allowed root.
 
-The policy:
+The path policy:
 
 - resolves configured roots and existing inputs through `realpath`;
 - rejects missing inputs and non-file inputs;
@@ -62,11 +71,13 @@ The policy:
 - rejects existing output paths for new-file operations;
 - rejects input/output and output/output collisions;
 - commits related outputs atomically;
-- returns paths only after byte count and SHA-256 receipts exist.
+- returns paths only after byte-count and SHA-256 receipts exist.
+
+Print preflight is different from output operations: it resolves one existing SVG within an allowed root, returns evidence and writes no file.
 
 This is a local filesystem boundary, not an operating-system sandbox against a hostile account continuously replacing directories during a call.
 
-## Generic MCP host configuration
+## Generic host configuration
 
 Build the package, then configure the host to launch the compiled stdio entry point:
 
@@ -89,24 +100,24 @@ Build the package, then configure the host to launch the compiled stdio entry po
 }
 ```
 
-The server uses the reviewed v1 TypeScript SDK line and `StdioServerTransport` for local process-spawned integrations.
+The server uses the reviewed TypeScript SDK and `StdioServerTransport` for local process-spawned integrations.
 
 ## Delivery profiles
 
-The `deliveryProfile` field accepts:
+Tracing and SVG packaging accept:
 
 ```text
 editable  editable master with deterministic collision-safe stable path IDs
-web       web compact packaging with responsive root dimensions when viewBox is valid
-motion    motion ready packaging with stable animation-target IDs
-print     print safe packaging that preserves explicit root dimensions
+web       compact web packaging with responsive root dimensions when viewBox is valid
+motion    motion-ready packaging with stable animation-target IDs
+print     conservative print-safe packaging that preserves explicit root dimensions
 ```
 
-`editable` is the default. A custom `stableIdPrefix` may be supplied only for `editable` or `motion`. It must begin with a letter or underscore, contain only letters, numbers, underscores, periods or hyphens, and be at most 48 characters.
+`editable` is the default. A custom `stableIdPrefix` may be supplied only for `editable` or `motion`. It must begin with a letter or underscore, use only letters, numbers, underscores, periods or hyphens, and be at most 48 characters.
 
-The packaging layer records stable IDs, metadata removal, paint normalisation, root-dimension policy and applied passes. It uses safety rollback when a rewrite would introduce an unresolved local reference or another governed SVG failure.
+The packaging layer records stable IDs, metadata removal, paint normalisation, root-dimension policy and applied passes. It rolls back a transform if it would introduce an unresolved local reference or another governed SVG failure.
 
-The canonical profile details are in [`DELIVERY-PROFILES.md`](./DELIVERY-PROFILES.md).
+See [`DELIVERY-PROFILES.md`](./DELIVERY-PROFILES.md).
 
 ## Raster workflow
 
@@ -135,7 +146,7 @@ The canonical profile details are in [`DELIVERY-PROFILES.md`](./DELIVERY-PROFILE
 }
 ```
 
-`summary` is the default compact evidence mode. `full` includes complete retained candidate evidence. Neither mode places the generated SVG or PNG bytes in model context.
+`summary` is the default compact evidence mode. `full` includes retained candidate evidence. Neither mode places generated SVG or PNG bytes in model context.
 
 ## Existing-SVG packaging
 
@@ -147,11 +158,59 @@ The canonical profile details are in [`DELIVERY-PROFILES.md`](./DELIVERY-PROFILE
 }
 ```
 
-The tool returns a file receipt, input/output byte evidence, delivery passes and the complete governed SVG inspection. Existing outputs are rejected.
+The tool returns a file receipt, byte evidence, delivery passes and complete governed SVG inspection. Existing outputs are rejected.
+
+## Print preflight
+
+`vector_preflight_svg_print` runs the same deterministic `print-preflight-v1` engine used by the CLI and authenticated HTTP API.
+
+```json
+{
+  "inputPath": "C:\\EVAVO\\VectorAssets\\source\\brochure.svg",
+  "profile": "commercial",
+  "trimWidthMm": 210,
+  "trimHeightMm": 297,
+  "bleedMm": 3,
+  "dimensionToleranceMm": 0.25,
+  "minimumStrokePt": 0.25,
+  "maximumProcessColours": 8,
+  "allowText": false,
+  "allowEmbeddedRaster": false,
+  "allowTransparency": false
+}
+```
+
+Profiles:
+
+```text
+commercial
+large-format
+cut-vinyl
+screen-print
+```
+
+The tool checks physical dimensions, `viewBox` scale, aspect ratio, trim and bleed, live text, embedded raster content, gradients, filters, masks, clip paths, patterns, transparency, blend modes, process-colour tokens and line weight.
+
+The MCP boundary is deliberately receipt-only:
+
+```text
+maximum SVG input             5 MiB
+allowed-root enforcement      true
+request cancellation          true
+output file written           false
+SVG markup in model context   false
+CMYK or spot proof available  false
+production approval           false
+approval                      review-required
+```
+
+It does not perform ICC conversion, spot-colour library matching, trapping, overprint, ink-limit, RIP, cutter-compensation, screen-separation or physical-proof approval.
+
+See [`PRINT-PREFLIGHT.md`](./PRINT-PREFLIGHT.md).
 
 ## Animated SVG workflow
 
-1. Start with an inspected static SVG. A `motion` delivery profile is recommended when traced path targets will be animated.
+1. Start with an inspected static SVG. A `motion` delivery profile is recommended when traced targets will be animated.
 2. Create a motion-v1 plan inline or in an allowed-root JSON file.
 3. Validate externally generated plans.
 4. Create a new animated SVG and evidence file.
@@ -183,9 +242,9 @@ The tool returns a file receipt, input/output byte evidence, delivery passes and
 
 Exactly one of `motionPlan` and `motionPath` is required.
 
-## Lottie JSON workflow
+## Lottie JSON
 
-The Lottie tools use the same motion-v1 plan but require the smaller governed Lottie source and playback subset.
+The Lottie tools use the same motion-v1 plan but enforce the smaller governed source and playback subset.
 
 ```json
 {
@@ -202,16 +261,14 @@ The Lottie tools use the same motion-v1 plan but require the smaller governed Lo
 Limits:
 
 ```text
-SVG source          5 MiB
-Motion plan         256 KiB
-Lottie input/output 20 MiB
-Frame rate          1 to 120
-Precision           0 to 6
+SVG source           5 MiB
+motion plan          256 KiB
+Lottie input/output  20 MiB
+frame rate           1 to 120
+precision            0 to 6
 ```
 
-The tool returns file receipts and inspection evidence. It never places generated Lottie JSON in model context.
-
-Compatibility remains:
+The tool returns receipts and inspection evidence. It never places generated Lottie JSON in model context.
 
 ```text
 structuralInspection: passed
@@ -219,7 +276,7 @@ playerRenderValidation: not-yet-performed
 approval: review-required
 ```
 
-## dotLottie workflow
+## dotLottie
 
 ```json
 {
@@ -230,27 +287,25 @@ approval: review-required
 }
 ```
 
-The archive contract is receipt-only:
-
 ```text
-Lottie JSON input              20 MiB
-Generated or inspected archive 25 MiB
-Manifest version                2
-Generated archive entries       2
-Archive bytes in model context  false
-Embedded JSON in model context  false
+Lottie JSON input               20 MiB
+generated or inspected archive  25 MiB
+manifest version                2
+generated archive entries       2
+archive bytes in model context  false
+embedded JSON in model context  false
 ```
 
-`vector_package_dotlottie` never returns generated dotLottie archive bytes or embedded generated JSON. It returns manifest, inspection, compatibility and file receipts.
+`vector_package_dotlottie` returns manifest, inspection, compatibility and file receipts, not archive bytes or embedded generated JSON.
 
-## Durable batch workflow
+## Durable batches
 
 Use durable batches when several operations must retain progress across separate agent calls.
 
 1. Create a strict batch-v1 manifest beneath an allowed root.
 2. Call `vector_run_batch` with the manifest and optional root.
-3. Use `itemOffset` and `itemLimit` to request a paginated item page.
-4. Call `vector_inspect_batch` in later turns to read state without executing work.
+3. Page items using `itemOffset` and `itemLimit`.
+4. Use `vector_inspect_batch` to read state without executing work.
 5. Call `vector_run_batch` again to resume retained pending, interrupted or corrected failed work.
 
 ```json
@@ -263,33 +318,31 @@ Use durable batches when several operations must retain progress across separate
 }
 ```
 
-The MCP batch boundary is:
-
 ```text
-MCP manifest limit           100 items
-Local CLI manifest limit     1,000 items
-Item page size               1 to 100
-Recent event count           0 to 100
-Persistent state             true
-Resumable on a later call    true
-Request cancellation         forwarded
-Generated bodies in context  false
-Hosted background queue      false
+MCP manifest limit            100 items
+local CLI manifest limit      1,000 items
+item page size                1 to 100
+recent event count            0 to 100
+persistent state              true
+resumable on a later call     true
+request cancellation          forwarded
+generated bodies in context   false
+hosted background queue       false
 ```
 
-The current call is synchronous. The MCP process must stay alive while it runs. State persists after cancellation or process exit, but work does not continue in the background. A later invocation can inspect or resume it.
+The current call is synchronous. State persists after cancellation or process exit, but work does not continue in the background. A later invocation can inspect or resume it.
 
 Completed items are reused only when the input revision and every retained output receipt still verify. Existing production outputs are never silently replaced.
 
 ## Evidence and model-context policy
 
-Raster, SVG, motion, Lottie, dotLottie and durable batch tools return settings, inspections, hashes, warnings, compatibility states, paginated job state and file receipts.
+Raster, SVG, print, motion, Lottie, dotLottie and batch tools return settings, inspections, hashes, warnings, compatibility states, paginated state and receipts.
 
 No operational tool places full SVG markup, PNG bytes, generated Lottie JSON, generated dotLottie archive bytes or embedded animation JSON into model context. Evidence files avoid embedding duplicate generated bodies.
 
 ## Transactions, cancellation and limits
 
-Related outputs are committed together with new-file-only semantics. A conflict aborts the transaction and already committed members of that transaction are removed during rollback.
+Related output files are committed together with new-file-only semantics. A conflict aborts the transaction and already committed members are removed during rollback.
 
 Raster inspection and tracing share the native runtime guard:
 
@@ -299,23 +352,11 @@ VECTOR_TRACE_MAX_CONCURRENT      1 to 4, default 1
 VECTOR_TRACE_RETRY_AFTER_SECONDS 1 to 60, default 5
 ```
 
-Request cancellation is forwarded to native raster work and durable batch execution. Motion, Lottie and dotLottie operations check cancellation before validation, processing and commit. Retained batch state remains inspectable after cancellation.
-
-## Governed feature boundaries
-
-Alpha-aware raster analysis ignores hidden RGB beneath fully transparent pixels, weights partial alpha, records visible bounds and rejects sources without visible content.
-
-Animated SVG supports opacity, X/Y translation, uniform scale, rotation, timing, delay, direction, fill, iterations, easing and explicit reduced-motion fallback.
-
-Lottie v1 supports path-based SVG geometry, solid fill and stroke, opacity, translation, uniform scale and rotation for one normal playback cycle. Unsupported gradients, text, images, masks, filters, expressions, precompositions, repeated playback, path morphing and motion paths are rejected.
-
-dotLottie v1 packages exactly one governed animation as `manifest.json` plus `a/<animation-id>.json`. Traversal, duplicate names, ZIP64, encryption, unsupported entries and oversized declared content are rejected.
-
-Durable batch v1 supports tracing, SVG optimisation, animated SVG, Lottie JSON and dotLottie packaging. It is persistent and resumable but remains local and single-process.
+Request cancellation is forwarded to native raster work, print preflight and durable-batch execution. Motion, Lottie and dotLottie operations check cancellation before validation, processing and commit.
 
 ## Approval boundary
 
-A successful call means the requested validation, processing and file commits completed. It does not grant production approval.
+A successful call means the requested validation, processing or file transaction completed. It does not grant production approval.
 
 Human review remains mandatory for:
 
@@ -323,10 +364,12 @@ Human review remains mandatory for:
 - compound paths and negative space;
 - topology, winding and layer intent;
 - logo and brand fidelity;
+- physical dimensions, line weight, process colours and final print specification;
+- CMYK, spot colours, trapping, overprint and physical proof;
 - motion timing, easing and transform origins;
 - reduced-motion experience;
 - Lottie paint order and player compatibility;
 - archive and manifest compatibility;
 - accessibility and final delivery context.
 
-The server reports `human-review-required`, `review-required`, `processing-or-repair-required` or `structural-repair-required` instead of converting deterministic completion into an unsupported approval claim.
+The server reports `human-review-required`, `review-required`, `processing-or-repair-required` or `structural-repair-required` instead of converting deterministic completion into unsupported approval.
