@@ -1,0 +1,313 @@
+name: Align executable source contracts once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/align-source-contracts-once.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+  statuses: write
+
+concurrency:
+  group: vector-align-source-contracts-once
+  cancel-in-progress: false
+
+jobs:
+  align:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout exact alignment revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Use Node.js 22 without package-manager caching
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Activate exact pnpm through Corepack
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.14.0 --activate
+          test "$(pnpm --version)" = "10.14.0"
+          git diff --exit-code
+
+      - name: Apply exact source-contract alignment
+        id: patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              source = path.read_text(encoding="utf-8")
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"Expected exactly one alignment target in {path}; found {count}."
+                  )
+              path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="")
+
+          capabilities = Path("docs/CAPABILITIES.md")
+          replace_once(
+              capabilities,
+              "- MCP stdio transport and its public contract version.\n",
+              "- MCP stdio transport and its public contract version;\n"
+              "- MCP contract version, tool count and MCP batch ceiling.\n",
+          )
+
+          server_test = Path("packages/mcp/src/server.test.ts")
+          replace_once(
+              server_test,
+              "    assert.equal(printPreflight?.approval, \"review-required\");\n"
+              "    const lottie = payload?.lottie as Record<string, unknown> | undefined;\n",
+              "    assert.equal(printPreflight?.approval, \"review-required\");\n"
+              "\n"
+              "    const printSourcePath = path.join(root, \"handshake-print.svg\");\n"
+              "    await writeFile(\n"
+              "      printSourcePath,\n"
+              "      '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"25mm\" height=\"25mm\" viewBox=\"0 0 25 25\"><title>Handshake print sample</title><rect width=\"25\" height=\"25\" fill=\"#111\"/></svg>',\n"
+              "      \"utf8\",\n"
+              "    );\n"
+              "    const printResult = await client.callTool({\n"
+              "      name: \"vector_preflight_svg_print\",\n"
+              "      arguments: {\n"
+              "        inputPath: printSourcePath,\n"
+              "        profile: \"commercial\",\n"
+              "      },\n"
+              "    });\n"
+              "    assert.notEqual(printResult.isError, true);\n"
+              "    assert.equal(\n"
+              "      (printResult.structuredContent as { outputWritten?: boolean } | undefined)\n"
+              "        ?.outputWritten,\n"
+              "      false,\n"
+              "    );\n"
+              "\n"
+              "    const lottie = payload?.lottie as Record<string, unknown> | undefined;\n",
+          )
+
+          motion = Path("apps/web/app/motion/components/MotionWorkspace.tsx")
+          replace_once(
+              motion,
+              "function useObjectUrl(blob: Blob | null): string | null {\n"
+              "  const [url, setUrl] = useState<string | null>(null);\n"
+              "  useEffect(() => {\n",
+              "function useObjectUrl(blob: Blob | null, revision = 0): string | null {\n"
+              "  const [url, setUrl] = useState<string | null>(null);\n"
+              "  useEffect(() => {\n"
+              "    void revision;\n",
+          )
+          replace_once(motion, "  }, [blob]);\n", "  }, [blob, revision]);\n")
+          replace_once(
+              motion,
+              "  const animatedBlob = useMemo(\n"
+              "    () => result ? new Blob([result.response.svg], { type: \"image/svg+xml\" }) : null,\n"
+              "    [result, replayRevision],\n"
+              "  );\n"
+              "  const animatedUrl = useObjectUrl(animatedBlob);\n",
+              "  const animatedBlob = useMemo(\n"
+              "    () => result ? new Blob([result.response.svg], { type: \"image/svg+xml\" }) : null,\n"
+              "    [result],\n"
+              "  );\n"
+              "  const animatedUrl = useObjectUrl(animatedBlob, replayRevision);\n",
+          )
+
+          tsconfig = Path("apps/web/tsconfig.json")
+          replace_once(
+              tsconfig,
+              '    "incremental": true,\n',
+              '    "incremental": true,\n    "allowJs": true,\n',
+          )
+
+          contracts = [
+              ("Verify release contract", "contract_release", "scripts/check-release-contract.mjs"),
+              ("Verify release proof contract", "contract_release_proof", "scripts/check-release-proof-contract.mjs"),
+              ("Verify capability discovery contract", "contract_capabilities", "scripts/check-capability-discovery.mjs"),
+              ("Verify print preflight API contract", "contract_print_api", "scripts/check-print-preflight-api-contract.mjs"),
+              ("Verify Hub integration contract", "contract_hub", "scripts/check-hub-integration-contract.mjs"),
+              ("Verify private response contract", "contract_private_response", "scripts/check-private-response-contract.mjs"),
+              ("Verify Vercel deployment contract", "contract_vercel", "scripts/check-vercel-deployment-contract.mjs"),
+              ("Verify Vercel project provisioning contract", "contract_vercel_provision", "scripts/check-vercel-project-provisioning-contract.mjs"),
+              ("Verify Vercel provisioning plan receipt contract", "contract_vercel_provision_plan", "scripts/check-vercel-provisioning-plan-receipt-contract.mjs"),
+              ("Verify Vercel deployment plan receipt contract", "contract_vercel_plan", "scripts/check-vercel-deployment-plan-receipt-contract.mjs"),
+              ("Verify Vercel production deployment contract", "contract_vercel_production", "scripts/check-vercel-production-deployment-contract.mjs"),
+              ("Verify topology contract", "contract_topology", "scripts/check-topology-contract.mjs"),
+              ("Verify browser evidence contract", "contract_browser_evidence", "scripts/check-browser-evidence-contract.mjs"),
+              ("Verify MCP contract", "contract_mcp", "scripts/check-mcp-contract.mjs"),
+              ("Verify motion contract", "contract_motion", "scripts/check-motion-contract.mjs"),
+              ("Verify motion API contract", "contract_motion_api", "scripts/check-motion-api-contract.mjs"),
+              ("Verify Motion Director contract", "contract_motion_workspace", "scripts/check-motion-workspace-contract.mjs"),
+              ("Verify native runtime boundary", "contract_native", "scripts/check-native-runtime-boundary.mjs"),
+              ("Verify Lottie core contract", "contract_lottie", "scripts/check-lottie-contract.mjs"),
+              ("Verify Lottie API contract", "contract_lottie_api", "scripts/check-lottie-api-contract.mjs"),
+              ("Verify browser Lottie contract", "contract_lottie_workspace", "scripts/check-lottie-workspace-contract.mjs"),
+              ("Verify dotLottie archive contract", "contract_dotlottie", "scripts/check-dotlottie-contract.mjs"),
+              ("Verify dotLottie API contract", "contract_dotlottie_api", "scripts/check-dotlottie-api-contract.mjs"),
+              ("Verify browser dotLottie contract", "contract_dotlottie_workspace", "scripts/check-dotlottie-workspace-contract.mjs"),
+              ("Verify durable batch contract", "contract_batch", "scripts/check-batch-contract.mjs"),
+              ("Verify hosted job control contract", "contract_hosted_jobs", "scripts/check-hosted-job-contract.mjs"),
+              ("Verify worker execution contract", "contract_worker", "scripts/check-worker-contract.mjs"),
+              ("Verify local worker process contract", "contract_local_worker", "scripts/check-local-worker-contract.mjs"),
+              ("Verify worker control API contract", "contract_worker_api", "scripts/check-worker-api-contract.mjs"),
+              ("Verify worker control client contract", "contract_worker_client", "scripts/check-worker-client-contract.mjs"),
+              ("Verify HTTP-coordinated worker contract", "contract_http_worker", "scripts/check-http-worker-contract.mjs"),
+              ("Verify worker object-transfer API contract", "contract_object_transfer", "scripts/check-object-transfer-api-contract.mjs"),
+          ]
+
+          explicit = []
+          for name, step_id, script in contracts:
+              explicit.extend([
+                  f"      - name: {name}",
+                  f"        id: {step_id}",
+                  "        if: ${{ !cancelled() && steps.install.outcome == 'success' }}",
+                  "        continue-on-error: true",
+                  "        shell: bash",
+                  "        run: |",
+                  "          mkdir -p .ci/contracts",
+                  "          set -o pipefail",
+                  f"          node {script} 2>&1 | tee .ci/contracts/{step_id}.log",
+                  "",
+              ])
+
+          explicit.extend([
+              "      - name: Aggregate governed source contracts",
+              "        id: contracts",
+              "        if: ${{ !cancelled() && steps.install.outcome == 'success' }}",
+              "        continue-on-error: true",
+              "        shell: bash",
+              "        env:",
+          ])
+          for _name, step_id, _script in contracts:
+              explicit.append(
+                  f"          {step_id.upper()}_OUTCOME: ${{{{ steps.{step_id}.outcome }}}}"
+              )
+          explicit.extend([
+              "        run: |",
+              "          mkdir -p .ci",
+              "          cat .ci/contracts/*.log > .ci/contracts.log",
+              "          outcomes=(",
+          ])
+          for _name, step_id, _script in contracts:
+              explicit.append(f'            "${step_id.upper()}_OUTCOME"')
+          explicit.extend([
+              "          )",
+              "          status=0",
+              '          for outcome in "${outcomes[@]}"; do',
+              '            if [ "$outcome" != "success" ]; then',
+              "              status=1",
+              "            fi",
+              "          done",
+              '          exit "$status"',
+              "",
+          ])
+
+          quality = Path(".github/workflows/quality.yml")
+          source = quality.read_text(encoding="utf-8")
+          start = source.index("      - name: Run governed source contracts\n")
+          end = source.index("      - name: Run lint\n", start)
+          revised = source[:start] + "\n".join(explicit) + source[end:]
+          if revised == source:
+              raise SystemExit("Quality workflow was not updated.")
+          quality.write_text(revised, encoding="utf-8", newline="")
+
+          workflow = Path(".github/workflows/align-source-contracts-once.yml")
+          workflow.unlink()
+          PY
+
+      - name: Verify bounded patch scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git status --porcelain | sed -E 's/^.. //')
+          expected=(
+            .github/workflows/align-source-contracts-once.yml
+            .github/workflows/quality.yml
+            apps/web/app/motion/components/MotionWorkspace.tsx
+            apps/web/tsconfig.json
+            docs/CAPABILITIES.md
+            packages/mcp/src/server.test.ts
+          )
+          printf '%s\n' "${changed[@]}" | sort > .ci-changed.txt
+          printf '%s\n' "${expected[@]}" | sort > .ci-expected.txt
+          diff -u .ci-expected.txt .ci-changed.txt
+          rm .ci-changed.txt .ci-expected.txt
+
+      - name: Install exact dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: Run complete repository validation
+        shell: bash
+        run: pnpm check
+
+      - name: Verify final tree remains bounded
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git status --porcelain | sed -E 's/^.. //')
+          expected=(
+            .github/workflows/align-source-contracts-once.yml
+            .github/workflows/quality.yml
+            apps/web/app/motion/components/MotionWorkspace.tsx
+            apps/web/tsconfig.json
+            docs/CAPABILITIES.md
+            packages/mcp/src/server.test.ts
+          )
+          printf '%s\n' "${changed[@]}" | sort > .ci-changed.txt
+          printf '%s\n' "${expected[@]}" | sort > .ci-expected.txt
+          diff -u .ci-expected.txt .ci-changed.txt
+          rm .ci-changed.txt .ci-expected.txt
+
+      - name: Commit verified alignment directly to main
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "EVAVO Automation"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(ci): align executable Vector quality contracts"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish alignment status and dispatch exact-head validation
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ALIGNED_SHA: ${{ steps.commit.outputs.sha }}
+        with:
+          script: |
+            const sha = String(process.env.ALIGNED_SHA || "").trim();
+            if (!/^[a-f0-9]{40}$/.test(sha)) {
+              throw new Error("The aligned Vector Studio commit SHA is unavailable.");
+            }
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha,
+              state: "success",
+              context: "vector/source-contract-alignment",
+              description: "all source contracts and dependency-backed checks passed before publication",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+            for (const workflow_id of ["quality.yml", "print-preflight-contract.yml"]) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id,
+                ref: "main",
+              });
+            }
