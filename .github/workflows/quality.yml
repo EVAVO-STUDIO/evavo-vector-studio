@@ -38,8 +38,18 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
+      - name: Verify lockfile bytes and YAML stream boundary
+        id: lockfile
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          node scripts/check-lockfile-integrity.mjs 2>&1 | tee .ci/lockfile.log
+
       - name: Install exact dependencies
         id: install
+        if: ${{ !cancelled() && steps.lockfile.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -145,6 +155,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
+          LOCKFILE_OUTCOME: ${{ steps.lockfile.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           CONTRACTS_OUTCOME: ${{ steps.contracts.outcome }}
           LINT_OUTCOME: ${{ steps.lint.outcome }}
@@ -155,6 +166,7 @@ jobs:
           script: |
             const fs = require("node:fs");
             const gates = [
+              ["lockfile", ".ci/lockfile.log", process.env.LOCKFILE_OUTCOME],
               ["dependencies", ".ci/install.log", process.env.INSTALL_OUTCOME],
               ["contracts", ".ci/contracts.log", process.env.CONTRACTS_OUTCOME],
               ["lint", ".ci/lint.log", process.env.LINT_OUTCOME],
@@ -176,10 +188,10 @@ jobs:
                   /error TS\d+|AssertionError|ERR_ASSERTION|Module not found|Type error|Cannot find|is not assignable|does not exist/i.test(line),
                 ) ||
                 lines.find((line) =>
-                  /Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|failed:/i.test(line),
+                  /Error:|ERR_PNPM|ELIFECYCLE|Failed|not ok|failed:|broken lockfile/i.test(line),
                 ) ||
                 (outcome === "skipped"
-                  ? `${name} was skipped because dependencies were unavailable`
+                  ? `${name} was skipped because an earlier prerequisite failed`
                   : lines.at(-1)) ||
                 `${name} did not produce a diagnostic`;
               const passed = outcome === "success";
@@ -197,7 +209,7 @@ jobs:
             }
 
       - name: Preserve governed quality diagnostics
-        if: ${{ always() && (steps.install.outcome != 'success' || steps.contracts.outcome != 'success' || steps.lint.outcome != 'success' || steps.typecheck.outcome != 'success' || steps.tests.outcome != 'success' || steps.build.outcome != 'success') }}
+        if: ${{ always() && (steps.lockfile.outcome != 'success' || steps.install.outcome != 'success' || steps.contracts.outcome != 'success' || steps.lint.outcome != 'success' || steps.typecheck.outcome != 'success' || steps.tests.outcome != 'success' || steps.build.outcome != 'success') }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vector-governed-quality-${{ github.sha }}
@@ -209,6 +221,7 @@ jobs:
       - name: Enforce quality result
         if: ${{ always() }}
         env:
+          LOCKFILE_OUTCOME: ${{ steps.lockfile.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           CONTRACTS_OUTCOME: ${{ steps.contracts.outcome }}
           LINT_OUTCOME: ${{ steps.lint.outcome }}
@@ -217,6 +230,7 @@ jobs:
           BUILD_OUTCOME: ${{ steps.build.outcome }}
         shell: bash
         run: |
+          test "$LOCKFILE_OUTCOME" = "success"
           test "$INSTALL_OUTCOME" = "success"
           test "$CONTRACTS_OUTCOME" = "success"
           test "$LINT_OUTCOME" = "success"
