@@ -35,6 +35,12 @@ The proof records command names, durations, Node and pnpm versions, the exact Gi
 
 CI runs the same generator and uploads the result as a short-retention artifact. The artifact is evidence for the checked commit, not a mutable “latest” approval.
 
+### Reproducible proof toolchain
+
+Both proof workflows bind Node.js to the repository `.nvmrc` value (`22.16.0`) and activate pnpm `10.14.0` through Corepack before any proof command runs. Package-manager caching is disabled, action implementations are pinned to reviewed commit SHAs, and `git diff --exit-code` verifies that toolchain activation did not mutate the checkout.
+
+The release-proof contract rejects floating action tags, `pnpm/action-setup`, generic `node-version: 22`, and pnpm cache setup. A source proof or live deployment proof therefore cannot silently run under a newer Node minor release or a package-manager bootstrap that rewrites repository state.
+
 ## Public live deployment proof
 
 After the production project and domain exist, run:
