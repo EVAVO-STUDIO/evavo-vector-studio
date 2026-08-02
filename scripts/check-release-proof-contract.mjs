@@ -214,6 +214,7 @@ requireTokens(files.docs, sources.docs, [
   "never appears in command arguments",
   "clientReleaseEligible",
   "human review",
+  "include-hidden-files: true",
 ]);
 
 const exactWorkflowTokens = [
@@ -225,6 +226,7 @@ const exactWorkflowTokens = [
   'test "$(pnpm --version)" = "10.14.0"',
   "git diff --exit-code",
   "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+  "include-hidden-files: true",
   "actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3",
 ];
 const prohibitedWorkflowTokens = [
@@ -242,12 +244,14 @@ requireTokens(files.sourceWorkflow, sources.sourceWorkflow, [
   ...exactWorkflowTokens,
   "node scripts/check-release-proof-contract.mjs",
   "node scripts/create-source-proof.mjs",
+  "path: .ci/vector-source-proof.json\n          include-hidden-files: true\n          if-no-files-found: error",
   "release/vector-source-proof",
 ]);
 requireTokens(files.liveWorkflow, sources.liveWorkflow, [
   "Vector Studio public deployment proof",
   ...exactWorkflowTokens,
   "node scripts/verify-live-deployment.mjs",
+  "path: |\n            .ci/vector-source-proof.json\n            .ci/vector-private-response-proof.json\n            .ci/vector-public-deployment-proof.json\n          include-hidden-files: true\n          if-no-files-found: error",
   "release/vector-public-runtime",
   "signed launch is not performed",
 ]);
