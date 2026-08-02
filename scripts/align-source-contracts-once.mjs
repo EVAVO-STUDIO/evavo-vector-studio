@@ -27,6 +27,18 @@ replaceOnce(
 );
 
 replaceOnce(
+  "scripts/check-release-contract.mjs",
+  'if (rootPackage?.scripts?.["contract:check"] !== "node scripts/check-release-contract.mjs") {\n' +
+    '  fail("package.json must expose contract:check through the dependency-free release gate.");\n' +
+    "}\n",
+  "const dependencyFreeContractCommand =\n" +
+    '  "node scripts/check-runtime-version.mjs && node scripts/check-release-contract.mjs";\n' +
+    'if (rootPackage?.scripts?.["contract:check"] !== dependencyFreeContractCommand) {\n' +
+    '  fail("package.json must expose contract:check through the composed dependency-free runtime and release gates.");\n' +
+    "}\n",
+);
+
+replaceOnce(
   "packages/mcp/src/server.test.ts",
   "    assert.equal(printPreflight?.approval, \"review-required\");\n" +
     "    const lottie = payload?.lottie as Record<string, unknown> | undefined;\n",
@@ -90,7 +102,22 @@ replaceOnce(
   '    "incremental": true,\n    "allowJs": true,\n',
 );
 
+replaceOnce(
+  ".github/workflows/quality.yml",
+  "      - name: Use Node.js 22 without package-manager caching\n" +
+    "        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0\n" +
+    "        with:\n" +
+    "          node-version: 22\n" +
+    "          package-manager-cache: false\n",
+  "      - name: Use the repository Node.js version without package-manager caching\n" +
+    "        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0\n" +
+    "        with:\n" +
+    "          node-version-file: .nvmrc\n" +
+    "          package-manager-cache: false\n",
+);
+
 const contracts = Object.freeze([
+  ["Verify runtime version contract", "contract_runtime", "scripts/check-runtime-version.mjs"],
   ["Verify release contract", "contract_release", "scripts/check-release-contract.mjs"],
   ["Verify release proof contract", "contract_release_proof", "scripts/check-release-proof-contract.mjs"],
   ["Verify capability discovery contract", "contract_capabilities", "scripts/check-capability-discovery.mjs"],
