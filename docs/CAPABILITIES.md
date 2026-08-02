@@ -169,6 +169,12 @@ The separate print-preflight workflow watches the print core, CLI, authenticated
 
 The service version in the capability response is checked against the root package version. The obsolete duplicate checker is required to remain absent so there is one canonical discovery contract.
 
+## Exact focused CI runtime
+
+The focused capability workflow resolves Node.js from `.nvmrc` and asserts the exact governed value (`22.16.0`). It activates pnpm `10.14.0` through Corepack with package-manager caching disabled, then verifies the checkout remained unchanged before running any contract or dependency installation.
+
+The workflow publishes `api/vector-capabilities-toolchain` separately from the existing contract, dependency, typecheck and build statuses. A toolchain failure therefore cannot be misreported as a capability implementation failure, and later gates cannot run after an unverified runtime bootstrap.
+
 ## Workspace-first production build
 
 The Vector web application consumes workspace packages whose runtime exports point to compiled `dist` entrypoints. A standalone `next build` after dependency installation is therefore not sufficient in a clean checkout, even when TypeScript can resolve source declarations.
