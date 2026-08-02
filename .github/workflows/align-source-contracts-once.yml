@@ -28,10 +28,10 @@ jobs:
           fetch-depth: 1
           persist-credentials: true
 
-      - name: Use Node.js 22 without package-manager caching
+      - name: Use the repository Node.js version without package-manager caching
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           package-manager-cache: false
 
       - name: Activate exact pnpm through Corepack
@@ -40,6 +40,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(node --version)" = "v$(tr -d '\r\n' < .nvmrc)"
           corepack enable
           corepack prepare pnpm@10.14.0 --activate
           test "$(pnpm --version)" = "10.14.0"
@@ -51,7 +52,7 @@ jobs:
         continue-on-error: true
         run: node scripts/align-source-contracts-once.mjs
 
-      - name: Verify bounded patch scope
+      - name: Verify bounded validation patch scope
         id: scope
         if: ${{ always() && steps.patch.outcome == 'success' }}
         continue-on-error: true
@@ -86,7 +87,7 @@ jobs:
         continue-on-error: true
         run: pnpm check
 
-      - name: Verify final tree remains bounded
+      - name: Verify final validation tree remains bounded
         id: final_scope
         if: ${{ always() && steps.validate.outcome == 'success' }}
         continue-on-error: true
@@ -111,7 +112,7 @@ jobs:
           diff -u .ci-expected.txt .ci-changed.txt
           rm .ci-changed.txt .ci-expected.txt
 
-      - name: Commit verified alignment directly to main
+      - name: Commit validated non-workflow source changes directly to main
         id: commit
         if: always()
         continue-on-error: true
@@ -131,14 +132,33 @@ jobs:
           test "$INSTALL_OUTCOME" = "success"
           test "$VALIDATE_OUTCOME" = "success"
           test "$FINAL_SCOPE_OUTCOME" = "success"
+
+          git restore --source=HEAD -- \
+            .github/workflows/align-source-contracts-once.yml \
+            .github/workflows/quality.yml
+
+          git diff --check
+          mapfile -t changed < <(git status --porcelain | sed -E 's/^.. //')
+          expected=(
+            apps/web/app/motion/components/MotionWorkspace.tsx
+            apps/web/tsconfig.json
+            docs/CAPABILITIES.md
+            packages/mcp/src/server.test.ts
+            scripts/align-source-contracts-once.mjs
+          )
+          printf '%s\n' "${changed[@]}" | sort > .ci-source-changed.txt
+          printf '%s\n' "${expected[@]}" | sort > .ci-source-expected.txt
+          diff -u .ci-source-expected.txt .ci-source-changed.txt
+          rm .ci-source-changed.txt .ci-source-expected.txt
+
           git config user.name "EVAVO Automation"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "fix(ci): align executable Vector quality contracts"
+          git commit -m "fix: align executable Vector source contracts"
           git push origin HEAD:main
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Publish bounded alignment status
+      - name: Publish bounded source-alignment status
         if: always()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
@@ -177,7 +197,7 @@ jobs:
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
-      - name: Dispatch exact-head validation
+      - name: Dispatch exact-head source validation
         if: always()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
@@ -185,7 +205,7 @@ jobs:
         with:
           script: |
             if (process.env.COMMIT_OUTCOME !== "success") {
-              core.info("Alignment commit did not publish; exact-head dispatch remains withheld.");
+              core.info("Source alignment did not publish; exact-head dispatch remains withheld.");
               return;
             }
             for (const workflow_id of ["quality.yml", "print-preflight-contract.yml"]) {
@@ -197,7 +217,7 @@ jobs:
               });
             }
 
-      - name: Enforce alignment result
+      - name: Enforce source-alignment result
         if: always()
         shell: bash
         env:
