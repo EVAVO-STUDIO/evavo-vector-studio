@@ -6,7 +6,7 @@
   "license": "MIT",
   "packageManager": "pnpm@10.14.0",
   "scripts": {
-    "contract:check": "node scripts/check-release-contract.mjs",
+    "contract:check": "node scripts/check-runtime-version.mjs && node scripts/check-release-contract.mjs",
     "release-proof:check": "node scripts/check-release-proof-contract.mjs",
     "release:source-proof": "node scripts/create-source-proof.mjs",
     "release:live-proof": "node scripts/verify-live-deployment.mjs",
@@ -89,7 +89,7 @@
     "typescript": "^5.9.2"
   },
   "engines": {
-    "node": ">=22.0.0",
+    "node": "22.16.x",
     "pnpm": ">=10.0.0"
   }
 }
