@@ -39,6 +39,7 @@ function forbidTokens(relativePath, source, tokens) {
 }
 
 const files = {
+  nvmrc: ".nvmrc",
   package: "package.json",
   sourceSchema: "schemas/source-proof-v1.schema.json",
   deploymentSchema: "schemas/deployment-proof-v1.schema.json",
@@ -55,6 +56,9 @@ const packageJson = await readJson(files.package);
 const sourceSchema = await readJson(files.sourceSchema);
 const deploymentSchema = await readJson(files.deploymentSchema);
 
+if (sources.nvmrc.trim() !== "22.16.0") {
+  errors.push(".nvmrc must retain the governed Node.js 22.16.0 release runtime.");
+}
 if (packageJson?.scripts?.["release-proof:check"] !== "node scripts/check-release-proof-contract.mjs") {
   errors.push("package.json must expose release-proof:check.");
 }
@@ -120,20 +124,44 @@ requireTokens(files.docs, sources.docs, [
   "clientReleaseEligible",
   "human review",
 ]);
+
+const exactWorkflowTokens = [
+  "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+  "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+  "node-version-file: .nvmrc",
+  "package-manager-cache: false",
+  "corepack prepare pnpm@10.14.0 --activate",
+  'test "$(pnpm --version)" = "10.14.0"',
+  "git diff --exit-code",
+  "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+  "actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3",
+];
+const prohibitedWorkflowTokens = [
+  "pnpm/action-setup@",
+  "actions/checkout@v",
+  "actions/setup-node@v",
+  "actions/upload-artifact@v",
+  "actions/github-script@v",
+  "node-version: 22",
+  "cache: pnpm",
+];
+
 requireTokens(files.sourceWorkflow, sources.sourceWorkflow, [
   "Vector Studio source release proof",
+  ...exactWorkflowTokens,
   "node scripts/check-release-proof-contract.mjs",
   "node scripts/create-source-proof.mjs",
-  "actions/upload-artifact@v4",
   "release/vector-source-proof",
 ]);
 requireTokens(files.liveWorkflow, sources.liveWorkflow, [
   "Vector Studio public deployment proof",
+  ...exactWorkflowTokens,
   "node scripts/verify-live-deployment.mjs",
-  "actions/upload-artifact@v4",
   "release/vector-public-runtime",
   "signed launch is not performed",
 ]);
+forbidTokens(files.sourceWorkflow, sources.sourceWorkflow, prohibitedWorkflowTokens);
+forbidTokens(files.liveWorkflow, sources.liveWorkflow, prohibitedWorkflowTokens);
 
 if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({

@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - ".nvmrc"
       - "package.json"
       - "pnpm-lock.yaml"
       - "apps/web/app/api/v1/print/preflight/**"
@@ -18,6 +19,7 @@ on:
       - "packages/mcp/src/print-tools.test.ts"
       - "packages/mcp/src/server.ts"
       - "packages/mcp/package.json"
+      - "scripts/check-runtime-version.mjs"
       - "scripts/check-print-preflight-api-contract.mjs"
       - "scripts/check-capability-discovery.mjs"
       - "scripts/check-mcp-contract.mjs"
@@ -27,6 +29,7 @@ on:
       - ".github/workflows/print-preflight-contract.yml"
   pull_request:
     paths:
+      - ".nvmrc"
       - "package.json"
       - "pnpm-lock.yaml"
       - "apps/web/app/api/v1/print/preflight/**"
@@ -41,6 +44,7 @@ on:
       - "packages/mcp/src/print-tools.test.ts"
       - "packages/mcp/src/server.ts"
       - "packages/mcp/package.json"
+      - "scripts/check-runtime-version.mjs"
       - "scripts/check-print-preflight-api-contract.mjs"
       - "scripts/check-capability-discovery.mjs"
       - "scripts/check-mcp-contract.mjs"
@@ -67,11 +71,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 1
 
-      - name: Use Node.js 22 without package-manager caching
+      - name: Use the repository Node.js version without package-manager caching
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           package-manager-cache: false
 
       - name: Activate exact pnpm through Corepack
@@ -81,7 +86,8 @@ jobs:
         run: |
           mkdir -p .ci
           set -o pipefail
-          corepack enable 2>&1 | tee .ci/print-pnpm-bootstrap.log
+          test "$(node --version)" = "v$(tr -d '\r\n' < .nvmrc)" 2>&1 | tee .ci/print-pnpm-bootstrap.log
+          corepack enable 2>&1 | tee -a .ci/print-pnpm-bootstrap.log
           corepack prepare pnpm@10.14.0 --activate 2>&1 | tee -a .ci/print-pnpm-bootstrap.log
           version="$(pnpm --version)"
           printf 'pnpm %s\n' "$version" | tee -a .ci/print-pnpm-bootstrap.log
