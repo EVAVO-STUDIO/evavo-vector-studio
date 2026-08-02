@@ -69,6 +69,7 @@ jobs:
             docs/CAPABILITIES.md
             packages/mcp/src/server.test.ts
             scripts/align-source-contracts-once.mjs
+            scripts/check-release-contract.mjs
           )
           printf '%s\n' "${changed[@]}" | sort > .ci-changed.txt
           printf '%s\n' "${expected[@]}" | sort > .ci-expected.txt
@@ -106,6 +107,7 @@ jobs:
             docs/CAPABILITIES.md
             packages/mcp/src/server.test.ts
             scripts/align-source-contracts-once.mjs
+            scripts/check-release-contract.mjs
           )
           printf '%s\n' "${changed[@]}" | sort > .ci-changed.txt
           printf '%s\n' "${expected[@]}" | sort > .ci-expected.txt
@@ -145,6 +147,7 @@ jobs:
             docs/CAPABILITIES.md
             packages/mcp/src/server.test.ts
             scripts/align-source-contracts-once.mjs
+            scripts/check-release-contract.mjs
           )
           printf '%s\n' "${changed[@]}" | sort > .ci-source-changed.txt
           printf '%s\n' "${expected[@]}" | sort > .ci-source-expected.txt
