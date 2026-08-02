@@ -93,6 +93,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf .turbo
+          rm -f apps/web/next-env.d.ts apps/web/tsconfig.tsbuildinfo
           git diff --check
           mapfile -t changed < <(git status --porcelain | sed -E 's/^.. //')
           expected=(
