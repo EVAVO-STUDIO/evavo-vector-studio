@@ -32,9 +32,72 @@ function requireTokens(relativePath, source, tokens) {
   }
 }
 
+function requireOrderedTokens(relativePath, source, tokens) {
+  let offset = 0;
+  for (const token of tokens) {
+    const index = source.indexOf(token, offset);
+    if (index === -1) {
+      errors.push(`${relativePath} is missing ordered release-proof token after byte ${offset}: ${token}`);
+      return;
+    }
+    offset = index + token.length;
+  }
+}
+
 function forbidTokens(relativePath, source, tokens) {
   for (const token of tokens) {
     if (source.includes(token)) errors.push(`${relativePath} contains prohibited release-proof token: ${token}`);
+  }
+}
+
+function requireExactValidationCleanup(relativePath, source) {
+  const block = source.match(/const VALIDATION_GENERATED_PATHS = Object\.freeze\(\[([\s\S]*?)\]\);/)?.[1] ?? null;
+  if (block === null) {
+    errors.push(`${relativePath} must declare the exact bounded validation-generated path list.`);
+    return;
+  }
+
+  const entryPattern = /Object\.freeze\(\{\s*relativePath:\s*"([^"]+)",\s*recursive:\s*(true|false)\s*\}\)/g;
+  const entries = [...block.matchAll(entryPattern)].map((match) => ({
+    relativePath: match[1],
+    recursive: match[2] === "true",
+  }));
+  const expected = [
+    { relativePath: ".turbo", recursive: true },
+    { relativePath: "apps/web/next-env.d.ts", recursive: false },
+    { relativePath: "apps/web/tsconfig.tsbuildinfo", recursive: false },
+  ];
+  if (JSON.stringify(entries) !== JSON.stringify(expected)) {
+    errors.push(`${relativePath} must clean exactly ${expected.map((entry) => entry.relativePath).join(", ")} after validation.`);
+  }
+
+  const residue = block.replace(entryPattern, "").replace(/[\s,]/g, "");
+  if (residue) {
+    errors.push(`${relativePath} contains an unrecognised validation cleanup entry: ${residue.slice(0, 80)}`);
+  }
+}
+
+function forbidBroadRepositoryCleanup(relativePath, source) {
+  const prohibitedPatterns = [
+    {
+      pattern: /(?:commandOutput|runChecked|execFileSync|spawnSync)\(\s*["']git["']\s*,\s*\[\s*["'](?:clean|reset|restore|checkout)["']/g,
+      label: "Git clean/reset/restore/checkout cleanup",
+    },
+    {
+      pattern: /(?:commandOutput|runChecked|execFileSync|spawnSync)\(\s*["'](?:rm|rmdir)["']\s*,/g,
+      label: "shell-level recursive deletion",
+    },
+    { pattern: /\brm\(\s*ROOT\s*,/g, label: "repository-root deletion" },
+    { pattern: /\brm\(\s*process\.cwd\(\)\s*,/g, label: "current-working-directory deletion" },
+    { pattern: /\brm\(\s*path\.resolve\(\s*["']\.["']\s*\)\s*,/g, label: "resolved repository-root deletion" },
+  ];
+  for (const { pattern, label } of prohibitedPatterns) {
+    if (pattern.test(source)) errors.push(`${relativePath} contains prohibited broad cleanup: ${label}.`);
+  }
+
+  const awaitedRmCallCount = [...source.matchAll(/\bawait\s+rm\(/g)].length;
+  if (awaitedRmCallCount !== 2) {
+    errors.push(`${relativePath} must retain exactly two bounded awaited rm calls, found ${awaitedRmCallCount}.`);
   }
 }
 
@@ -85,14 +148,42 @@ if (deploymentSchema?.properties?.origin?.const !== "https://vector.evavo.com.au
 requireTokens(files.sourceProof, sources.sourceProof, [
   'REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio"',
   "SOURCE_PROOF_REPOSITORY_DIRTY",
+  "SOURCE_PROOF_CLEANUP_PATH_INVALID",
+  'const ROOT = path.resolve(".");',
+  "const VALIDATION_GENERATED_PATHS = Object.freeze([",
+  "function resolveRepositoryPath(relativePath)",
+  'relative === ".."',
+  "relative.startsWith(`..${path.sep}`)",
+  "path.isAbsolute(relative)",
+  "function removeValidationGeneratedPaths()",
+  "await rm(resolveRepositoryPath(relativePath), { recursive, force: true });",
   'runChecked("pnpm", ["install", "--frozen-lockfile"]',
   'runChecked("pnpm", ["check"]',
   'runChecked("pnpm", ["--filter", "@evavo/vector-web", "build"]',
+  "await removeValidationGeneratedPaths();",
   "assertCleanRepository()",
   'sensitiveValuesRecorded: false',
   'flag: "wx"',
   "await link(temporary, absolute)",
+  "await rm(temporary, { force: true });",
 ]);
+requireExactValidationCleanup(files.sourceProof, sources.sourceProof);
+requireOrderedTokens(files.sourceProof, sources.sourceProof, [
+  'runChecked("pnpm", ["install", "--frozen-lockfile"]',
+  'runChecked("pnpm", ["check"]',
+  'runChecked("pnpm", ["--filter", "@evavo/vector-web", "build"]',
+  "await removeValidationGeneratedPaths();",
+  "assertCleanRepository();",
+]);
+forbidTokens(files.sourceProof, sources.sourceProof, [
+  "git clean",
+  "git reset",
+  "git restore",
+  "git checkout",
+  "rmSync(",
+]);
+forbidBroadRepositoryCleanup(files.sourceProof, sources.sourceProof);
+
 requireTokens(files.liveProof, sources.liveProof, [
   'CANONICAL_ORIGIN = "https://vector.evavo.com.au"',
   'LAUNCH_TOKEN_ENV = "VECTOR_DEPLOYMENT_PROOF_LAUNCH_TOKEN"',
