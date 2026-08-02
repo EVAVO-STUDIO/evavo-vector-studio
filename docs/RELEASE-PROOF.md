@@ -105,6 +105,8 @@ The raw token, cookie value, hub signing secret, private signing secret, Upstash
 
 ## CI workflows
 
+Both proof workflows write bounded JSON evidence beneath `.ci`. Their artifact steps name only the expected JSON files and set `include-hidden-files: true`, which is required for evidence inside a dot-prefixed directory. They never upload the whole `.ci` directory or use a wildcard, so enabling hidden-file handling does not broaden the artifact beyond the validated proof files.
+
 ### Source release proof
 
 `.github/workflows/source-release-proof.yml` runs only against reviewed source changes. It creates the exact source proof, uploads it with short retention, and publishes:
