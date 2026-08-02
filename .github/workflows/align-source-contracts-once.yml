@@ -9,9 +9,10 @@ on:
 
 permissions:
   contents: write
+  statuses: write
 
 concurrency:
-  group: vector-materialize-quality-workflow-once
+  group: vector-materialize-quality-workflow-once-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -25,6 +26,20 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: true
+
+      - name: Publish materialization run locator
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: "pending",
+              context: "vector/quality-workflow-materialization",
+              description: "validating the exact 33-contract workflow object",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
 
       - name: Use the repository Node.js version without package-manager caching
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -129,3 +144,25 @@ jobs:
           printf 'materialized tree: %s\n' "$TREE_SHA"
           printf 'materialized quality blob: %s\n' "$QUALITY_BLOB_SHA"
           printf 'direct push outcome: %s\n' "$PUSH_OUTCOME"
+
+      - name: Publish materialization result
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          OBJECT_OUTCOME: ${{ steps.object.outcome }}
+          QUALITY_BLOB_SHA: ${{ steps.object.outputs.quality_blob_sha }}
+        with:
+          script: |
+            const passed = process.env.OBJECT_OUTCOME === "success";
+            const blob = String(process.env.QUALITY_BLOB_SHA || "");
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? "success" : "failure",
+              context: "vector/quality-workflow-materialization",
+              description: passed
+                ? `validated workflow blob ${blob.slice(0, 12)}`
+                : "workflow object materialization failed",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
