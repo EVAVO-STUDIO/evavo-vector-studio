@@ -1,4 +1,4 @@
-name: Align executable source contracts once
+name: Materialize exact quality workflow once
 
 on:
   push:
@@ -9,20 +9,18 @@ on:
 
 permissions:
   contents: write
-  actions: write
-  statuses: write
 
 concurrency:
-  group: vector-align-source-contracts-once
+  group: vector-materialize-quality-workflow-once
   cancel-in-progress: false
 
 jobs:
-  align:
+  materialize:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
-      - name: Checkout exact alignment revision
+      - name: Checkout exact materializer revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
@@ -35,8 +33,6 @@ jobs:
           package-manager-cache: false
 
       - name: Activate exact pnpm through Corepack
-        id: toolchain
-        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -46,196 +42,90 @@ jobs:
           test "$(pnpm --version)" = "10.14.0"
           git diff --exit-code
 
-      - name: Apply exact source-contract alignment
-        id: patch
-        if: ${{ always() && steps.toolchain.outcome == 'success' }}
-        continue-on-error: true
-        run: node scripts/align-source-contracts-once.mjs
+      - name: Generate exact quality workflow
+        run: node scripts/materialize-quality-workflow-once.mjs
 
-      - name: Verify bounded validation patch scope
-        id: scope
-        if: ${{ always() && steps.patch.outcome == 'success' }}
-        continue-on-error: true
+      - name: Verify generated workflow shape
         shell: bash
         run: |
           set -euo pipefail
           git diff --check
+          test "$(grep -c '^        id: contract_' .github/workflows/quality.yml)" = "33"
+          grep -Fq 'node-version-file: .nvmrc' .github/workflows/quality.yml
+          grep -Fq 'id: contract_runtime' .github/workflows/quality.yml
+          ! grep -Fq 'Run governed source contracts' .github/workflows/quality.yml
           mapfile -t changed < <(git status --porcelain | sed -E 's/^.. //')
-          expected=(
-            .github/workflows/align-source-contracts-once.yml
-            .github/workflows/quality.yml
-            apps/web/app/motion/components/MotionWorkspace.tsx
-            apps/web/tsconfig.json
-            docs/CAPABILITIES.md
-            packages/mcp/src/server.test.ts
-            scripts/align-source-contracts-once.mjs
-            scripts/check-release-contract.mjs
-          )
-          printf '%s\n' "${changed[@]}" | sort > .ci-changed.txt
-          printf '%s\n' "${expected[@]}" | sort > .ci-expected.txt
-          diff -u .ci-expected.txt .ci-changed.txt
-          rm .ci-changed.txt .ci-expected.txt
+          test "${#changed[@]}" = "1"
+          test "${changed[0]}" = ".github/workflows/quality.yml"
 
       - name: Install exact dependencies
-        id: install
-        if: ${{ always() && steps.scope.outcome == 'success' }}
-        continue-on-error: true
         run: pnpm install --frozen-lockfile
 
       - name: Run complete repository validation
-        id: validate
-        if: ${{ always() && steps.install.outcome == 'success' }}
-        continue-on-error: true
         run: pnpm check
 
-      - name: Verify final validation tree remains bounded
-        id: final_scope
-        if: ${{ always() && steps.validate.outcome == 'success' }}
-        continue-on-error: true
+      - name: Clean validation-only generated files
         shell: bash
         run: |
           set -euo pipefail
           rm -rf .turbo
           rm -f apps/web/next-env.d.ts apps/web/tsconfig.tsbuildinfo
           git diff --check
+
+      - name: Create validated workflow commit object
+        id: object
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/align-source-contracts-once.yml
+          rm scripts/materialize-quality-workflow-once.mjs
+
           mapfile -t changed < <(git status --porcelain | sed -E 's/^.. //')
           expected=(
             .github/workflows/align-source-contracts-once.yml
             .github/workflows/quality.yml
-            apps/web/app/motion/components/MotionWorkspace.tsx
-            apps/web/tsconfig.json
-            docs/CAPABILITIES.md
-            packages/mcp/src/server.test.ts
-            scripts/align-source-contracts-once.mjs
-            scripts/check-release-contract.mjs
+            scripts/materialize-quality-workflow-once.mjs
           )
-          printf '%s\n' "${changed[@]}" | sort > .ci-changed.txt
-          printf '%s\n' "${expected[@]}" | sort > .ci-expected.txt
-          diff -u .ci-expected.txt .ci-changed.txt
-          rm .ci-changed.txt .ci-expected.txt
-
-      - name: Commit validated non-workflow source changes directly to main
-        id: commit
-        if: always()
-        continue-on-error: true
-        shell: bash
-        env:
-          TOOLCHAIN_OUTCOME: ${{ steps.toolchain.outcome }}
-          PATCH_OUTCOME: ${{ steps.patch.outcome }}
-          SCOPE_OUTCOME: ${{ steps.scope.outcome }}
-          INSTALL_OUTCOME: ${{ steps.install.outcome }}
-          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
-          FINAL_SCOPE_OUTCOME: ${{ steps.final_scope.outcome }}
-        run: |
-          set -euo pipefail
-          test "$TOOLCHAIN_OUTCOME" = "success"
-          test "$PATCH_OUTCOME" = "success"
-          test "$SCOPE_OUTCOME" = "success"
-          test "$INSTALL_OUTCOME" = "success"
-          test "$VALIDATE_OUTCOME" = "success"
-          test "$FINAL_SCOPE_OUTCOME" = "success"
-
-          git restore --source=HEAD -- \
-            .github/workflows/align-source-contracts-once.yml \
-            .github/workflows/quality.yml
-
-          git diff --check
-          mapfile -t changed < <(git status --porcelain | sed -E 's/^.. //')
-          expected=(
-            apps/web/app/motion/components/MotionWorkspace.tsx
-            apps/web/tsconfig.json
-            docs/CAPABILITIES.md
-            packages/mcp/src/server.test.ts
-            scripts/align-source-contracts-once.mjs
-            scripts/check-release-contract.mjs
-          )
-          printf '%s\n' "${changed[@]}" | sort > .ci-source-changed.txt
-          printf '%s\n' "${expected[@]}" | sort > .ci-source-expected.txt
-          diff -u .ci-source-expected.txt .ci-source-changed.txt
-          rm .ci-source-changed.txt .ci-source-expected.txt
+          printf '%s\n' "${changed[@]}" | sort > .ci-object-changed.txt
+          printf '%s\n' "${expected[@]}" | sort > .ci-object-expected.txt
+          diff -u .ci-object-expected.txt .ci-object-changed.txt
+          rm .ci-object-changed.txt .ci-object-expected.txt
 
           git config user.name "EVAVO Automation"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "fix: align executable Vector source contracts"
-          git push origin HEAD:main
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git commit -m "fix(ci): publish exact-head quality workflow"
 
-      - name: Publish bounded source-alignment status
-        if: always()
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          ALIGNED_SHA: ${{ steps.commit.outputs.sha }}
-          TOOLCHAIN_OUTCOME: ${{ steps.toolchain.outcome }}
-          PATCH_OUTCOME: ${{ steps.patch.outcome }}
-          SCOPE_OUTCOME: ${{ steps.scope.outcome }}
-          INSTALL_OUTCOME: ${{ steps.install.outcome }}
-          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
-          FINAL_SCOPE_OUTCOME: ${{ steps.final_scope.outcome }}
-          COMMIT_OUTCOME: ${{ steps.commit.outcome }}
-        with:
-          script: |
-            const gates = [
-              ["toolchain", process.env.TOOLCHAIN_OUTCOME],
-              ["patch", process.env.PATCH_OUTCOME],
-              ["scope", process.env.SCOPE_OUTCOME],
-              ["install", process.env.INSTALL_OUTCOME],
-              ["validate", process.env.VALIDATE_OUTCOME],
-              ["final-scope", process.env.FINAL_SCOPE_OUTCOME],
-              ["commit", process.env.COMMIT_OUTCOME],
-            ];
-            const passed = gates.every(([, outcome]) => outcome === "success");
-            const candidate = String(process.env.ALIGNED_SHA || "").trim();
-            const sha = /^[a-f0-9]{40}$/.test(candidate) ? candidate : context.sha;
-            const failed = gates.find(([, outcome]) => outcome !== "success");
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha,
-              state: passed ? "success" : "failure",
-              context: "vector/source-contract-alignment",
-              description: passed
-                ? "complete source and dependency-backed validation passed before publication"
-                : `source alignment failed at ${failed?.[0] || "unknown"}`,
-              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-            });
+          commit_sha="$(git rev-parse HEAD)"
+          tree_sha="$(git rev-parse 'HEAD^{tree}')"
+          quality_blob_sha="$(git rev-parse 'HEAD:.github/workflows/quality.yml')"
+          printf 'MATERIALIZED_COMMIT_SHA=%s\n' "$commit_sha"
+          printf 'MATERIALIZED_TREE_SHA=%s\n' "$tree_sha"
+          printf 'MATERIALIZED_QUALITY_BLOB_SHA=%s\n' "$quality_blob_sha"
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
+          echo "tree_sha=$tree_sha" >> "$GITHUB_OUTPUT"
+          echo "quality_blob_sha=$quality_blob_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Dispatch exact-head source validation
-        if: always()
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          COMMIT_OUTCOME: ${{ steps.commit.outcome }}
-        with:
-          script: |
-            if (process.env.COMMIT_OUTCOME !== "success") {
-              core.info("Source alignment did not publish; exact-head dispatch remains withheld.");
-              return;
-            }
-            for (const workflow_id of ["quality.yml", "print-preflight-contract.yml"]) {
-              await github.rest.actions.createWorkflowDispatch({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id,
-                ref: "main",
-              });
-            }
+      - name: Upload commit object through guarded main push
+        id: push
+        continue-on-error: true
+        shell: bash
+        run: git push origin HEAD:main
 
-      - name: Enforce source-alignment result
+      - name: Preserve materialized object identity
         if: always()
         shell: bash
         env:
-          TOOLCHAIN_OUTCOME: ${{ steps.toolchain.outcome }}
-          PATCH_OUTCOME: ${{ steps.patch.outcome }}
-          SCOPE_OUTCOME: ${{ steps.scope.outcome }}
-          INSTALL_OUTCOME: ${{ steps.install.outcome }}
-          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
-          FINAL_SCOPE_OUTCOME: ${{ steps.final_scope.outcome }}
-          COMMIT_OUTCOME: ${{ steps.commit.outcome }}
+          COMMIT_SHA: ${{ steps.object.outputs.commit_sha }}
+          TREE_SHA: ${{ steps.object.outputs.tree_sha }}
+          QUALITY_BLOB_SHA: ${{ steps.object.outputs.quality_blob_sha }}
+          PUSH_OUTCOME: ${{ steps.push.outcome }}
         run: |
-          test "$TOOLCHAIN_OUTCOME" = "success"
-          test "$PATCH_OUTCOME" = "success"
-          test "$SCOPE_OUTCOME" = "success"
-          test "$INSTALL_OUTCOME" = "success"
-          test "$VALIDATE_OUTCOME" = "success"
-          test "$FINAL_SCOPE_OUTCOME" = "success"
-          test "$COMMIT_OUTCOME" = "success"
+          set -euo pipefail
+          test -n "$COMMIT_SHA"
+          test -n "$TREE_SHA"
+          test -n "$QUALITY_BLOB_SHA"
+          printf 'materialized commit: %s\n' "$COMMIT_SHA"
+          printf 'materialized tree: %s\n' "$TREE_SHA"
+          printf 'materialized quality blob: %s\n' "$QUALITY_BLOB_SHA"
+          printf 'direct push outcome: %s\n' "$PUSH_OUTCOME"
