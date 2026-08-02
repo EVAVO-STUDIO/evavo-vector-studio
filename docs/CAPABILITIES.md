@@ -37,7 +37,8 @@ The document identifies the current paths and commands for:
 - raster, SVG print preflight, animated SVG, Lottie and dotLottie HTTP APIs;
 - hosted job control, worker control and worker-object transfer;
 - single-file CLI, print-preflight CLI, durable batch CLI, local worker and HTTP worker;
-- MCP stdio transport and its public contract version.
+- MCP stdio transport and its public contract version;
+- MCP contract version, tool count and MCP batch ceiling.
 
 Generated SVG, PNG, Lottie JSON and dotLottie archives remain outside discovery responses and agent model context.
 
