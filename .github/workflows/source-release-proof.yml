@@ -74,6 +74,7 @@ jobs:
         with:
           name: vector-source-proof-${{ github.sha }}
           path: .ci/vector-source-proof.json
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
 
