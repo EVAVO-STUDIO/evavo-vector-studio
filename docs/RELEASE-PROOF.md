@@ -35,6 +35,20 @@ The proof records command names, durations, Node and pnpm versions, the exact Gi
 
 CI runs the same generator and uploads the result as a short-retention artifact. The artifact is evidence for the checked commit, not a mutable “latest” approval.
 
+### Bounded validation cleanup
+
+The full validation chain creates three repository-visible generated paths on a clean runner:
+
+```text
+.turbo
+apps/web/next-env.d.ts
+apps/web/tsconfig.tsbuildinfo
+```
+
+After every validation command passes, the generator removes exactly those three paths and then repeats the complete Git status check with untracked files included. It does not run `git clean`, `git reset`, `git restore`, or `git checkout`, and it never recursively deletes the repository root. Any other tracked or untracked mutation remains present and fails the proof with `SOURCE_PROOF_REPOSITORY_DIRTY`.
+
+The source-proof JSON is written only after that bounded cleanup and clean-repository recheck succeed. The release-proof contract verifies the exact cleanup list, its execution order, the repository-root containment guard, and the continuing absence of broad cleanup commands.
+
 ### Reproducible proof toolchain
 
 Both proof workflows bind Node.js to the repository `.nvmrc` value (`22.16.0`) and activate pnpm `10.14.0` through Corepack before any proof command runs. Package-manager caching is disabled, action implementations are pinned to reviewed commit SHAs, and `git diff --exit-code` verifies that toolchain activation did not mutate the checkout.
