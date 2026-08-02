@@ -116,4 +116,10 @@ The API contract gate is:
 pnpm print-api:check
 ```
 
+## Exact preflight CI runtime
+
+The focused print workflow resolves Node.js from `.nvmrc`, asserts the exact `22.16.0` runtime, and activates pnpm `10.14.0` through Corepack. Package-manager caching is disabled and `git diff --exit-code` verifies that bootstrap did not change the checkout before the print contract, frozen install, executable tests, web typecheck or production build can run.
+
+Toolchain, contract, dependency, core, CLI, MCP, aggregate test and web-build outcomes remain separately observable. A skipped downstream step is treated as a failed proof rather than a successful print release.
+
 The full repository check, TypeScript, executable core and CLI tests, and production build remain mandatory before release.
