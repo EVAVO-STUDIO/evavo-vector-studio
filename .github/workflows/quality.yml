@@ -25,10 +25,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Use Node.js 22 without package-manager caching
+      - name: Use the repository Node.js version without package-manager caching
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           package-manager-cache: false
 
       - name: Activate exact pnpm through Corepack
@@ -65,55 +65,416 @@ jobs:
           set -o pipefail
           pnpm install --frozen-lockfile 2>&1 | tee .ci/install.log
 
-      - name: Run governed source contracts
-        id: contracts
+      - name: Verify runtime version contract
+        id: contract_runtime
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-runtime-version.mjs 2>&1 | tee .ci/contracts/contract_runtime.log
+
+      - name: Verify release contract
+        id: contract_release
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-release-contract.mjs 2>&1 | tee .ci/contracts/contract_release.log
+
+      - name: Verify release proof contract
+        id: contract_release_proof
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-release-proof-contract.mjs 2>&1 | tee .ci/contracts/contract_release_proof.log
+
+      - name: Verify capability discovery contract
+        id: contract_capabilities
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-capability-discovery.mjs 2>&1 | tee .ci/contracts/contract_capabilities.log
+
+      - name: Verify print preflight API contract
+        id: contract_print_api
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-print-preflight-api-contract.mjs 2>&1 | tee .ci/contracts/contract_print_api.log
+
+      - name: Verify Hub integration contract
+        id: contract_hub
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-hub-integration-contract.mjs 2>&1 | tee .ci/contracts/contract_hub.log
+
+      - name: Verify private response contract
+        id: contract_private_response
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-private-response-contract.mjs 2>&1 | tee .ci/contracts/contract_private_response.log
+
+      - name: Verify Vercel deployment contract
+        id: contract_vercel
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-vercel-deployment-contract.mjs 2>&1 | tee .ci/contracts/contract_vercel.log
+
+      - name: Verify Vercel project provisioning contract
+        id: contract_vercel_provision
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-vercel-project-provisioning-contract.mjs 2>&1 | tee .ci/contracts/contract_vercel_provision.log
+
+      - name: Verify Vercel provisioning plan receipt contract
+        id: contract_vercel_provision_plan
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-vercel-provisioning-plan-receipt-contract.mjs 2>&1 | tee .ci/contracts/contract_vercel_provision_plan.log
+
+      - name: Verify Vercel deployment plan receipt contract
+        id: contract_vercel_plan
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-vercel-deployment-plan-receipt-contract.mjs 2>&1 | tee .ci/contracts/contract_vercel_plan.log
+
+      - name: Verify Vercel production deployment contract
+        id: contract_vercel_production
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-vercel-production-deployment-contract.mjs 2>&1 | tee .ci/contracts/contract_vercel_production.log
+
+      - name: Verify topology contract
+        id: contract_topology
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-topology-contract.mjs 2>&1 | tee .ci/contracts/contract_topology.log
+
+      - name: Verify browser evidence contract
+        id: contract_browser_evidence
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-browser-evidence-contract.mjs 2>&1 | tee .ci/contracts/contract_browser_evidence.log
+
+      - name: Verify MCP contract
+        id: contract_mcp
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-mcp-contract.mjs 2>&1 | tee .ci/contracts/contract_mcp.log
+
+      - name: Verify motion contract
+        id: contract_motion
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-motion-contract.mjs 2>&1 | tee .ci/contracts/contract_motion.log
+
+      - name: Verify motion API contract
+        id: contract_motion_api
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-motion-api-contract.mjs 2>&1 | tee .ci/contracts/contract_motion_api.log
+
+      - name: Verify Motion Director contract
+        id: contract_motion_workspace
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-motion-workspace-contract.mjs 2>&1 | tee .ci/contracts/contract_motion_workspace.log
+
+      - name: Verify native runtime boundary
+        id: contract_native
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-native-runtime-boundary.mjs 2>&1 | tee .ci/contracts/contract_native.log
+
+      - name: Verify Lottie core contract
+        id: contract_lottie
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-lottie-contract.mjs 2>&1 | tee .ci/contracts/contract_lottie.log
+
+      - name: Verify Lottie API contract
+        id: contract_lottie_api
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-lottie-api-contract.mjs 2>&1 | tee .ci/contracts/contract_lottie_api.log
+
+      - name: Verify browser Lottie contract
+        id: contract_lottie_workspace
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-lottie-workspace-contract.mjs 2>&1 | tee .ci/contracts/contract_lottie_workspace.log
+
+      - name: Verify dotLottie archive contract
+        id: contract_dotlottie
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-dotlottie-contract.mjs 2>&1 | tee .ci/contracts/contract_dotlottie.log
+
+      - name: Verify dotLottie API contract
+        id: contract_dotlottie_api
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-dotlottie-api-contract.mjs 2>&1 | tee .ci/contracts/contract_dotlottie_api.log
+
+      - name: Verify browser dotLottie contract
+        id: contract_dotlottie_workspace
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-dotlottie-workspace-contract.mjs 2>&1 | tee .ci/contracts/contract_dotlottie_workspace.log
+
+      - name: Verify durable batch contract
+        id: contract_batch
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-batch-contract.mjs 2>&1 | tee .ci/contracts/contract_batch.log
+
+      - name: Verify hosted job control contract
+        id: contract_hosted_jobs
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-hosted-job-contract.mjs 2>&1 | tee .ci/contracts/contract_hosted_jobs.log
+
+      - name: Verify worker execution contract
+        id: contract_worker
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-worker-contract.mjs 2>&1 | tee .ci/contracts/contract_worker.log
+
+      - name: Verify local worker process contract
+        id: contract_local_worker
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-local-worker-contract.mjs 2>&1 | tee .ci/contracts/contract_local_worker.log
+
+      - name: Verify worker control API contract
+        id: contract_worker_api
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-worker-api-contract.mjs 2>&1 | tee .ci/contracts/contract_worker_api.log
+
+      - name: Verify worker control client contract
+        id: contract_worker_client
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-worker-client-contract.mjs 2>&1 | tee .ci/contracts/contract_worker_client.log
+
+      - name: Verify HTTP-coordinated worker contract
+        id: contract_http_worker
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-http-worker-contract.mjs 2>&1 | tee .ci/contracts/contract_http_worker.log
+
+      - name: Verify worker object-transfer API contract
+        id: contract_object_transfer
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-object-transfer-api-contract.mjs 2>&1 | tee .ci/contracts/contract_object_transfer.log
+
+      - name: Aggregate governed source contracts
+        id: contracts
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          CONTRACT_RUNTIME_OUTCOME: ${{ steps.contract_runtime.outcome }}
+          CONTRACT_RELEASE_OUTCOME: ${{ steps.contract_release.outcome }}
+          CONTRACT_RELEASE_PROOF_OUTCOME: ${{ steps.contract_release_proof.outcome }}
+          CONTRACT_CAPABILITIES_OUTCOME: ${{ steps.contract_capabilities.outcome }}
+          CONTRACT_PRINT_API_OUTCOME: ${{ steps.contract_print_api.outcome }}
+          CONTRACT_HUB_OUTCOME: ${{ steps.contract_hub.outcome }}
+          CONTRACT_PRIVATE_RESPONSE_OUTCOME: ${{ steps.contract_private_response.outcome }}
+          CONTRACT_VERCEL_OUTCOME: ${{ steps.contract_vercel.outcome }}
+          CONTRACT_VERCEL_PROVISION_OUTCOME: ${{ steps.contract_vercel_provision.outcome }}
+          CONTRACT_VERCEL_PROVISION_PLAN_OUTCOME: ${{ steps.contract_vercel_provision_plan.outcome }}
+          CONTRACT_VERCEL_PLAN_OUTCOME: ${{ steps.contract_vercel_plan.outcome }}
+          CONTRACT_VERCEL_PRODUCTION_OUTCOME: ${{ steps.contract_vercel_production.outcome }}
+          CONTRACT_TOPOLOGY_OUTCOME: ${{ steps.contract_topology.outcome }}
+          CONTRACT_BROWSER_EVIDENCE_OUTCOME: ${{ steps.contract_browser_evidence.outcome }}
+          CONTRACT_MCP_OUTCOME: ${{ steps.contract_mcp.outcome }}
+          CONTRACT_MOTION_OUTCOME: ${{ steps.contract_motion.outcome }}
+          CONTRACT_MOTION_API_OUTCOME: ${{ steps.contract_motion_api.outcome }}
+          CONTRACT_MOTION_WORKSPACE_OUTCOME: ${{ steps.contract_motion_workspace.outcome }}
+          CONTRACT_NATIVE_OUTCOME: ${{ steps.contract_native.outcome }}
+          CONTRACT_LOTTIE_OUTCOME: ${{ steps.contract_lottie.outcome }}
+          CONTRACT_LOTTIE_API_OUTCOME: ${{ steps.contract_lottie_api.outcome }}
+          CONTRACT_LOTTIE_WORKSPACE_OUTCOME: ${{ steps.contract_lottie_workspace.outcome }}
+          CONTRACT_DOTLOTTIE_OUTCOME: ${{ steps.contract_dotlottie.outcome }}
+          CONTRACT_DOTLOTTIE_API_OUTCOME: ${{ steps.contract_dotlottie_api.outcome }}
+          CONTRACT_DOTLOTTIE_WORKSPACE_OUTCOME: ${{ steps.contract_dotlottie_workspace.outcome }}
+          CONTRACT_BATCH_OUTCOME: ${{ steps.contract_batch.outcome }}
+          CONTRACT_HOSTED_JOBS_OUTCOME: ${{ steps.contract_hosted_jobs.outcome }}
+          CONTRACT_WORKER_OUTCOME: ${{ steps.contract_worker.outcome }}
+          CONTRACT_LOCAL_WORKER_OUTCOME: ${{ steps.contract_local_worker.outcome }}
+          CONTRACT_WORKER_API_OUTCOME: ${{ steps.contract_worker_api.outcome }}
+          CONTRACT_WORKER_CLIENT_OUTCOME: ${{ steps.contract_worker_client.outcome }}
+          CONTRACT_HTTP_WORKER_OUTCOME: ${{ steps.contract_http_worker.outcome }}
+          CONTRACT_OBJECT_TRANSFER_OUTCOME: ${{ steps.contract_object_transfer.outcome }}
+        run: |
           mkdir -p .ci
-          checks=(
-            scripts/check-release-contract.mjs
-            scripts/check-release-proof-contract.mjs
-            scripts/check-capability-discovery.mjs
-            scripts/check-print-preflight-api-contract.mjs
-            scripts/check-hub-integration-contract.mjs
-            scripts/check-private-response-contract.mjs
-            scripts/check-vercel-deployment-contract.mjs
-            scripts/check-vercel-project-provisioning-contract.mjs
-            scripts/check-vercel-provisioning-plan-receipt-contract.mjs
-            scripts/check-vercel-deployment-plan-receipt-contract.mjs
-            scripts/check-vercel-production-deployment-contract.mjs
-            scripts/check-topology-contract.mjs
-            scripts/check-browser-evidence-contract.mjs
-            scripts/check-mcp-contract.mjs
-            scripts/check-motion-contract.mjs
-            scripts/check-motion-api-contract.mjs
-            scripts/check-motion-workspace-contract.mjs
-            scripts/check-native-runtime-boundary.mjs
-            scripts/check-lottie-contract.mjs
-            scripts/check-lottie-api-contract.mjs
-            scripts/check-lottie-workspace-contract.mjs
-            scripts/check-dotlottie-contract.mjs
-            scripts/check-dotlottie-api-contract.mjs
-            scripts/check-dotlottie-workspace-contract.mjs
-            scripts/check-batch-contract.mjs
-            scripts/check-hosted-job-contract.mjs
-            scripts/check-worker-contract.mjs
-            scripts/check-local-worker-contract.mjs
-            scripts/check-worker-api-contract.mjs
-            scripts/check-worker-client-contract.mjs
-            scripts/check-http-worker-contract.mjs
-            scripts/check-object-transfer-api-contract.mjs
+          cat .ci/contracts/*.log > .ci/contracts.log
+          outcomes=(
+            "$CONTRACT_RUNTIME_OUTCOME"
+            "$CONTRACT_RELEASE_OUTCOME"
+            "$CONTRACT_RELEASE_PROOF_OUTCOME"
+            "$CONTRACT_CAPABILITIES_OUTCOME"
+            "$CONTRACT_PRINT_API_OUTCOME"
+            "$CONTRACT_HUB_OUTCOME"
+            "$CONTRACT_PRIVATE_RESPONSE_OUTCOME"
+            "$CONTRACT_VERCEL_OUTCOME"
+            "$CONTRACT_VERCEL_PROVISION_OUTCOME"
+            "$CONTRACT_VERCEL_PROVISION_PLAN_OUTCOME"
+            "$CONTRACT_VERCEL_PLAN_OUTCOME"
+            "$CONTRACT_VERCEL_PRODUCTION_OUTCOME"
+            "$CONTRACT_TOPOLOGY_OUTCOME"
+            "$CONTRACT_BROWSER_EVIDENCE_OUTCOME"
+            "$CONTRACT_MCP_OUTCOME"
+            "$CONTRACT_MOTION_OUTCOME"
+            "$CONTRACT_MOTION_API_OUTCOME"
+            "$CONTRACT_MOTION_WORKSPACE_OUTCOME"
+            "$CONTRACT_NATIVE_OUTCOME"
+            "$CONTRACT_LOTTIE_OUTCOME"
+            "$CONTRACT_LOTTIE_API_OUTCOME"
+            "$CONTRACT_LOTTIE_WORKSPACE_OUTCOME"
+            "$CONTRACT_DOTLOTTIE_OUTCOME"
+            "$CONTRACT_DOTLOTTIE_API_OUTCOME"
+            "$CONTRACT_DOTLOTTIE_WORKSPACE_OUTCOME"
+            "$CONTRACT_BATCH_OUTCOME"
+            "$CONTRACT_HOSTED_JOBS_OUTCOME"
+            "$CONTRACT_WORKER_OUTCOME"
+            "$CONTRACT_LOCAL_WORKER_OUTCOME"
+            "$CONTRACT_WORKER_API_OUTCOME"
+            "$CONTRACT_WORKER_CLIENT_OUTCOME"
+            "$CONTRACT_HTTP_WORKER_OUTCOME"
+            "$CONTRACT_OBJECT_TRANSFER_OUTCOME"
           )
-          : > .ci/contracts.log
           status=0
-          set +e
-          for check in "${checks[@]}"; do
-            printf '\n>>> node %s\n' "$check" | tee -a .ci/contracts.log
-            node "$check" 2>&1 | tee -a .ci/contracts.log
-            result=${PIPESTATUS[0]}
-            if [ "$result" -ne 0 ]; then
+          for outcome in "${outcomes[@]}"; do
+            if [ "$outcome" != "success" ]; then
               status=1
             fi
           done
