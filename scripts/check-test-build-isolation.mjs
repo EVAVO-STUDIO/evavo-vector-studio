@@ -34,7 +34,7 @@ function requireTokens(relativePath, source, tokens) {
 
 const packageJson = await readJson("package.json");
 const turboJson = await readJson("turbo.json");
-const quality = await read(".github/workflows/quality.yml");
+const readinessWorkflow = await read(".github/workflows/readiness-contract.yml");
 const documentation = await read("docs/TEST-BUILD-ISOLATION.md");
 const readme = await read("README.md");
 
@@ -46,6 +46,7 @@ if (!String(packageJson?.scripts?.check ?? "").includes("pnpm test-build-isolati
 }
 
 const testDependencies = turboJson?.tasks?.test?.dependsOn;
+const testOutputs = turboJson?.tasks?.test?.outputs;
 if (
   !Array.isArray(testDependencies) ||
   testDependencies.length !== 2 ||
@@ -53,6 +54,9 @@ if (
   testDependencies[1] !== "^build"
 ) {
   errors.push('turbo.json test must depend on same-package "build" before dependency "^build".');
+}
+if (!Array.isArray(testOutputs) || testOutputs.length !== 0) {
+  errors.push("turbo.json test must declare an empty outputs array because compiled tests produce no retained output.");
 }
 
 const manifestPaths = [];
@@ -96,17 +100,18 @@ if (builtTestPackages.length < 1) {
   errors.push("No workspace package consumes immutable dist test output.");
 }
 
-requireTokens(".github/workflows/quality.yml", quality, [
+requireTokens(".github/workflows/readiness-contract.yml", readinessWorkflow, [
   "Verify test and build output isolation",
-  "id: contract_test_build_isolation",
   "node scripts/check-test-build-isolation.mjs",
-  "CONTRACT_TEST_BUILD_ISOLATION_OUTCOME",
+  "api/vector-test-build-isolation",
 ]);
 requireTokens("docs/TEST-BUILD-ISOLATION.md", documentation, [
   "same-package `build`",
   "immutable `dist` output",
   "must not invoke `tsc`",
   "pnpm test-build-isolation:check",
+  "empty test-output declaration",
+  "focused readiness workflow",
 ]);
 requireTokens("README.md", readme, [
   "docs/TEST-BUILD-ISOLATION.md",
