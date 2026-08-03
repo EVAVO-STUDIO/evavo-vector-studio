@@ -42,6 +42,7 @@ const files = {
   rootPackage: "package.json",
   lottiePackage: "packages/lottie-engine/package.json",
   cliPackage: "packages/cli/package.json",
+  cliShim: "packages/cli/bin/evavo-dotlottie.mjs",
   index: "packages/lottie-engine/src/index.ts",
   errors: "packages/lottie-engine/src/errors.ts",
   engine: "packages/lottie-engine/src/dotlottie.ts",
@@ -63,8 +64,11 @@ const cliPackage = await readJson(files.cliPackage);
 if (lottiePackage?.dependencies?.fflate !== "0.8.3") {
   errors.push("packages/lottie-engine must pin fflate to the reviewed 0.8.3 deterministic ZIP boundary.");
 }
-if (cliPackage?.bin?.["evavo-dotlottie"] !== "./dist/dotlottie-cli.js") {
-  errors.push("packages/cli must expose the evavo-dotlottie binary.");
+if (cliPackage?.bin?.["evavo-dotlottie"] !== "./bin/evavo-dotlottie.mjs") {
+  errors.push("packages/cli must expose evavo-dotlottie through the checked-in install-safe launcher.");
+}
+if (sources.cliShim !== '#!/usr/bin/env node\nimport "../dist/dotlottie-cli.js";\n') {
+  errors.push("packages/cli/bin/evavo-dotlottie.mjs must import exactly the compiled dotLottie CLI entrypoint.");
 }
 for (const [script, expected] of Object.entries({
   "dotlottie:check": "node scripts/check-dotlottie-contract.mjs",

@@ -42,6 +42,7 @@ const files = {
   rootPackage: "package.json",
   jobPackage: "packages/job-engine/package.json",
   cliPackage: "packages/cli/package.json",
+  cliShim: "packages/cli/bin/evavo-vector-batch.mjs",
   schema: "schemas/batch-v1.schema.json",
   index: "packages/job-engine/src/index.ts",
   types: "packages/job-engine/src/types.ts",
@@ -82,8 +83,11 @@ if (jobPackage?.scripts?.test !== "node --test dist/*.test.js") {
 if (cliPackage?.dependencies?.["@evavo/job-engine"] !== "workspace:*") {
   errors.push("packages/cli must depend on @evavo/job-engine through the workspace.");
 }
-if (cliPackage?.bin?.["evavo-vector-batch"] !== "./dist/batch-cli.js") {
-  errors.push("packages/cli must expose the evavo-vector-batch binary.");
+if (cliPackage?.bin?.["evavo-vector-batch"] !== "./bin/evavo-vector-batch.mjs") {
+  errors.push("packages/cli must expose evavo-vector-batch through the checked-in install-safe launcher.");
+}
+if (sources.cliShim !== '#!/usr/bin/env node\nimport "../dist/batch-cli.js";\n') {
+  errors.push("packages/cli/bin/evavo-vector-batch.mjs must import exactly the compiled batch CLI entrypoint.");
 }
 for (const [script, expected] of Object.entries({
   "batch:check": "node scripts/check-batch-contract.mjs",
