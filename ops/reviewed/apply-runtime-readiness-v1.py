@@ -1,0 +1,917 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+def write(path: str, content: str) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+
+
+def replace_once(source: str, old: str, new: str, label: str) -> str:
+    count = source.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected one match, found {count}")
+    return source.replace(old, new, 1)
+
+
+write(
+    "apps/web/lib/readiness.ts",
+    r'''export const VECTOR_RUNTIME_READINESS_CONTRACT_VERSION = "1.0" as const;
+export const VECTOR_RUNTIME_CANONICAL_ORIGIN = "https://vector.evavo.com.au" as const;
+export const VECTOR_RUNTIME_AUTHORITY_KEYS = Object.freeze([
+  "EVAVO_CLIENT_APP_LAUNCH_SECRET",
+  "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
+  "VECTOR_API_TOKEN",
+  "VECTOR_WORKER_API_TOKEN",
+] as const);
+
+function environmentValue(
+  environment: NodeJS.ProcessEnv,
+  key: string,
+): string {
+  return String(environment[key] ?? "").trim();
+}
+
+function credentialReady(value: string, minimumLength = 32): boolean {
+  return value.length >= minimumLength && !/\s/.test(value);
+}
+
+function exactTrue(value: string): boolean {
+  return value.toLowerCase() === "true";
+}
+
+function validHttpsEndpoint(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash;
+  } catch {
+    return false;
+  }
+}
+
+function normalisedMode(
+  value: string,
+  supported: readonly string[],
+): string {
+  const mode = value.toLowerCase() || "disabled";
+  return supported.includes(mode) ? mode : "unsupported";
+}
+
+function separatedAuthorities(values: readonly string[]): boolean {
+  return values.every((value) => credentialReady(value)) &&
+    new Set(values).size === values.length;
+}
+
+export function vectorRuntimeReadinessPublicView(
+  environment: NodeJS.ProcessEnv = process.env,
+) {
+  const vercelRuntime = environmentValue(environment, "VERCEL") === "1";
+  const productionRuntime =
+    environmentValue(environment, "NODE_ENV") === "production" &&
+    vercelRuntime &&
+    environmentValue(environment, "VERCEL_ENV") === "production";
+  const canonicalOrigin =
+    environmentValue(environment, "VECTOR_PUBLIC_ORIGIN") ===
+    VECTOR_RUNTIME_CANONICAL_ORIGIN;
+
+  const launchSecret = environmentValue(
+    environment,
+    "EVAVO_CLIENT_APP_LAUNCH_SECRET",
+  );
+  const privateSigningSecret = environmentValue(
+    environment,
+    "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
+  );
+  const apiToken = environmentValue(environment, "VECTOR_API_TOKEN");
+  const workerToken = environmentValue(
+    environment,
+    "VECTOR_WORKER_API_TOKEN",
+  );
+  const authorityValues = Object.freeze([
+    launchSecret,
+    privateSigningSecret,
+    apiToken,
+    workerToken,
+  ]);
+
+  const signedLaunchAuthorities =
+    credentialReady(launchSecret) && credentialReady(privateSigningSecret);
+  const apiAuthority = credentialReady(apiToken);
+  const workerAuthority = credentialReady(workerToken);
+  const authoritySeparation = separatedAuthorities(authorityValues);
+
+  const replayMode = normalisedMode(
+    environmentValue(environment, "VECTOR_HUB_REPLAY_MODE"),
+    ["disabled", "memory", "upstash"],
+  );
+  const replayEndpoint = environmentValue(
+    environment,
+    "UPSTASH_REDIS_REST_URL",
+  );
+  const replayToken = environmentValue(
+    environment,
+    "UPSTASH_REDIS_REST_TOKEN",
+  );
+  const durableReplay = replayMode === "upstash" &&
+    validHttpsEndpoint(replayEndpoint) &&
+    credentialReady(replayToken);
+
+  const interactiveChecks = Object.freeze({
+    productionRuntime,
+    canonicalOrigin,
+    signedLaunchAuthorities,
+    authoritySeparation,
+    durableReplay,
+    apiAuthority,
+    workerAuthority,
+  });
+  const interactiveReady = Object.values(interactiveChecks).every(Boolean);
+
+  const jobStoreMode = normalisedMode(
+    environmentValue(environment, "VECTOR_JOB_STORE_MODE"),
+    ["disabled", "file"],
+  );
+  const objectStoreMode = normalisedMode(
+    environmentValue(environment, "VECTOR_OBJECT_STORE_MODE"),
+    ["disabled", "file"],
+  );
+  const persistentJobRecords =
+    jobStoreMode === "file" &&
+    exactTrue(environmentValue(environment, "VECTOR_JOB_FILE_STORE_PERSISTENT")) &&
+    !vercelRuntime;
+  const persistentObjectTransfer =
+    objectStoreMode === "file" &&
+    exactTrue(
+      environmentValue(environment, "VECTOR_OBJECT_FILE_STORE_PERSISTENT"),
+    ) &&
+    !vercelRuntime;
+  const httpWorkerControl =
+    workerAuthority && persistentJobRecords && persistentObjectTransfer;
+  const automationChecks = Object.freeze({
+    persistentJobRecords,
+    persistentObjectTransfer,
+    httpWorkerControl,
+    providerQueueDelivery: false,
+    managedRemoteExecution: false,
+    distributedAutoscaling: false,
+  });
+  const automationReady =
+    interactiveReady &&
+    persistentJobRecords &&
+    persistentObjectTransfer &&
+    httpWorkerControl;
+
+  const nextActionCodes: string[] = [];
+  if (!productionRuntime) nextActionCodes.push("DEPLOY_CANONICAL_PRODUCTION_RUNTIME");
+  if (!canonicalOrigin) nextActionCodes.push("CONFIGURE_CANONICAL_ORIGIN");
+  if (!signedLaunchAuthorities || !apiAuthority || !workerAuthority) {
+    nextActionCodes.push("CONFIGURE_RUNTIME_AUTHORITIES");
+  }
+  if (!authoritySeparation) nextActionCodes.push("SEPARATE_RUNTIME_AUTHORITIES");
+  if (!durableReplay) nextActionCodes.push("CONFIGURE_DURABLE_REPLAY");
+  if (!persistentJobRecords) nextActionCodes.push("CONFIGURE_PERSISTENT_JOB_RECORDS");
+  if (!persistentObjectTransfer) {
+    nextActionCodes.push("CONFIGURE_PERSISTENT_OBJECT_TRANSFER");
+  }
+  if (!httpWorkerControl) nextActionCodes.push("DEPLOY_HTTP_WORKER_CONTROL");
+  nextActionCodes.push("RUN_LIVE_RELEASE_PROOFS");
+  nextActionCodes.push("PROMOTE_FROM_CENTRAL_HUB");
+
+  return Object.freeze({
+    contractVersion: VECTOR_RUNTIME_READINESS_CONTRACT_VERSION,
+    service: "evavo-vector-studio",
+    canonicalOrigin: VECTOR_RUNTIME_CANONICAL_ORIGIN,
+    interactive: Object.freeze({
+      ready: interactiveReady,
+      checks: interactiveChecks,
+    }),
+    automation: Object.freeze({
+      ready: automationReady,
+      storeModes: Object.freeze({
+        jobRecords: jobStoreMode,
+        objectTransfer: objectStoreMode,
+        replay: replayMode,
+      }),
+      checks: automationChecks,
+    }),
+    release: Object.freeze({
+      clientReleaseEligible: false,
+      sourceProofRequired: true,
+      publicRuntimeProofRequired: true,
+      ownerLaunchProofRequired: true,
+      clientLaunchProofRequired: true,
+      replayRejectionProofRequired: true,
+      centralHumanPromotionRequired: true,
+    }),
+    nextActionCodes: Object.freeze(nextActionCodes),
+    sensitiveValuesIncluded: false,
+    approval: "human-review-required",
+  });
+}
+''',
+)
+
+write(
+    "apps/web/app/api/v1/readiness/route.ts",
+    r'''import { noStoreHeaders } from "../../../../lib/api-security";
+import { vectorRuntimeReadinessPublicView } from "../../../../lib/readiness";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export function GET(): Response {
+  const readiness = vectorRuntimeReadinessPublicView();
+  return Response.json(readiness, {
+    status: 200,
+    headers: noStoreHeaders({
+      "content-type": "application/json; charset=utf-8",
+      "referrer-policy": "no-referrer",
+      "x-evavo-vector-readiness": readiness.interactive.ready
+        ? "ready"
+        : "blocked",
+    }),
+  });
+}
+''',
+)
+
+write(
+    "scripts/check-readiness-contract.mjs",
+    r'''import fs from "node:fs/promises";
+import path from "node:path";
+
+const root = process.cwd();
+const errors = [];
+const checkedFiles = new Set();
+
+async function read(relativePath) {
+  checkedFiles.add(relativePath);
+  try {
+    return (await fs.readFile(path.join(root, relativePath), "utf8")).replace(/^\uFEFF/, "");
+  } catch (error) {
+    errors.push(`Missing or unreadable readiness file: ${relativePath} (${error instanceof Error ? error.message : String(error)})`);
+    return "";
+  }
+}
+
+async function readJson(relativePath) {
+  const source = await read(relativePath);
+  if (!source) return null;
+  try {
+    return JSON.parse(source);
+  } catch (error) {
+    errors.push(`Invalid JSON: ${relativePath} (${error instanceof Error ? error.message : String(error)})`);
+    return null;
+  }
+}
+
+function requireTokens(relativePath, source, tokens) {
+  for (const token of tokens) {
+    if (!source.includes(token)) errors.push(`${relativePath} is missing readiness token: ${token}`);
+  }
+}
+
+function forbidTokens(relativePath, source, tokens) {
+  for (const token of tokens) {
+    if (source.includes(token)) errors.push(`${relativePath} contains prohibited readiness token: ${token}`);
+  }
+}
+
+function frozenStringArray(relativePath, source, name) {
+  const expression = new RegExp(
+    `(?:export\\s+)?const\\s+${name}\\s*=\\s*Object\\.freeze\\(\\[([\\s\\S]*?)\\](?:\\s+as\\s+const)?\\s*\\)\\s*;`,
+  );
+  const block = source.match(expression)?.[1] ?? null;
+  if (block === null) {
+    errors.push(`${relativePath} does not expose ${name} as a frozen string array.`);
+    return [];
+  }
+  return [...block.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+}
+
+function exactArray(label, actual, expected) {
+  if (
+    actual.length !== expected.length ||
+    actual.some((value, index) => value !== expected[index])
+  ) {
+    errors.push(`${label} must equal ${JSON.stringify(expected)}; received ${JSON.stringify(actual)}.`);
+  }
+}
+
+const files = Object.freeze({
+  package: "package.json",
+  readiness: "apps/web/lib/readiness.ts",
+  route: "apps/web/app/api/v1/readiness/route.ts",
+  capabilities: "apps/web/app/api/v1/capabilities/route.ts",
+  provisioning: "scripts/plan-vector-studio-vercel-provisioning.mjs",
+  mcpCheck: "scripts/check-mcp-contract.mjs",
+  capabilityCheck: "scripts/check-capability-discovery.mjs",
+  quality: ".github/workflows/quality.yml",
+  workflow: ".github/workflows/readiness-contract.yml",
+  docs: "docs/READINESS.md",
+  apiDocs: "docs/API.md",
+  capabilityDocs: "docs/CAPABILITIES.md",
+  printDocs: "docs/PRINT-PREFLIGHT.md",
+  readme: "README.md",
+});
+const sources = Object.fromEntries(
+  await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
+);
+const packageJson = await readJson(files.package);
+
+if (packageJson?.scripts?.["readiness:check"] !== "node scripts/check-readiness-contract.mjs") {
+  errors.push("package.json must expose readiness:check.");
+}
+if (!String(packageJson?.scripts?.check ?? "").includes("pnpm readiness:check")) {
+  errors.push("package.json check must include readiness:check before dependency-backed gates.");
+}
+
+const expectedAuthorities = Object.freeze([
+  "EVAVO_CLIENT_APP_LAUNCH_SECRET",
+  "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
+  "VECTOR_API_TOKEN",
+  "VECTOR_WORKER_API_TOKEN",
+]);
+exactArray(
+  "runtime authority list",
+  frozenStringArray(files.readiness, sources.readiness, "VECTOR_RUNTIME_AUTHORITY_KEYS"),
+  expectedAuthorities,
+);
+exactArray(
+  "provisioning authority list",
+  frozenStringArray(files.provisioning, sources.provisioning, "AUTHORITY_KEYS"),
+  expectedAuthorities,
+);
+const requiredProvisioning = frozenStringArray(
+  files.provisioning,
+  sources.provisioning,
+  "REQUIRED_SECRETS",
+);
+for (const name of ["VERCEL_TOKEN", ...expectedAuthorities, "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"]) {
+  if (!requiredProvisioning.includes(name)) {
+    errors.push(`${files.provisioning} is missing governed provisioning credential ${name}.`);
+  }
+}
+
+requireTokens(files.readiness, sources.readiness, [
+  'VECTOR_RUNTIME_READINESS_CONTRACT_VERSION = "1.0"',
+  'VECTOR_RUNTIME_CANONICAL_ORIGIN = "https://vector.evavo.com.au"',
+  "VECTOR_RUNTIME_AUTHORITY_KEYS",
+  "credentialReady",
+  "validHttpsEndpoint",
+  "separatedAuthorities",
+  'environmentValue(environment, "VERCEL") === "1"',
+  'environmentValue(environment, "VERCEL_ENV") === "production"',
+  'environmentValue(environment, "VECTOR_PUBLIC_ORIGIN")',
+  'environmentValue(environment, "VECTOR_HUB_REPLAY_MODE")',
+  'environmentValue(environment, "UPSTASH_REDIS_REST_URL")',
+  'environmentValue(environment, "UPSTASH_REDIS_REST_TOKEN")',
+  'environmentValue(environment, "VECTOR_JOB_STORE_MODE")',
+  'environmentValue(environment, "VECTOR_OBJECT_STORE_MODE")',
+  "interactiveReady",
+  "automationReady",
+  "clientReleaseEligible: false",
+  "providerQueueDelivery: false",
+  "managedRemoteExecution: false",
+  "distributedAutoscaling: false",
+  "sourceProofRequired: true",
+  "publicRuntimeProofRequired: true",
+  "ownerLaunchProofRequired: true",
+  "clientLaunchProofRequired: true",
+  "replayRejectionProofRequired: true",
+  "centralHumanPromotionRequired: true",
+  "sensitiveValuesIncluded: false",
+  'approval: "human-review-required"',
+]);
+forbidTokens(files.readiness, sources.readiness, [
+  "sensitiveValuesIncluded: true",
+  "clientReleaseEligible: true",
+  "providerQueueDelivery: true",
+  "managedRemoteExecution: true",
+  "distributedAutoscaling: true",
+  "return environment",
+  "JSON.stringify(environment)",
+]);
+
+requireTokens(files.route, sources.route, [
+  'export const runtime = "nodejs"',
+  'export const dynamic = "force-dynamic"',
+  "vectorRuntimeReadinessPublicView()",
+  "noStoreHeaders",
+  '"x-evavo-vector-readiness"',
+  "export function GET(): Response",
+]);
+forbidTokens(files.route, sources.route, [
+  "process.env",
+  "apiAuthorisationFailure",
+  "EVAVO_CLIENT_APP_LAUNCH_SECRET",
+  "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
+  "UPSTASH_REDIS_REST_TOKEN",
+  "VECTOR_API_TOKEN",
+  "VECTOR_WORKER_API_TOKEN",
+]);
+
+requireTokens(files.capabilities, sources.capabilities, [
+  'readiness: "/api/v1/readiness"',
+]);
+requireTokens(files.mcpCheck, sources.mcpCheck, [
+  "MCP contract `1.6` exposes sixteen tools",
+  "vector_preflight_svg_print",
+  "GET /api/v1/readiness",
+]);
+requireTokens(files.capabilityCheck, sources.capabilityCheck, [
+  'readiness: "/api/v1/readiness"',
+  "GET /api/v1/readiness",
+]);
+requireTokens(files.quality, sources.quality, [
+  "Verify runtime readiness contract",
+  "id: contract_readiness",
+  "node scripts/check-readiness-contract.mjs",
+  "CONTRACT_READINESS_OUTCOME",
+]);
+
+requireTokens(files.workflow, sources.workflow, [
+  "name: Vector Studio runtime readiness",
+  "node scripts/check-readiness-contract.mjs",
+  "pnpm install --frozen-lockfile",
+  "pnpm build:packages",
+  "pnpm --filter @evavo/vector-web typecheck",
+  "pnpm --filter @evavo/vector-web build",
+  "api/vector-readiness-toolchain",
+  "api/vector-readiness-contract",
+  "api/vector-readiness-dependencies",
+  "api/vector-readiness-typecheck",
+  "api/vector-readiness-build",
+]);
+forbidTokens(files.workflow, sources.workflow, [
+  "pnpm/action-setup@",
+  "node-version: 22",
+  "cache: pnpm",
+]);
+
+requireTokens(files.docs, sources.docs, [
+  "GET /api/v1/readiness",
+  "public non-sensitive",
+  "interactive.ready",
+  "automation.ready",
+  "clientReleaseEligible: false",
+  "sensitiveValuesIncluded: false",
+  "live release proof",
+]);
+requireTokens(files.apiDocs, sources.apiDocs, ["GET /api/v1/readiness"]);
+requireTokens(files.capabilityDocs, sources.capabilityDocs, ["GET /api/v1/readiness"]);
+requireTokens(files.printDocs, sources.printDocs, ["vector_preflight_svg_print"]);
+requireTokens(files.readme, sources.readme, [
+  "MCP contract `1.6` exposes sixteen tools",
+  "vector_preflight_svg_print",
+  "GET /api/v1/capabilities",
+  "GET /api/v1/readiness",
+  "POST /api/v1/print/preflight",
+  "docs/READINESS.md",
+]);
+forbidTokens(files.readme, sources.readme, [
+  "MCP contract `1.5` exposes fifteen tools",
+]);
+
+if (errors.length > 0) {
+  process.stderr.write(`${JSON.stringify({
+    check: "evavo-vector-studio-runtime-readiness",
+    ok: false,
+    contractVersion: "1.0",
+    errors,
+  }, null, 2)}\n`);
+  process.exit(1);
+}
+
+process.stdout.write(`${JSON.stringify({
+  check: "evavo-vector-studio-runtime-readiness",
+  ok: true,
+  contractVersion: "1.0",
+  endpoint: "/api/v1/readiness",
+  publicNonSensitive: true,
+  interactiveReadiness: true,
+  automationReadiness: true,
+  automaticClientPromotion: false,
+  sensitiveValuesIncluded: false,
+  checkedFiles: [...checkedFiles].sort(),
+}, null, 2)}\n`);
+''',
+)
+
+write(
+    "docs/READINESS.md",
+    r'''# Vector Studio runtime readiness
+
+Vector Studio exposes a public non-sensitive runtime posture document at:
+
+```text
+GET /api/v1/readiness
+```
+
+The endpoint is designed for the EVAVO Hub, deployment workflows and operators. It reports whether the deployed runtime has the minimum production configuration needed for the private interactive workspace and whether the optional durable automation plane is configured.
+
+It never returns secret values, credential digests, filesystem paths, workspace identity, generated assets, job records or object keys.
+
+## Interactive readiness
+
+`interactive.ready` is true only when all of these checks pass:
+
+- the service is running as the canonical Vercel production runtime;
+- `VECTOR_PUBLIC_ORIGIN` equals `https://vector.evavo.com.au`;
+- the hub launch, private-session, API and worker authorities meet the governed minimum shape;
+- those four authorities are distinct;
+- replay mode is `upstash` with a valid HTTPS endpoint and bounded token shape.
+
+A successful configuration projection is not a live launch proof. It does not verify DNS, the deployed Git SHA, first-use token redemption, replay rejection or authenticated workspace rendering.
+
+## Automation readiness
+
+`automation.ready` is stricter. It requires interactive readiness plus persistent hosted job records, persistent object transfer and worker control.
+
+The current repository provides local or self-hosted file adapters. Those adapters are deliberately not represented as persistent on the Vercel runtime. The endpoint therefore keeps automation blocked until a real persistent production storage and worker topology exists.
+
+It continues to report:
+
+```text
+providerQueueDelivery: false
+managedRemoteExecution: false
+distributedAutoscaling: false
+```
+
+## Release boundary
+
+The readiness document always retains:
+
+```text
+clientReleaseEligible: false
+sourceProofRequired: true
+publicRuntimeProofRequired: true
+ownerLaunchProofRequired: true
+clientLaunchProofRequired: true
+replayRejectionProofRequired: true
+centralHumanPromotionRequired: true
+sensitiveValuesIncluded: false
+```
+
+Only the governed live release proof and central Hub review can promote Vector Studio. Runtime configuration alone cannot change the client allowlist or create an external Hub launch action.
+''',
+)
+
+write(
+    ".github/workflows/readiness-contract.yml",
+    r'''name: Vector Studio runtime readiness
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".nvmrc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "apps/web/app/api/v1/readiness/**"
+      - "apps/web/app/api/v1/capabilities/route.ts"
+      - "apps/web/lib/readiness.ts"
+      - "apps/web/lib/api-security.ts"
+      - "scripts/check-readiness-contract.mjs"
+      - "scripts/check-capability-discovery.mjs"
+      - "scripts/check-mcp-contract.mjs"
+      - "scripts/plan-vector-studio-vercel-provisioning.mjs"
+      - "docs/READINESS.md"
+      - "docs/API.md"
+      - "docs/CAPABILITIES.md"
+      - "docs/PRINT-PREFLIGHT.md"
+      - "README.md"
+      - ".github/workflows/readiness-contract.yml"
+      - ".github/workflows/quality.yml"
+  pull_request:
+    paths:
+      - ".nvmrc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "apps/web/app/api/v1/readiness/**"
+      - "apps/web/app/api/v1/capabilities/route.ts"
+      - "apps/web/lib/readiness.ts"
+      - "apps/web/lib/api-security.ts"
+      - "scripts/check-readiness-contract.mjs"
+      - "scripts/check-capability-discovery.mjs"
+      - "scripts/check-mcp-contract.mjs"
+      - "scripts/plan-vector-studio-vercel-provisioning.mjs"
+      - "docs/READINESS.md"
+      - "docs/API.md"
+      - "docs/CAPABILITIES.md"
+      - "docs/PRINT-PREFLIGHT.md"
+      - "README.md"
+      - ".github/workflows/readiness-contract.yml"
+      - ".github/workflows/quality.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: vector-runtime-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Use repository Node.js runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Activate exact pnpm through Corepack
+        id: pnpm
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          corepack enable 2>&1 | tee .ci/readiness-toolchain.log
+          corepack prepare pnpm@10.14.0 --activate 2>&1 | tee -a .ci/readiness-toolchain.log
+          test "$(node --version)" = "v$(tr -d '\r\n' < .nvmrc)"
+          test "$(pnpm --version)" = "10.14.0"
+          git diff --exit-code
+
+      - name: Verify runtime readiness contract
+        id: contract
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/check-readiness-contract.mjs 2>&1 | tee .ci/readiness-contract.log
+
+      - name: Install exact dependencies
+        id: install
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm install --frozen-lockfile 2>&1 | tee .ci/readiness-install.log
+
+      - name: Build canonical workspace packages
+        id: dependencies
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm build:packages 2>&1 | tee .ci/readiness-dependencies.log
+
+      - name: Typecheck Vector web
+        id: typecheck
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @evavo/vector-web typecheck 2>&1 | tee .ci/readiness-typecheck.log
+
+      - name: Build Vector web
+        id: build
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @evavo/vector-web build 2>&1 | tee .ci/readiness-build.log
+
+      - name: Publish runtime readiness statuses
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
+          CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          DEPENDENCIES_OUTCOME: ${{ steps.dependencies.outcome }}
+          TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+        with:
+          script: |
+            const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const gates = [
+              ["api/vector-readiness-toolchain", process.env.PNPM_OUTCOME === "success", "readiness toolchain"],
+              ["api/vector-readiness-contract", process.env.CONTRACT_OUTCOME === "success", "readiness contract"],
+              ["api/vector-readiness-dependencies", process.env.INSTALL_OUTCOME === "success" && process.env.DEPENDENCIES_OUTCOME === "success", "readiness dependencies"],
+              ["api/vector-readiness-typecheck", process.env.TYPECHECK_OUTCOME === "success", "readiness typecheck"],
+              ["api/vector-readiness-build", process.env.BUILD_OUTCOME === "success", "readiness build"],
+            ];
+            for (const [contextName, passed, label] of gates) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: passed ? "success" : "failure",
+                context: contextName,
+                description: passed ? `${label} passed` : `${label} failed`,
+                target_url: targetUrl,
+              });
+            }
+
+      - name: Preserve readiness diagnostics
+        if: ${{ always() && (steps.pnpm.outcome != 'success' || steps.contract.outcome != 'success' || steps.install.outcome != 'success' || steps.dependencies.outcome != 'success' || steps.typecheck.outcome != 'success' || steps.build.outcome != 'success') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vector-runtime-readiness-${{ github.sha }}
+          path: .ci/readiness-*.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Enforce runtime readiness validation
+        if: always()
+        shell: bash
+        env:
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
+          CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          DEPENDENCIES_OUTCOME: ${{ steps.dependencies.outcome }}
+          TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          test "$PNPM_OUTCOME" = "success"
+          test "$CONTRACT_OUTCOME" = "success"
+          test "$INSTALL_OUTCOME" = "success"
+          test "$DEPENDENCIES_OUTCOME" = "success"
+          test "$TYPECHECK_OUTCOME" = "success"
+          test "$BUILD_OUTCOME" = "success"
+''',
+)
+
+package_path = Path("package.json")
+package = json.loads(package_path.read_text(encoding="utf-8"))
+package["scripts"]["readiness:check"] = "node scripts/check-readiness-contract.mjs"
+package["scripts"]["check"] = replace_once(
+    package["scripts"]["check"],
+    "pnpm capabilities-api:check && pnpm print-api:check",
+    "pnpm capabilities-api:check && pnpm readiness:check && pnpm print-api:check",
+    "package check chain",
+)
+package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+
+capability_path = Path("apps/web/app/api/v1/capabilities/route.ts")
+capability = capability_path.read_text(encoding="utf-8")
+capability = replace_once(
+    capability,
+    '          trace: "/api/v1/trace",\n          printPreflight:',
+    '          trace: "/api/v1/trace",\n          readiness: "/api/v1/readiness",\n          printPreflight:',
+    "capability readiness interface",
+)
+capability_path.write_text(capability, encoding="utf-8")
+
+readme_path = Path("README.md")
+readme = readme_path.read_text(encoding="utf-8")
+readme = replace_once(
+    readme,
+    "MCP contract `1.5` exposes fifteen tools, including:",
+    "MCP contract `1.6` exposes sixteen tools, including:",
+    "README MCP version",
+)
+readme = replace_once(
+    readme,
+    "vector_optimise_svg\nvector_animate_svg",
+    "vector_optimise_svg\nvector_preflight_svg_print\nvector_animate_svg",
+    "README print MCP tool",
+)
+readme = replace_once(
+    readme,
+    "```text\nPOST /api/v1/trace\nPOST /api/v1/motion/svg",
+    "```text\nGET  /api/v1/capabilities\nGET  /api/v1/readiness\nPOST /api/v1/trace\nPOST /api/v1/print/preflight\nPOST /api/v1/motion/svg",
+    "README API index",
+)
+readme = replace_once(
+    readme,
+    "The production endpoints are bounded synchronous surfaces with `Cache-Control: no-store`.",
+    "`GET /api/v1/readiness` is a public non-sensitive projection of interactive, automation and release blockers. It never returns secret values and never makes Vector Studio client-release eligible. See [`docs/READINESS.md`](docs/READINESS.md).\n\nThe production endpoints are bounded synchronous surfaces with `Cache-Control: no-store`.",
+    "README readiness explanation",
+)
+readme = replace_once(
+    readme,
+    "- [`docs/DELIVERY-PROFILES.md`](docs/DELIVERY-PROFILES.md)\n- [`docs/CLI.md`](docs/CLI.md)",
+    "- [`docs/DELIVERY-PROFILES.md`](docs/DELIVERY-PROFILES.md)\n- [`docs/READINESS.md`](docs/READINESS.md)\n- [`docs/CLI.md`](docs/CLI.md)",
+    "README readiness link",
+)
+readme_path.write_text(readme, encoding="utf-8")
+
+print_docs_path = Path("docs/PRINT-PREFLIGHT.md")
+print_docs = print_docs_path.read_text(encoding="utf-8")
+print_docs = replace_once(
+    print_docs,
+    "evavo-vector-print preflight <input.svg>\nPOST /api/v1/print/preflight",
+    "evavo-vector-print preflight <input.svg>\nPOST /api/v1/print/preflight\nvector_preflight_svg_print",
+    "print docs MCP interface",
+)
+print_docs = replace_once(
+    print_docs,
+    "The CLI is suited to local files, automated build pipelines and large private workspaces.",
+    "The MCP tool resolves one existing SVG within an allowed root, returns bounded receipt-only evidence and writes no file.\n\nThe CLI is suited to local files, automated build pipelines and large private workspaces.",
+    "print docs MCP explanation",
+)
+print_docs_path.write_text(print_docs, encoding="utf-8")
+
+capability_docs_path = Path("docs/CAPABILITIES.md")
+capability_docs = capability_docs_path.read_text(encoding="utf-8")
+capability_docs = replace_once(
+    capability_docs,
+    "## Deployment non-claims",
+    "## Runtime readiness\n\nThe public non-sensitive readiness projection is available at:\n\n```text\nGET /api/v1/readiness\n```\n\nIt reports interactive configuration, durable automation blockers and the continuing live-proof and central-promotion boundary. It returns no authority values and never sets `clientReleaseEligible` to true.\n\n## Deployment non-claims",
+    "capability readiness documentation",
+)
+capability_docs_path.write_text(capability_docs, encoding="utf-8")
+
+api_docs_path = Path("docs/API.md")
+api_docs = api_docs_path.read_text(encoding="utf-8")
+if "## Runtime readiness" in api_docs:
+    raise SystemExit("API readiness documentation already exists")
+api_docs += "\n## Runtime readiness\n\n```text\nGET /api/v1/readiness\n```\n\nThis public no-store endpoint returns only bounded booleans, modes, stable action codes and release-proof requirements. It does not return credentials, digests, paths, workspace identity or generated bodies. Configuration readiness is not live release evidence and `clientReleaseEligible` remains false.\n"
+api_docs_path.write_text(api_docs, encoding="utf-8")
+
+mcp_check_path = Path("scripts/check-mcp-contract.mjs")
+mcp_check = mcp_check_path.read_text(encoding="utf-8")
+marker = "if (errors.length > 0) {"
+mcp_insertion = '''requireTokens(files.readme, sources.readme, [
+  "MCP contract `1.6` exposes sixteen tools",
+  "vector_preflight_svg_print",
+  "GET /api/v1/readiness",
+  "POST /api/v1/print/preflight",
+]);
+forbidTokens(files.readme, sources.readme, [
+  "MCP contract `1.5` exposes fifteen tools",
+]);
+requireTokens(files.printDocs, sources.printDocs, [
+  "vector_preflight_svg_print",
+  "writes no file",
+]);
+
+'''
+mcp_check = replace_once(mcp_check, marker, mcp_insertion + marker, "MCP README governance")
+mcp_check_path.write_text(mcp_check, encoding="utf-8")
+
+capability_check_path = Path("scripts/check-capability-discovery.mjs")
+capability_check = capability_check_path.read_text(encoding="utf-8")
+capability_insertion = '''requireTokens(files.route, sources.route, [
+  'readiness: "/api/v1/readiness"',
+]);
+requireTokens(files.documentation, sources.documentation, [
+  "GET /api/v1/readiness",
+]);
+
+'''
+capability_check = replace_once(
+    capability_check,
+    marker,
+    capability_insertion + marker,
+    "capability readiness governance",
+)
+capability_check_path.write_text(capability_check, encoding="utf-8")
+
+quality_path = Path(".github/workflows/quality.yml")
+quality = quality_path.read_text(encoding="utf-8")
+readiness_step = '''      - name: Verify runtime readiness contract
+        id: contract_readiness
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci/contracts
+          set -o pipefail
+          node scripts/check-readiness-contract.mjs 2>&1 | tee .ci/contracts/contract_readiness.log
+
+'''
+quality = replace_once(
+    quality,
+    "      - name: Verify print preflight API contract\n",
+    readiness_step + "      - name: Verify print preflight API contract\n",
+    "quality readiness step",
+)
+quality = replace_once(
+    quality,
+    "          CONTRACT_CAPABILITIES_OUTCOME: ${{ steps.contract_capabilities.outcome }}\n",
+    "          CONTRACT_CAPABILITIES_OUTCOME: ${{ steps.contract_capabilities.outcome }}\n          CONTRACT_READINESS_OUTCOME: ${{ steps.contract_readiness.outcome }}\n",
+    "quality readiness environment",
+)
+quality = replace_once(
+    quality,
+    '            "$CONTRACT_CAPABILITIES_OUTCOME"\n',
+    '            "$CONTRACT_CAPABILITIES_OUTCOME"\n            "$CONTRACT_READINESS_OUTCOME"\n',
+    "quality readiness aggregate",
+)
+quality_path.write_text(quality, encoding="utf-8")
