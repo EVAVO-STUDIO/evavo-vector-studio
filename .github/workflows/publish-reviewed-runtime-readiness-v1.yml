@@ -8,10 +8,11 @@ on:
 
 permissions:
   contents: write
+  statuses: write
 
 concurrency:
   group: publish-reviewed-vector-runtime-readiness-v1
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   publish:
@@ -24,6 +25,20 @@ jobs:
         with:
           persist-credentials: true
           fetch-depth: 1
+
+      - name: Publish running status
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: "pending",
+              context: "ci/vector-readiness-publisher",
+              description: "reviewed runtime readiness publication is running",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
 
       - name: Use repository Node.js runtime
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -44,10 +59,15 @@ jobs:
           git diff --exit-code
 
       - name: Apply reviewed readiness surface
+        id: apply
+        continue-on-error: true
         shell: bash
         run: python ops/reviewed/apply-runtime-readiness-v1.py
 
       - name: Validate complete reviewed change
+        id: validate
+        if: ${{ steps.apply.outcome == 'success' }}
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -59,6 +79,9 @@ jobs:
           git diff --check
 
       - name: Publish reviewed change to main
+        id: publish
+        if: ${{ steps.apply.outcome == 'success' && steps.validate.outcome == 'success' }}
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -73,3 +96,39 @@ jobs:
           git commit -m "feat(readiness): expose governed production posture" \
             -m "Add a public secret-free runtime readiness projection for interactive production, durable automation and release-proof blockers. Align capability discovery, API and MCP documentation, focused CI and the exhaustive quality gate while keeping client promotion and managed execution disabled until live evidence exists."
           git push origin HEAD:main
+
+      - name: Publish final status
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+        with:
+          script: |
+            const passed =
+              process.env.APPLY_OUTCOME === "success" &&
+              process.env.VALIDATE_OUTCOME === "success" &&
+              process.env.PUBLISH_OUTCOME === "success";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? "success" : "failure",
+              context: "ci/vector-readiness-publisher",
+              description: passed
+                ? "reviewed runtime readiness publication passed"
+                : "reviewed runtime readiness publication failed",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Enforce publication result
+        if: always()
+        env:
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+        run: |
+          test "$APPLY_OUTCOME" = "success"
+          test "$VALIDATE_OUTCOME" = "success"
+          test "$PUBLISH_OUTCOME" = "success"
