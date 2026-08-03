@@ -76,7 +76,7 @@ const schema = await readJson(files.schema);
 if (jobPackage?.version !== rootPackage?.version) {
   errors.push(`Job-engine version ${String(jobPackage?.version)} does not match root ${String(rootPackage?.version)}.`);
 }
-if (jobPackage?.scripts?.test !== "tsc -p tsconfig.json && node --test dist/*.test.js") {
+if (jobPackage?.scripts?.test !== "node --test dist/*.test.js") {
   errors.push("packages/job-engine must compile and execute its generated tests.");
 }
 if (cliPackage?.dependencies?.["@evavo/job-engine"] !== "workspace:*") {

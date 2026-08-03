@@ -68,7 +68,7 @@ if (localPackage?.version !== rootPackage?.version) {
 if (localPackage?.bin?.["evavo-vector-worker"] !== "./dist/index.js") {
   errors.push("workers/local-worker must expose evavo-vector-worker.");
 }
-if (localPackage?.scripts?.test !== "tsc -p tsconfig.json && node --test dist/*.test.js") {
+if (localPackage?.scripts?.test !== "node --test dist/*.test.js") {
   errors.push("workers/local-worker must compile and execute generated tests.");
 }
 for (const dependency of ["@evavo/job-control", "@evavo/worker-engine"]) {

@@ -282,3 +282,11 @@ See [`WORKER-API.md`](WORKER-API.md) and [`OBJECT-TRANSFER.md`](OBJECT-TRANSFER.
 A successful synchronous production response means requested processing completed. A successful hosted job, worker control or object-transfer response means only that the requested record or immutable byte operation completed. None grants production approval.
 
 Human review remains mandatory for tracing geometry, topology, negative space, logo fidelity, motion timing, easing, transform origins, reduced-motion delivery, Lottie paint order, archive compatibility, player fidelity and final platform compatibility.
+
+## Runtime readiness
+
+```text
+GET /api/v1/readiness
+```
+
+This public no-store endpoint returns only bounded booleans, modes, stable action codes and release-proof requirements. It does not return credentials, digests, paths, workspace identity or generated bodies. Configuration readiness is not live release evidence and `clientReleaseEligible` remains false.

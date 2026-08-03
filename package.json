@@ -46,7 +46,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "check": "pnpm contract:check && pnpm release-proof:check && pnpm capabilities-api:check && pnpm print-api:check && pnpm hub:check && pnpm private-response:check && pnpm vercel:check && pnpm vercel-provision:check && pnpm vercel-provision-plan:check && pnpm vercel-plan:check && pnpm vercel-deploy:check && pnpm topology:check && pnpm browser-evidence:check && pnpm mcp:check && pnpm motion:check && pnpm motion-api:check && pnpm motion-workspace:check && pnpm native-runtime:check && pnpm lottie:check && pnpm lottie-api:check && pnpm lottie-workspace:check && pnpm dotlottie:check && pnpm dotlottie-api:check && pnpm dotlottie-workspace:check && pnpm batch:check && pnpm hosted-jobs:check && pnpm worker:check && pnpm local-worker:check && pnpm worker-api:check && pnpm worker-client:check && pnpm http-worker:check && pnpm object-transfer-api:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm contract:check && pnpm release-proof:check && pnpm capabilities-api:check && pnpm test-build-isolation:check && pnpm readiness:check && pnpm print-api:check && pnpm hub:check && pnpm private-response:check && pnpm vercel:check && pnpm vercel-provision:check && pnpm vercel-provision-plan:check && pnpm vercel-plan:check && pnpm vercel-deploy:check && pnpm topology:check && pnpm browser-evidence:check && pnpm mcp:check && pnpm motion:check && pnpm motion-api:check && pnpm motion-workspace:check && pnpm native-runtime:check && pnpm lottie:check && pnpm lottie-api:check && pnpm lottie-workspace:check && pnpm dotlottie:check && pnpm dotlottie-api:check && pnpm dotlottie-workspace:check && pnpm batch:check && pnpm hosted-jobs:check && pnpm worker:check && pnpm local-worker:check && pnpm worker-api:check && pnpm worker-client:check && pnpm http-worker:check && pnpm object-transfer-api:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "vector:build": "turbo run build --filter=@evavo/vector-cli",
     "vector:inspect": "pnpm vector:build && node packages/cli/dist/index.js inspect",
     "vector:optimise": "pnpm vector:build && node packages/cli/dist/index.js optimise",
@@ -82,7 +82,9 @@
     "http-worker:build": "turbo run build --filter=@evavo/http-worker",
     "http-worker:capabilities": "pnpm http-worker:build && node workers/http-worker/dist/index.js capabilities",
     "http-worker:run-once": "pnpm http-worker:build && node workers/http-worker/dist/index.js run-once",
-    "http-worker:run": "pnpm http-worker:build && node workers/http-worker/dist/index.js run"
+    "http-worker:run": "pnpm http-worker:build && node workers/http-worker/dist/index.js run",
+    "readiness:check": "node scripts/check-readiness-contract.mjs",
+    "test-build-isolation:check": "node scripts/check-test-build-isolation.mjs"
   },
   "devDependencies": {
     "turbo": "^2.5.6",

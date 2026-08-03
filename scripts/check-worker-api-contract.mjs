@@ -78,7 +78,7 @@ if (protocolPackage?.version !== rootPackage?.version) {
 if (protocolPackage?.dependencies?.["@evavo/job-control"] !== "workspace:*") {
   errors.push("packages/worker-protocol must consume @evavo/job-control through the workspace.");
 }
-if (protocolPackage?.scripts?.test !== "tsc -p tsconfig.json && node --test dist/*.test.js") {
+if (protocolPackage?.scripts?.test !== "node --test dist/*.test.js") {
   errors.push("packages/worker-protocol must compile and execute generated tests.");
 }
 if (webPackage?.dependencies?.["@evavo/worker-protocol"] !== "workspace:*") {

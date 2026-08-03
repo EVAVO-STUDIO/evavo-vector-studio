@@ -515,6 +515,20 @@ requireTokens(files.environment, sources.environment, [
   "VECTOR_TRACE_RETRY_AFTER_SECONDS",
 ]);
 
+requireTokens(files.readme, sources.readme, [
+  "MCP contract `1.6` exposes sixteen tools",
+  "vector_preflight_svg_print",
+  "GET /api/v1/readiness",
+  "POST /api/v1/print/preflight",
+]);
+forbidTokens(files.readme, sources.readme, [
+  "MCP contract `1.5` exposes fifteen tools",
+]);
+requireTokens(files.printDocs, sources.printDocs, [
+  "vector_preflight_svg_print",
+  "writes no file",
+]);
+
 if (errors.length > 0) {
   process.stderr.write(
     `${JSON.stringify(

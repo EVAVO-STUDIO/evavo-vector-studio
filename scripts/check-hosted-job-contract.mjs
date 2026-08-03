@@ -75,7 +75,7 @@ const jobPackage = await readJson(files.package);
 if (jobPackage?.version !== rootPackage?.version) {
   errors.push(`Job-control version ${String(jobPackage?.version)} does not match root ${String(rootPackage?.version)}.`);
 }
-if (jobPackage?.scripts?.test !== "tsc -p tsconfig.json && node --test dist/*.test.js") {
+if (jobPackage?.scripts?.test !== "node --test dist/*.test.js") {
   errors.push("packages/job-control must compile and execute its generated tests.");
 }
 if (webPackage?.dependencies?.["@evavo/job-control"] !== "workspace:*") {

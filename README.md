@@ -290,12 +290,13 @@ $env:VECTOR_MCP_ALLOWED_ROOTS = "C:\GitRepos\evavo-vector-studio;C:\EVAVO\Vector
 pnpm vector:mcp
 ```
 
-MCP contract `1.5` exposes fifteen tools, including:
+MCP contract `1.6` exposes sixteen tools, including:
 
 ```text
 vector_trace_raster
 vector_inspect_svg
 vector_optimise_svg
+vector_preflight_svg_print
 vector_animate_svg
 vector_export_lottie
 vector_inspect_lottie
@@ -310,7 +311,10 @@ The raster and SVG tools expose editable, web, motion and print delivery profile
 ## Authenticated API
 
 ```text
+GET  /api/v1/capabilities
+GET  /api/v1/readiness
 POST /api/v1/trace
+POST /api/v1/print/preflight
 POST /api/v1/motion/svg
 POST /api/v1/motion/lottie
 POST /api/v1/motion/dotlottie
@@ -319,6 +323,8 @@ POST /api/v1/jobs
 GET  /api/v1/jobs/{jobId}
 DELETE /api/v1/jobs/{jobId}
 ```
+
+`GET /api/v1/readiness` is a public non-sensitive projection of interactive, automation and release blockers. It never returns secret values and never makes Vector Studio client-release eligible. See [`docs/READINESS.md`](docs/READINESS.md).
 
 The production endpoints are bounded synchronous surfaces with `Cache-Control: no-store`. Hosted job routes are a separately configured record control plane. They fail closed without a safe record store and do not automatically schedule execution.
 
@@ -373,6 +379,8 @@ docs                      architecture, API, CLI, MCP, motion, archive and job c
 - [`docs/QUALITY-EVIDENCE.md`](docs/QUALITY-EVIDENCE.md)
 - [`docs/INPUT-SAFETY.md`](docs/INPUT-SAFETY.md)
 - [`docs/DELIVERY-PROFILES.md`](docs/DELIVERY-PROFILES.md)
+- [`docs/READINESS.md`](docs/READINESS.md)
+- [`docs/TEST-BUILD-ISOLATION.md`](docs/TEST-BUILD-ISOLATION.md)
 - [`docs/CLI.md`](docs/CLI.md)
 - [`docs/API.md`](docs/API.md)
 - [`docs/MOTION.md`](docs/MOTION.md)

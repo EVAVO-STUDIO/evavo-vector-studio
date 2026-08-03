@@ -75,7 +75,7 @@ if (workerPackage?.version !== rootPackage?.version) {
 if (workerPackage?.bin?.["evavo-vector-http-worker"] !== "./dist/index.js") {
   errors.push("workers/http-worker must expose evavo-vector-http-worker.");
 }
-if (workerPackage?.scripts?.test !== "tsc -p tsconfig.json && node --test dist/*.test.js") {
+if (workerPackage?.scripts?.test !== "node --test dist/*.test.js") {
   errors.push("workers/http-worker must compile and execute generated tests.");
 }
 for (const dependency of [

@@ -11,7 +11,10 @@ The same `print-preflight-v1` contract is available through:
 ```text
 evavo-vector-print preflight <input.svg>
 POST /api/v1/print/preflight
+vector_preflight_svg_print
 ```
+
+The MCP tool resolves one existing SVG within an allowed root, returns bounded receipt-only evidence and writes no file.
 
 The CLI is suited to local files, automated build pipelines and large private workspaces. The authenticated API supports the private Vector browser session and `Bearer VECTOR_API_TOKEN` automation.
 

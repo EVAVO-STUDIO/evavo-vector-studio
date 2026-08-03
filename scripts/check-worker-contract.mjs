@@ -69,7 +69,7 @@ const workerPackage = await readJson(files.package);
 if (workerPackage?.version !== rootPackage?.version) {
   errors.push(`Worker version ${String(workerPackage?.version)} does not match root ${String(rootPackage?.version)}.`);
 }
-if (workerPackage?.scripts?.test !== "tsc -p tsconfig.json && node --test dist/*.test.js") {
+if (workerPackage?.scripts?.test !== "node --test dist/*.test.js") {
   errors.push("packages/worker-engine must compile and execute its generated tests.");
 }
 for (const dependency of [

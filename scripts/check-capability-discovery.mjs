@@ -324,6 +324,13 @@ requireTokens(files.workflow, sources.workflow, [
   "api/vector-capabilities-build",
 ]);
 
+requireTokens(files.route, sources.route, [
+  'readiness: "/api/v1/readiness"',
+]);
+requireTokens(files.documentation, sources.documentation, [
+  "GET /api/v1/readiness",
+]);
+
 if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-studio-capability-discovery",

@@ -81,7 +81,8 @@ const deployment = await json(files.deployment);
 const manifest = await json(files.manifest);
 
 if (hubPackage?.version !== rootPackage?.version) errors.push("Hub auth package version must match the root release.");
-if (hubPackage?.scripts?.test !== "tsc -p tsconfig.json && node --test dist/*.test.js") errors.push("Hub auth must compile and execute tests.");
+if (hubPackage?.scripts?.build !== "tsc -p tsconfig.json") errors.push("Hub auth must retain the governed TypeScript build.");
+if (hubPackage?.scripts?.test !== "node --test dist/*.test.js") errors.push("Hub auth must execute tests from immutable same-package build output.");
 if (webPackage?.dependencies?.["@evavo/hub-auth"] !== "workspace:*") errors.push("Vector web must consume @evavo/hub-auth through the workspace.");
 if (rootPackage?.scripts?.["hub:check"] !== "node scripts/check-hub-integration-contract.mjs") errors.push("package.json must expose hub:check.");
 if (!String(rootPackage?.scripts?.check ?? "").includes("pnpm hub:check")) errors.push("package.json check must include hub:check.");

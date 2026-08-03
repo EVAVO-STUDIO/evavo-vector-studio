@@ -69,7 +69,7 @@ for (const dependency of ["@evavo/job-control", "@evavo/worker-protocol"]) {
     errors.push(`packages/worker-client must consume ${dependency} through the workspace.`);
   }
 }
-if (clientPackage?.scripts?.test !== "tsc -p tsconfig.json && node --test dist/*.test.js") {
+if (clientPackage?.scripts?.test !== "node --test dist/*.test.js") {
   errors.push("packages/worker-client must compile and execute generated tests.");
 }
 if (rootPackage?.scripts?.["worker-client:check"] !== "node scripts/check-worker-client-contract.mjs") {

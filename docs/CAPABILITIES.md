@@ -128,6 +128,16 @@ The worker section reports:
 - delivery-profile support;
 - generated bodies excluded from control responses.
 
+## Runtime readiness
+
+The public non-sensitive readiness projection is available at:
+
+```text
+GET /api/v1/readiness
+```
+
+It reports interactive configuration, durable automation blockers and the continuing live-proof and central-promotion boundary. It returns no authority values and never sets `clientReleaseEligible` to true.
+
 ## Deployment non-claims
 
 The endpoint deliberately distinguishes implemented local or self-hosted execution from unavailable managed infrastructure.

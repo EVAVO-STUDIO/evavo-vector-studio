@@ -72,7 +72,7 @@ if (motionPackage?.dependencies?.["@evavo/vector-core"] !== "workspace:*") {
 if (cliPackage?.dependencies?.["@evavo/motion-engine"] !== "workspace:*") {
   fail("packages/cli must depend on @evavo/motion-engine through the workspace.");
 }
-if (cliPackage?.scripts?.test !== "tsc -p tsconfig.json && node --test dist/*.test.js") {
+if (cliPackage?.scripts?.test !== "node --test dist/*.test.js") {
   fail("packages/cli test must compile and execute the output transaction tests.");
 }
 
