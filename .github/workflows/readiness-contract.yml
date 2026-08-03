@@ -1,0 +1,264 @@
+name: Vector Studio runtime readiness
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".nvmrc"
+      - "package.json"
+      - ".gitignore"
+      - "turbo.json"
+      - "apps/*/package.json"
+      - "packages/*/package.json"
+      - "workers/*/package.json"
+      - "packages/cli/bin/**"
+      - "pnpm-lock.yaml"
+      - "apps/web/app/api/v1/readiness/**"
+      - "apps/web/app/api/v1/capabilities/route.ts"
+      - "apps/web/lib/readiness.ts"
+      - "apps/web/lib/api-security.ts"
+      - "scripts/check-readiness-contract.mjs"
+      - "scripts/check-repository-hygiene.mjs"
+      - "scripts/check-test-build-isolation.mjs"
+      - "scripts/check-lockfile-integrity.mjs"
+      - "scripts/check-capability-discovery.mjs"
+      - "scripts/check-mcp-contract.mjs"
+      - "scripts/plan-vector-studio-vercel-provisioning.mjs"
+      - "docs/READINESS.md"
+      - "docs/REPOSITORY-HYGIENE.md"
+      - "docs/TEST-BUILD-ISOLATION.md"
+      - "docs/API.md"
+      - "docs/CAPABILITIES.md"
+      - "docs/PRINT-PREFLIGHT.md"
+      - "README.md"
+      - ".github/workflows/readiness-contract.yml"
+  pull_request:
+    paths:
+      - ".nvmrc"
+      - "package.json"
+      - ".gitignore"
+      - "turbo.json"
+      - "apps/*/package.json"
+      - "packages/*/package.json"
+      - "workers/*/package.json"
+      - "packages/cli/bin/**"
+      - "pnpm-lock.yaml"
+      - "apps/web/app/api/v1/readiness/**"
+      - "apps/web/app/api/v1/capabilities/route.ts"
+      - "apps/web/lib/readiness.ts"
+      - "apps/web/lib/api-security.ts"
+      - "scripts/check-readiness-contract.mjs"
+      - "scripts/check-repository-hygiene.mjs"
+      - "scripts/check-test-build-isolation.mjs"
+      - "scripts/check-lockfile-integrity.mjs"
+      - "scripts/check-capability-discovery.mjs"
+      - "scripts/check-mcp-contract.mjs"
+      - "scripts/plan-vector-studio-vercel-provisioning.mjs"
+      - "docs/READINESS.md"
+      - "docs/REPOSITORY-HYGIENE.md"
+      - "docs/TEST-BUILD-ISOLATION.md"
+      - "docs/API.md"
+      - "docs/CAPABILITIES.md"
+      - "docs/PRINT-PREFLIGHT.md"
+      - "README.md"
+      - ".github/workflows/readiness-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: vector-runtime-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Use repository Node.js runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Activate exact pnpm through Corepack
+        id: pnpm
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p .ci
+          set -o pipefail
+          corepack enable 2>&1 | tee .ci/readiness-toolchain.log
+          corepack prepare pnpm@10.14.0 --activate 2>&1 | tee -a .ci/readiness-toolchain.log
+          test "$(node --version)" = "v$(tr -d '\r\n' < .nvmrc)"
+          test "$(pnpm --version)" = "10.14.0"
+          git diff --exit-code
+
+      - name: Verify repository hygiene contract
+        id: hygiene
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/check-repository-hygiene.mjs 2>&1 | tee .ci/readiness-hygiene.log
+
+      - name: Verify test and build output isolation
+        id: isolation
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/check-test-build-isolation.mjs 2>&1 | tee .ci/readiness-isolation.log
+
+      - name: Verify lockfile bytes and YAML stream boundary
+        id: lockfile
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/check-lockfile-integrity.mjs 2>&1 | tee .ci/readiness-lockfile.log
+
+      - name: Verify runtime readiness contract
+        id: contract
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/check-readiness-contract.mjs 2>&1 | tee .ci/readiness-contract.log
+
+      - name: Install exact dependencies
+        id: install
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' && steps.hygiene.outcome == 'success' && steps.isolation.outcome == 'success' && steps.lockfile.outcome == 'success' && steps.contract.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm install --frozen-lockfile 2>&1 | tee .ci/readiness-install.log
+          if grep -F "Failed to create bin" .ci/readiness-install.log; then
+            echo "workspace CLI bins must exist before package build" >&2
+            exit 1
+          fi
+
+      - name: Build canonical workspace packages
+        id: dependencies
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm build:packages 2>&1 | tee .ci/readiness-dependencies.log
+
+      - name: Typecheck Vector web
+        id: typecheck
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @evavo/vector-web typecheck 2>&1 | tee .ci/readiness-typecheck.log
+
+      - name: Build Vector web
+        id: build
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @evavo/vector-web build 2>&1 | tee .ci/readiness-build.log
+
+      - name: Verify clean tracked and untracked boundary
+        id: clean
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.typecheck.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          git diff --check 2>&1 | tee .ci/readiness-clean-tree.log
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Publish runtime readiness statuses
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
+          HYGIENE_OUTCOME: ${{ steps.hygiene.outcome }}
+          ISOLATION_OUTCOME: ${{ steps.isolation.outcome }}
+          LOCKFILE_OUTCOME: ${{ steps.lockfile.outcome }}
+          CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          DEPENDENCIES_OUTCOME: ${{ steps.dependencies.outcome }}
+          TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          CLEAN_OUTCOME: ${{ steps.clean.outcome }}
+        with:
+          script: |
+            const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const gates = [
+              ["api/vector-readiness-toolchain", process.env.PNPM_OUTCOME === "success", "readiness toolchain"],
+              ["api/vector-repository-hygiene", process.env.HYGIENE_OUTCOME === "success", "repository hygiene"],
+              ["api/vector-test-build-isolation", process.env.ISOLATION_OUTCOME === "success", "test build isolation"],
+              ["api/vector-readiness-lockfile", process.env.LOCKFILE_OUTCOME === "success", "readiness lockfile"],
+              ["api/vector-readiness-contract", process.env.CONTRACT_OUTCOME === "success", "readiness contract"],
+              ["api/vector-readiness-dependencies", process.env.INSTALL_OUTCOME === "success" && process.env.DEPENDENCIES_OUTCOME === "success", "readiness dependencies"],
+              ["api/vector-readiness-typecheck", process.env.TYPECHECK_OUTCOME === "success", "readiness typecheck"],
+              ["api/vector-readiness-build", process.env.BUILD_OUTCOME === "success", "readiness build"],
+              ["api/vector-readiness-clean-tree", process.env.CLEAN_OUTCOME === "success", "readiness clean tree"],
+            ];
+            for (const [contextName, passed, label] of gates) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: passed ? "success" : "failure",
+                context: contextName,
+                description: passed ? `${label} passed` : `${label} failed`,
+                target_url: targetUrl,
+              });
+            }
+
+      - name: Preserve readiness diagnostics
+        if: ${{ always() && (steps.pnpm.outcome != 'success' || steps.hygiene.outcome != 'success' || steps.isolation.outcome != 'success' || steps.lockfile.outcome != 'success' || steps.contract.outcome != 'success' || steps.install.outcome != 'success' || steps.dependencies.outcome != 'success' || steps.typecheck.outcome != 'success' || steps.build.outcome != 'success' || steps.clean.outcome != 'success') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vector-runtime-readiness-${{ github.sha }}
+          path: .ci/readiness-*.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Enforce runtime readiness validation
+        if: always()
+        shell: bash
+        env:
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
+          HYGIENE_OUTCOME: ${{ steps.hygiene.outcome }}
+          ISOLATION_OUTCOME: ${{ steps.isolation.outcome }}
+          LOCKFILE_OUTCOME: ${{ steps.lockfile.outcome }}
+          CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          DEPENDENCIES_OUTCOME: ${{ steps.dependencies.outcome }}
+          TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          CLEAN_OUTCOME: ${{ steps.clean.outcome }}
+        run: |
+          test "$PNPM_OUTCOME" = "success"
+          test "$HYGIENE_OUTCOME" = "success"
+          test "$ISOLATION_OUTCOME" = "success"
+          test "$LOCKFILE_OUTCOME" = "success"
+          test "$CONTRACT_OUTCOME" = "success"
+          test "$INSTALL_OUTCOME" = "success"
+          test "$DEPENDENCIES_OUTCOME" = "success"
+          test "$TYPECHECK_OUTCOME" = "success"
+          test "$BUILD_OUTCOME" = "success"
+          test "$CLEAN_OUTCOME" = "success"
