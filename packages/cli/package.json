@@ -11,10 +11,10 @@
     }
   },
   "bin": {
-    "evavo-vector": "./dist/index.js",
-    "evavo-vector-print": "./dist/print-cli.js",
-    "evavo-dotlottie": "./dist/dotlottie-cli.js",
-    "evavo-vector-batch": "./dist/batch-cli.js"
+    "evavo-vector": "./bin/evavo-vector.mjs",
+    "evavo-vector-print": "./bin/evavo-vector-print.mjs",
+    "evavo-dotlottie": "./bin/evavo-dotlottie.mjs",
+    "evavo-vector-batch": "./bin/evavo-vector-batch.mjs"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
