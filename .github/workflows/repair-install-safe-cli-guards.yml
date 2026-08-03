@@ -1,0 +1,139 @@
+name: Repair install-safe CLI source guards
+
+on:
+  push:
+    branches:
+      - agent/vector-runtime-correction-20260802
+    paths:
+      - ops/reviewed/repair-install-safe-cli-guards.ready
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: repair-install-safe-cli-guards
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact staging head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+          fetch-depth: 2
+
+      - name: Publish running status
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: "pending",
+              context: "ci/vector-cli-guard-repair",
+              description: "install-safe CLI guard repair is running",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Apply exact reviewed replacements
+        id: patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              "scripts/check-batch-contract.mjs": [
+                  (
+                      '  cliPackage: "packages/cli/package.json",\n',
+                      '  cliPackage: "packages/cli/package.json",\n  cliShim: "packages/cli/bin/evavo-vector-batch.mjs",\n',
+                  ),
+                  (
+                      'if (cliPackage?.bin?.["evavo-vector-batch"] !== "./dist/batch-cli.js") {\n  errors.push("packages/cli must expose the evavo-vector-batch binary.");\n}\n',
+                      'if (cliPackage?.bin?.["evavo-vector-batch"] !== "./bin/evavo-vector-batch.mjs") {\n  errors.push("packages/cli must expose evavo-vector-batch through the checked-in install-safe launcher.");\n}\nif (sources.cliShim !== \'#!/usr/bin/env node\\nimport "../dist/batch-cli.js";\\n\') {\n  errors.push("packages/cli/bin/evavo-vector-batch.mjs must import exactly the compiled batch CLI entrypoint.");\n}\n',
+                  ),
+              ],
+              "scripts/check-dotlottie-contract.mjs": [
+                  (
+                      '  cliPackage: "packages/cli/package.json",\n',
+                      '  cliPackage: "packages/cli/package.json",\n  cliShim: "packages/cli/bin/evavo-dotlottie.mjs",\n',
+                  ),
+                  (
+                      'if (cliPackage?.bin?.["evavo-dotlottie"] !== "./dist/dotlottie-cli.js") {\n  errors.push("packages/cli must expose the evavo-dotlottie binary.");\n}\n',
+                      'if (cliPackage?.bin?.["evavo-dotlottie"] !== "./bin/evavo-dotlottie.mjs") {\n  errors.push("packages/cli must expose evavo-dotlottie through the checked-in install-safe launcher.");\n}\nif (sources.cliShim !== \'#!/usr/bin/env node\\nimport "../dist/dotlottie-cli.js";\\n\') {\n  errors.push("packages/cli/bin/evavo-dotlottie.mjs must import exactly the compiled dotLottie CLI entrypoint.");\n}\n',
+                  ),
+              ],
+          }
+
+          for relative, operations in replacements.items():
+              target = Path(relative)
+              source = target.read_text(encoding="utf-8")
+              for old, new in operations:
+                  if source.count(old) != 1:
+                      raise SystemExit(f"expected exactly one match in {relative}: {old!r}")
+                  source = source.replace(old, new, 1)
+              target.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Validate repaired source guards
+        id: validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/check-batch-contract.mjs
+          node scripts/check-dotlottie-contract.mjs
+          node scripts/check-repository-hygiene.mjs
+          git diff --check
+          test "$(git diff --name-only | sort)" = $'scripts/check-batch-contract.mjs\nscripts/check-dotlottie-contract.mjs'
+
+      - name: Commit repaired guards to staging
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "EVAVO reviewed repair"
+          git config user.email "evavo.studio@gmail.com"
+          git add scripts/check-batch-contract.mjs scripts/check-dotlottie-contract.mjs
+          git diff --cached --check
+          git commit -m "fix(cli): align batch and dotLottie launch guards"
+          git push origin HEAD:agent/vector-runtime-correction-20260802
+
+      - name: Publish final status
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PATCH_OUTCOME: ${{ steps.patch.outcome }}
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+        with:
+          script: |
+            const passed =
+              process.env.PATCH_OUTCOME === "success" &&
+              process.env.VALIDATE_OUTCOME === "success" &&
+              process.env.PUBLISH_OUTCOME === "success";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? "success" : "failure",
+              context: "ci/vector-cli-guard-repair",
+              description: passed ? "install-safe CLI guard repair passed" : "install-safe CLI guard repair failed",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Enforce repair result
+        if: always()
+        env:
+          PATCH_OUTCOME: ${{ steps.patch.outcome }}
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+        run: |
+          test "$PATCH_OUTCOME" = "success"
+          test "$VALIDATE_OUTCOME" = "success"
+          test "$PUBLISH_OUTCOME" = "success"
