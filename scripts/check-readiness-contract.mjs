@@ -39,9 +39,7 @@ function forbidTokens(relativePath, source, tokens) {
 }
 
 function frozenStringArray(relativePath, source, name) {
-  const expression = new RegExp(
-    `(?:export\\s+)?const\\s+${name}\\s*=\\s*Object\\.freeze\\(\\[([\\s\\S]*?)\\](?:\\s+as\\s+const)?\\s*\\)\\s*;`,
-  );
+  const expression = new RegExp(`(?:export\\s+)?const\\s+${name}\\s*=\\s*Object\\.freeze\\(\\[([\\s\\S]*?)\\](?:\\s+as\\s+const)?\\s*\\)\\s*;`);
   const block = source.match(expression)?.[1] ?? null;
   if (block === null) {
     errors.push(`${relativePath} does not expose ${name} as a frozen string array.`);
@@ -51,10 +49,7 @@ function frozenStringArray(relativePath, source, name) {
 }
 
 function exactArray(label, actual, expected) {
-  if (
-    actual.length !== expected.length ||
-    actual.some((value, index) => value !== expected[index])
-  ) {
+  if (actual.length !== expected.length || actual.some((value, index) => value !== expected[index])) {
     errors.push(`${label} must equal ${JSON.stringify(expected)}; received ${JSON.stringify(actual)}.`);
   }
 }
@@ -67,9 +62,12 @@ const files = Object.freeze({
   provisioning: "scripts/plan-vector-studio-vercel-provisioning.mjs",
   mcpCheck: "scripts/check-mcp-contract.mjs",
   capabilityCheck: "scripts/check-capability-discovery.mjs",
-  quality: ".github/workflows/quality.yml",
+  hygieneCheck: "scripts/check-repository-hygiene.mjs",
+  isolationCheck: "scripts/check-test-build-isolation.mjs",
   workflow: ".github/workflows/readiness-contract.yml",
   docs: "docs/READINESS.md",
+  hygieneDocs: "docs/REPOSITORY-HYGIENE.md",
+  isolationDocs: "docs/TEST-BUILD-ISOLATION.md",
   apiDocs: "docs/API.md",
   capabilityDocs: "docs/CAPABILITIES.md",
   printDocs: "docs/PRINT-PREFLIGHT.md",
@@ -93,25 +91,11 @@ const expectedAuthorities = Object.freeze([
   "VECTOR_API_TOKEN",
   "VECTOR_WORKER_API_TOKEN",
 ]);
-exactArray(
-  "runtime authority list",
-  frozenStringArray(files.readiness, sources.readiness, "VECTOR_RUNTIME_AUTHORITY_KEYS"),
-  expectedAuthorities,
-);
-exactArray(
-  "provisioning authority list",
-  frozenStringArray(files.provisioning, sources.provisioning, "AUTHORITY_KEYS"),
-  expectedAuthorities,
-);
-const requiredProvisioning = frozenStringArray(
-  files.provisioning,
-  sources.provisioning,
-  "REQUIRED_SECRETS",
-);
+exactArray("runtime authority list", frozenStringArray(files.readiness, sources.readiness, "VECTOR_RUNTIME_AUTHORITY_KEYS"), expectedAuthorities);
+exactArray("provisioning authority list", frozenStringArray(files.provisioning, sources.provisioning, "AUTHORITY_KEYS"), expectedAuthorities);
+const requiredProvisioning = frozenStringArray(files.provisioning, sources.provisioning, "REQUIRED_SECRETS");
 for (const name of ["VERCEL_TOKEN", ...expectedAuthorities, "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"]) {
-  if (!requiredProvisioning.includes(name)) {
-    errors.push(`${files.provisioning} is missing governed provisioning credential ${name}.`);
-  }
+  if (!requiredProvisioning.includes(name)) errors.push(`${files.provisioning} is missing governed provisioning credential ${name}.`);
 }
 
 requireTokens(files.readiness, sources.readiness, [
@@ -172,44 +156,41 @@ forbidTokens(files.route, sources.route, [
   "VECTOR_WORKER_API_TOKEN",
 ]);
 
-requireTokens(files.capabilities, sources.capabilities, [
-  'readiness: "/api/v1/readiness"',
-]);
-requireTokens(files.mcpCheck, sources.mcpCheck, [
-  "MCP contract `1.6` exposes sixteen tools",
-  "vector_preflight_svg_print",
-  "GET /api/v1/readiness",
-]);
-requireTokens(files.capabilityCheck, sources.capabilityCheck, [
-  'readiness: "/api/v1/readiness"',
-  "GET /api/v1/readiness",
-]);
-requireTokens(files.quality, sources.quality, [
-  "Verify runtime readiness contract",
-  "id: contract_readiness",
-  "node scripts/check-readiness-contract.mjs",
-  "CONTRACT_READINESS_OUTCOME",
-]);
+requireTokens(files.capabilities, sources.capabilities, ['readiness: "/api/v1/readiness"']);
+requireTokens(files.mcpCheck, sources.mcpCheck, ["MCP contract `1.6` exposes sixteen tools", "vector_preflight_svg_print", "GET /api/v1/readiness"]);
+requireTokens(files.capabilityCheck, sources.capabilityCheck, ['readiness: "/api/v1/readiness"', "GET /api/v1/readiness"]);
+requireTokens(files.hygieneCheck, sources.hygieneCheck, ["api/vector-repository-hygiene", "Verify clean tracked and untracked boundary"]);
+requireTokens(files.isolationCheck, sources.isolationCheck, ["api/vector-test-build-isolation", "focused readiness workflow"]);
 
 requireTokens(files.workflow, sources.workflow, [
   "name: Vector Studio runtime readiness",
+  "Verify repository hygiene contract",
+  "node scripts/check-repository-hygiene.mjs",
+  "Verify test and build output isolation",
+  "node scripts/check-test-build-isolation.mjs",
+  "Verify lockfile bytes and YAML stream boundary",
+  "node scripts/check-lockfile-integrity.mjs",
   "node scripts/check-readiness-contract.mjs",
   "pnpm install --frozen-lockfile",
+  "Failed to create bin",
   "pnpm build:packages",
   "pnpm --filter @evavo/vector-web typecheck",
   "pnpm --filter @evavo/vector-web build",
+  "Verify clean tracked and untracked boundary",
   "api/vector-readiness-toolchain",
+  "api/vector-repository-hygiene",
+  "api/vector-test-build-isolation",
+  "api/vector-readiness-lockfile",
   "api/vector-readiness-contract",
   "api/vector-readiness-dependencies",
   "api/vector-readiness-typecheck",
   "api/vector-readiness-build",
+  "api/vector-readiness-clean-tree",
 ]);
-forbidTokens(files.workflow, sources.workflow, [
-  "pnpm/action-setup@",
-  "node-version: 22",
-  "cache: pnpm",
-]);
+forbidTokens(files.workflow, sources.workflow, ["pnpm/action-setup@", "node-version: 22", "cache: pnpm", "contents: write", "git push"]);
 
+requireTokens(files.hygieneDocs, sources.hygieneDocs, ["pnpm hygiene:check", "checked-in `.mjs` launch shims"]);
+requireTokens(files.isolationDocs, sources.isolationDocs, ["empty test-output declaration", "focused readiness workflow"]);
 requireTokens(files.docs, sources.docs, [
   "GET /api/v1/readiness",
   "public non-sensitive",
@@ -218,6 +199,8 @@ requireTokens(files.docs, sources.docs, [
   "clientReleaseEligible: false",
   "sensitiveValuesIncluded: false",
   "live release proof",
+  "repository hygiene",
+  "test/build isolation",
 ]);
 requireTokens(files.apiDocs, sources.apiDocs, ["GET /api/v1/readiness"]);
 requireTokens(files.capabilityDocs, sources.capabilityDocs, ["GET /api/v1/readiness"]);
@@ -230,28 +213,23 @@ requireTokens(files.readme, sources.readme, [
   "POST /api/v1/print/preflight",
   "docs/READINESS.md",
 ]);
-forbidTokens(files.readme, sources.readme, [
-  "MCP contract `1.5` exposes fifteen tools",
-]);
+forbidTokens(files.readme, sources.readme, ["MCP contract `1.5` exposes fifteen tools"]);
 
 if (errors.length > 0) {
-  process.stderr.write(`${JSON.stringify({
-    check: "evavo-vector-studio-runtime-readiness",
-    ok: false,
-    contractVersion: "1.0",
-    errors,
-  }, null, 2)}\n`);
+  process.stderr.write(`${JSON.stringify({ check: "evavo-vector-studio-runtime-readiness", ok: false, contractVersion: "1.1", errors }, null, 2)}\n`);
   process.exit(1);
 }
 
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-runtime-readiness",
   ok: true,
-  contractVersion: "1.0",
+  contractVersion: "1.1",
   endpoint: "/api/v1/readiness",
   publicNonSensitive: true,
   interactiveReadiness: true,
   automationReadiness: true,
+  repositoryHygieneGoverned: true,
+  testBuildIsolationGoverned: true,
   automaticClientPromotion: false,
   sensitiveValuesIncluded: false,
   checkedFiles: [...checkedFiles].sort(),
