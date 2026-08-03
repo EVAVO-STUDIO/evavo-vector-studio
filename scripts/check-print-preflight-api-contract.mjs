@@ -49,6 +49,7 @@ const files = Object.freeze({
   coreTests: "packages/vector-core/src/print-preflight.test.ts",
   cli: "packages/cli/src/print-cli.ts",
   cliPackage: "packages/cli/package.json",
+  cliShim: "packages/cli/bin/evavo-vector-print.mjs",
   mcpPrint: "packages/mcp/src/print-tools.ts",
   mcpPrintTests: "packages/mcp/src/print-tools.test.ts",
   mcpServer: "packages/mcp/src/server.ts",
@@ -85,8 +86,11 @@ if (
 ) {
   errors.push("package.json must expose vector:print:capabilities.");
 }
-if (cliPackageJson?.bin?.["evavo-vector-print"] !== "./dist/print-cli.js") {
-  errors.push("packages/cli must expose the evavo-vector-print binary.");
+if (cliPackageJson?.bin?.["evavo-vector-print"] !== "./bin/evavo-vector-print.mjs") {
+  errors.push("packages/cli must expose evavo-vector-print through the checked-in install-safe launcher.");
+}
+if (sources.cliShim !== '#!/usr/bin/env node\nimport "../dist/print-cli.js";\n') {
+  errors.push("packages/cli/bin/evavo-vector-print.mjs must import exactly the compiled print CLI entrypoint.");
 }
 
 requireTokens(files.core, sources.core, [
@@ -263,10 +267,12 @@ requireTokens(files.workflow, sources.workflow, [
   '"apps/web/app/api/v1/print/preflight/**"',
   '"packages/vector-core/src/print-preflight.ts"',
   '"packages/cli/src/print-cli.ts"',
+  '"packages/cli/bin/evavo-vector-print.mjs"',
   '"packages/mcp/src/print-tools.ts"',
   '"packages/mcp/src/print-tools.test.ts"',
   "node scripts/check-print-preflight-api-contract.mjs",
   "pnpm install --frozen-lockfile",
+  "Failed to create bin",
   "Build canonical workspace packages",
   "pnpm build:packages",
   "DEPENDENCIES_OUTCOME: ${{ steps.dependencies.outcome }}",
@@ -291,7 +297,7 @@ if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-studio-print-preflight-api",
     ok: false,
-    contractVersion: "1.0",
+    contractVersion: "1.1",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -300,9 +306,10 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-print-preflight-api",
   ok: true,
-  contractVersion: "1.0",
+  contractVersion: "1.1",
   endpoint: "/api/v1/print/preflight",
   cli: "evavo-vector-print",
+  cliInstallSafeLauncher: true,
   mcpTool: "vector_preflight_svg_print",
   mcpContractVersion: "1.6",
   profiles: ["commercial", "large-format", "cut-vinyl", "screen-print"],
