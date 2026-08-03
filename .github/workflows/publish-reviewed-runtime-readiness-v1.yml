@@ -18,7 +18,7 @@ jobs:
   publish:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - name: Checkout exact current main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -58,7 +58,7 @@ jobs:
           test "$(pnpm --version)" = "10.14.0"
           git diff --exit-code
 
-      - name: Apply reviewed readiness surface
+      - name: Apply reviewed readiness and isolation surfaces
         id: apply
         continue-on-error: true
         shell: bash
@@ -80,6 +80,7 @@ jobs:
               source = source.replace(old, new, 1)
           target.write_text(source, encoding="utf-8")
           PY
+          python ops/reviewed/apply-test-build-isolation-v1.py
 
       - name: Validate complete reviewed change
         id: validate
@@ -89,6 +90,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/check-readiness-contract.mjs
+          node scripts/check-test-build-isolation.mjs
           node scripts/check-capability-discovery.mjs
           node scripts/check-mcp-contract.mjs
           pnpm install --frozen-lockfile
@@ -105,13 +107,14 @@ jobs:
           rm -f \
             .github/workflows/publish-reviewed-runtime-readiness-v1.yml \
             ops/reviewed/apply-runtime-readiness-v1.py \
+            ops/reviewed/apply-test-build-isolation-v1.py \
             ops/reviewed/vector-runtime-readiness-v1.ready
           git config user.name "EVAVO reviewed publisher"
           git config user.email "evavo.studio@gmail.com"
           git add -A
           git diff --cached --check
           git commit -m "feat(readiness): expose governed production posture" \
-            -m "Add a public secret-free runtime readiness projection for interactive production, durable automation and release-proof blockers. Align capability discovery, API and MCP documentation, focused CI and the exhaustive quality gate while keeping client promotion and managed execution disabled until live evidence exists."
+            -m "Add a public secret-free runtime readiness projection and eliminate same-output build/test races across the monorepo. Align capability discovery, API and MCP documentation, focused CI and the exhaustive quality gate while keeping client promotion and managed execution disabled until live evidence exists."
           git push origin HEAD:main
 
       - name: Publish final status
