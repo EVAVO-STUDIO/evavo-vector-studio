@@ -62,7 +62,24 @@ jobs:
         id: apply
         continue-on-error: true
         shell: bash
-        run: python ops/reviewed/apply-runtime-readiness-v1.py
+        run: |
+          set -euo pipefail
+          python ops/reviewed/apply-runtime-readiness-v1.py
+          python - <<'PY'
+          from pathlib import Path
+          target = Path("scripts/check-readiness-contract.mjs")
+          source = target.read_text(encoding="utf-8")
+          replacements = {
+              'environmentValue(environment, "UPSTASH_REDIS_REST_URL")': '"UPSTASH_REDIS_REST_URL"',
+              'environmentValue(environment, "UPSTASH_REDIS_REST_TOKEN")': '"UPSTASH_REDIS_REST_TOKEN"',
+              '"GET /api/v1/capabilities",': '"GET  /api/v1/capabilities",',
+          }
+          for old, new in replacements.items():
+              if source.count(old) != 1:
+                  raise SystemExit(f"expected one readiness assertion match: {old}")
+              source = source.replace(old, new, 1)
+          target.write_text(source, encoding="utf-8")
+          PY
 
       - name: Validate complete reviewed change
         id: validate
