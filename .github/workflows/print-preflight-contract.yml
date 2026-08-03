@@ -14,6 +14,7 @@ on:
       - "packages/vector-core/src/print-preflight.test.ts"
       - "packages/vector-core/src/index.ts"
       - "packages/cli/src/print-cli.ts"
+      - "packages/cli/bin/evavo-vector-print.mjs"
       - "packages/cli/package.json"
       - "packages/mcp/src/print-tools.ts"
       - "packages/mcp/src/print-tools.test.ts"
@@ -39,6 +40,7 @@ on:
       - "packages/vector-core/src/print-preflight.test.ts"
       - "packages/vector-core/src/index.ts"
       - "packages/cli/src/print-cli.ts"
+      - "packages/cli/bin/evavo-vector-print.mjs"
       - "packages/cli/package.json"
       - "packages/mcp/src/print-tools.ts"
       - "packages/mcp/src/print-tools.test.ts"
@@ -115,6 +117,10 @@ jobs:
           mkdir -p .ci
           set -o pipefail
           pnpm install --frozen-lockfile 2>&1 | tee .ci/print-install.log
+          if grep -F "Failed to create bin" .ci/print-install.log; then
+            echo "workspace CLI bins must exist before package build" >&2
+            exit 1
+          fi
 
       - name: Build canonical workspace packages
         id: dependencies
