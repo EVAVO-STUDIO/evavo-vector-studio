@@ -52,3 +52,11 @@ sensitiveValuesIncluded: false
 ```
 
 Only the governed live release proof and central Hub review can promote Vector Studio. Runtime configuration alone cannot change the client allowlist or create an external Hub launch action.
+
+## Focused validation
+
+The permanent `Vector Studio runtime readiness` workflow validates the exact repository toolchain, repository hygiene, test/build isolation, lockfile stream, readiness contract, frozen dependency graph, workspace packages, Vector web typecheck, production build and a clean tracked/untracked boundary. Each gate publishes a stable commit status.
+
+Readiness validation is read-only. It cannot provision Vercel, mutate domains, add credentials, promote the client allowlist or generate a signed launch.
+
+Related source contracts: [`REPOSITORY-HYGIENE.md`](REPOSITORY-HYGIENE.md) and [`TEST-BUILD-ISOLATION.md`](TEST-BUILD-ISOLATION.md).
