@@ -20,4 +20,10 @@ The dependency-free contract is:
 pnpm test-build-isolation:check
 ```
 
-The complete quality workflow runs this contract before lint, typecheck, tests and production build. A future test compiler that writes to shared `dist` fails before dependency-backed execution.
+The focused readiness workflow runs this contract before frozen installation, then repeats the complete governed build boundary after installation.
+
+## Cache declaration
+
+The Turbo test task uses an empty test-output declaration. Tests consume the same package's completed `dist` tree but do not claim a separate `coverage/**` product that the current test commands never create. This removes misleading cache-output warnings.
+
+A future test compiler that writes to shared `dist`, a test command that deletes build output, or a false retained-output declaration fails before dependency-backed execution.
