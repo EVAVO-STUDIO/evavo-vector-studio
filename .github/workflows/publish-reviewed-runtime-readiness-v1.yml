@@ -81,6 +81,7 @@ jobs:
           target.write_text(source, encoding="utf-8")
           PY
           python ops/reviewed/apply-test-build-isolation-v1.py
+          python ops/reviewed/align-test-isolation-contracts-v1.py
 
       - name: Validate complete reviewed change
         id: validate
@@ -108,6 +109,7 @@ jobs:
             .github/workflows/publish-reviewed-runtime-readiness-v1.yml \
             ops/reviewed/apply-runtime-readiness-v1.py \
             ops/reviewed/apply-test-build-isolation-v1.py \
+            ops/reviewed/align-test-isolation-contracts-v1.py \
             ops/reviewed/vector-runtime-readiness-v1.ready
           git config user.name "EVAVO reviewed publisher"
           git config user.email "evavo.studio@gmail.com"
