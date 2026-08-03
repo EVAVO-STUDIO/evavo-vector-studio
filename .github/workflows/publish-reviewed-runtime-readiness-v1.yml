@@ -1,4 +1,4 @@
-name: Publish reviewed Vector runtime readiness v1
+name: Materialize reviewed Vector runtime readiness v1
 
 on:
   push:
@@ -7,15 +7,15 @@ on:
       - "ops/reviewed/vector-runtime-readiness-v1.ready"
 
 permissions:
-  contents: write
+  contents: read
   statuses: write
 
 concurrency:
-  group: publish-reviewed-vector-runtime-readiness-v1
+  group: materialize-reviewed-vector-runtime-readiness-v1
   cancel-in-progress: true
 
 jobs:
-  publish:
+  materialize:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 55
@@ -23,8 +23,8 @@ jobs:
       - name: Checkout exact current main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: true
-          fetch-depth: 1
+          persist-credentials: false
+          fetch-depth: 2
 
       - name: Publish running status
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -35,8 +35,8 @@ jobs:
               repo: context.repo.repo,
               sha: context.sha,
               state: "pending",
-              context: "ci/vector-readiness-publisher",
-              description: "reviewed runtime readiness publication is running",
+              context: "ci/vector-readiness-materialization",
+              description: "reviewed readiness tree materialization is running",
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
@@ -98,8 +98,8 @@ jobs:
           pnpm check
           git diff --check
 
-      - name: Publish reviewed change to main
-        id: publish
+      - name: Materialize reviewed tree evidence
+        id: materialize
         if: ${{ steps.apply.outcome == 'success' && steps.validate.outcome == 'success' }}
         continue-on-error: true
         shell: bash
@@ -111,13 +111,58 @@ jobs:
             ops/reviewed/apply-test-build-isolation-v1.py \
             ops/reviewed/align-test-isolation-contracts-v1.py \
             ops/reviewed/vector-runtime-readiness-v1.ready
-          git config user.name "EVAVO reviewed publisher"
+          git config user.name "EVAVO reviewed materializer"
           git config user.email "evavo.studio@gmail.com"
           git add -A
           git diff --cached --check
           git commit -m "feat(readiness): expose governed production posture" \
             -m "Add a public secret-free runtime readiness projection and eliminate same-output build/test races across the monorepo. Align capability discovery, API and MCP documentation, focused CI and the exhaustive quality gate while keeping client promotion and managed execution disabled until live evidence exists."
-          git push origin HEAD:main
+          mkdir -p .ci/vector-readiness-reviewed/files
+          python - <<'PY'
+          import json
+          import shutil
+          import subprocess
+          from pathlib import Path
+
+          root = Path.cwd()
+          out = root / ".ci" / "vector-readiness-reviewed"
+          parent = subprocess.check_output(["git", "rev-parse", "HEAD^"], text=True).strip()
+          commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          changed_raw = subprocess.check_output([
+              "git", "diff", "--no-renames", "--name-only", "--diff-filter=ACMRTUXB", "-z", "HEAD^", "HEAD"
+          ])
+          deleted_raw = subprocess.check_output([
+              "git", "diff", "--no-renames", "--name-only", "--diff-filter=D", "-z", "HEAD^", "HEAD"
+          ])
+          changed = [entry.decode("utf-8") for entry in changed_raw.split(b"\0") if entry]
+          deleted = [entry.decode("utf-8") for entry in deleted_raw.split(b"\0") if entry]
+          for relative in changed:
+              source = root / relative
+              target = out / "files" / relative
+              target.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(source, target)
+          manifest = {
+              "version": "1.0",
+              "repository": "EVAVO-STUDIO/evavo-vector-studio",
+              "parent": parent,
+              "reviewedCommit": commit,
+              "changed": changed,
+              "deleted": deleted,
+              "sensitiveValuesIncluded": False,
+          }
+          (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload reviewed tree evidence
+        id: upload
+        if: ${{ steps.materialize.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vector-readiness-reviewed-${{ github.sha }}
+          path: .ci/vector-readiness-reviewed
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Publish final status
         if: always()
@@ -125,32 +170,36 @@ jobs:
         env:
           APPLY_OUTCOME: ${{ steps.apply.outcome }}
           VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
-          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          MATERIALIZE_OUTCOME: ${{ steps.materialize.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
         with:
           script: |
             const passed =
               process.env.APPLY_OUTCOME === "success" &&
               process.env.VALIDATE_OUTCOME === "success" &&
-              process.env.PUBLISH_OUTCOME === "success";
+              process.env.MATERIALIZE_OUTCOME === "success" &&
+              process.env.UPLOAD_OUTCOME === "success";
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: context.sha,
               state: passed ? "success" : "failure",
-              context: "ci/vector-readiness-publisher",
+              context: "ci/vector-readiness-materialization",
               description: passed
-                ? "reviewed runtime readiness publication passed"
-                : "reviewed runtime readiness publication failed",
+                ? "reviewed readiness tree materialized"
+                : "reviewed readiness tree materialization failed",
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
-      - name: Enforce publication result
+      - name: Enforce materialization result
         if: always()
         env:
           APPLY_OUTCOME: ${{ steps.apply.outcome }}
           VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
-          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          MATERIALIZE_OUTCOME: ${{ steps.materialize.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
         run: |
           test "$APPLY_OUTCOME" = "success"
           test "$VALIDATE_OUTCOME" = "success"
-          test "$PUBLISH_OUTCOME" = "success"
+          test "$MATERIALIZE_OUTCOME" = "success"
+          test "$UPLOAD_OUTCOME" = "success"
