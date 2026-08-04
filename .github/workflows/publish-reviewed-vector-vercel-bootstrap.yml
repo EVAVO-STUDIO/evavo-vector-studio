@@ -1,0 +1,197 @@
+name: Publish reviewed Vector Vercel bootstrap
+
+on:
+  push:
+    branches:
+      - agent/vector-vercel-bootstrap-20260804
+    paths:
+      - "ops/reviewed/vector-vercel-bootstrap.ready"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: publish-reviewed-vector-vercel-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact reviewed branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/vector-vercel-bootstrap-20260804
+          fetch-depth: 20
+          persist-credentials: true
+
+      - name: Use repository Node.js version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Apply reviewed bootstrap payload
+        id: patch
+        continue-on-error: true
+        shell: bash
+        env:
+          PAYLOAD_SHA256: c66389cb336a2707e1d3ee499cc8fe465c4dd369da549ff97fb694615eb93b4b
+        run: |
+          set -euo pipefail
+          cat ops/reviewed/vector-vercel-bootstrap-payload/part-*.txt \
+            | tr -d '\r\n' \
+            | base64 --decode > /tmp/vector-vercel-bootstrap.tar.gz
+          test "$(sha256sum /tmp/vector-vercel-bootstrap.tar.gz | cut -d' ' -f1)" = "$PAYLOAD_SHA256"
+          python - <<'PY'
+          from pathlib import Path
+          import tarfile
+
+          root = Path.cwd().resolve()
+          archive_path = Path('/tmp/vector-vercel-bootstrap.tar.gz')
+          with tarfile.open(archive_path, 'r:gz') as archive:
+              for member in archive.getmembers():
+                  if not member.isfile() or member.name.startswith('/') or '..' in Path(member.name).parts:
+                      raise SystemExit(f'Unsafe archive member: {member.name}')
+                  target = (root / member.name).resolve()
+                  target.relative_to(root)
+                  source = archive.extractfile(member)
+                  if source is None:
+                      raise SystemExit(f'Missing archive body: {member.name}')
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  target.write_bytes(source.read())
+          PY
+          rm -f .github/workflows/export-exact-source.yml
+          rm -f ops/reviewed/export-exact-source.ready
+          rm -f .github/workflows/publish-reviewed-vector-vercel-bootstrap.yml
+          rm -f ops/reviewed/vector-vercel-bootstrap.ready
+          rm -rf ops/reviewed/vector-vercel-bootstrap-payload
+
+      - name: Verify exact reviewed changeset
+        id: changeset
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test ! -e .github/workflows/export-exact-source.yml
+          test ! -e ops/reviewed/export-exact-source.ready
+          test ! -e .github/workflows/publish-reviewed-vector-vercel-bootstrap.yml
+          test ! -e ops/reviewed/vector-vercel-bootstrap.ready
+          test ! -e ops/reviewed/vector-vercel-bootstrap-payload
+
+      - name: Activate exact pnpm through Corepack
+        id: pnpm
+        if: steps.changeset.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.14.0 --activate
+          test "$(pnpm --version)" = "10.14.0"
+
+      - name: Run dependency-free contracts and self-tests
+        id: source
+        if: steps.pnpm.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          for check in scripts/check-*.mjs; do node "$check"; done
+          node scripts/resolve-provider-control-request.mjs --self-test
+          node scripts/provision-vector-studio-vercel.mjs --self-test
+          node scripts/deploy-vector-studio-vercel.mjs --self-test
+          node scripts/verify-live-capability-discovery.mjs --self-test
+
+      - name: Install exact dependencies
+        id: install
+        if: steps.source.outcome == 'success'
+        continue-on-error: true
+        run: pnpm install --frozen-lockfile
+
+      - name: Run exhaustive quality validation
+        id: quality
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm check
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+          git diff --check
+
+      - name: Publish reviewed source changes
+        id: publish
+        if: steps.quality.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "EVAVO reviewed publisher"
+          git config user.email "evavo.studio@gmail.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat(release): harden Vector provider control and Vercel bootstrap"
+          git push origin HEAD:agent/vector-vercel-bootstrap-20260804
+
+      - name: Publish final validation status
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PATCH_OUTCOME: ${{ steps.patch.outcome }}
+          CHANGESET_OUTCOME: ${{ steps.changeset.outcome }}
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          QUALITY_OUTCOME: ${{ steps.quality.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+        with:
+          script: |
+            const outcomes = [
+              process.env.PATCH_OUTCOME,
+              process.env.CHANGESET_OUTCOME,
+              process.env.PNPM_OUTCOME,
+              process.env.SOURCE_OUTCOME,
+              process.env.INSTALL_OUTCOME,
+              process.env.QUALITY_OUTCOME,
+              process.env.PUBLISH_OUTCOME,
+            ];
+            const passed = outcomes.every((value) => value === "success");
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? "success" : "failure",
+              context: "ci/vector-vercel-bootstrap-review",
+              description: passed
+                ? "reviewed provider control and Vercel bootstrap published"
+                : "reviewed Vector Vercel bootstrap publication failed",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Enforce publication result
+        if: always()
+        env:
+          PATCH_OUTCOME: ${{ steps.patch.outcome }}
+          CHANGESET_OUTCOME: ${{ steps.changeset.outcome }}
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          QUALITY_OUTCOME: ${{ steps.quality.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+        shell: bash
+        run: |
+          test "$PATCH_OUTCOME" = "success"
+          test "$CHANGESET_OUTCOME" = "success"
+          test "$PNPM_OUTCOME" = "success"
+          test "$SOURCE_OUTCOME" = "success"
+          test "$INSTALL_OUTCOME" = "success"
+          test "$QUALITY_OUTCOME" = "success"
+          test "$PUBLISH_OUTCOME" = "success"
