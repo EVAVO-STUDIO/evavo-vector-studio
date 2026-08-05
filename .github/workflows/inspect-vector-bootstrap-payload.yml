@@ -1,0 +1,111 @@
+name: Inspect Vector bootstrap payload
+
+on:
+  push:
+    branches:
+      - agent/vector-vercel-bootstrap-20260804
+    paths:
+      - "ops/reviewed/vector-vercel-bootstrap.inspect"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/vector-vercel-bootstrap-20260804
+          persist-credentials: false
+
+      - name: Decode and salvage complete tar members
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/vector-bootstrap-inspection/recovered
+          python - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import hashlib
+          import io
+          import json
+          import tarfile
+          import zlib
+          from pathlib import Path
+
+          root = Path.cwd()
+          payload = root / "ops/reviewed/vector-vercel-bootstrap-payload"
+          parts = sorted(payload.glob("part-*.txt"), key=lambda item: item.name)
+          encoded = "".join("".join(item.read_text(encoding="ascii").split()) for item in parts)
+          decoded = base64.b64decode(encoded, validate=True)
+          raw_path = Path("/tmp/vector-bootstrap-inspection/transported.tar.gz")
+          raw_path.write_bytes(decoded)
+
+          inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
+          uncompressed = inflater.decompress(decoded)
+          uncompressed += inflater.flush()
+          tar_path = Path("/tmp/vector-bootstrap-inspection/recovered.tar")
+          tar_path.write_bytes(uncompressed)
+
+          recovered = []
+          rejected = []
+          try:
+              archive = tarfile.open(fileobj=io.BytesIO(uncompressed), mode="r:")
+          except Exception as error:
+              archive = None
+              rejected.append({"stage": "open", "error": type(error).__name__, "message": str(error)[:500]})
+          if archive is not None:
+              with archive:
+                  for member in archive.getmembers():
+                      if not member.isfile() or member.name.startswith("/") or ".." in Path(member.name).parts:
+                          rejected.append({"member": member.name, "reason": "unsafe-or-non-file"})
+                          continue
+                      source = archive.extractfile(member)
+                      if source is None:
+                          rejected.append({"member": member.name, "reason": "missing-body"})
+                          continue
+                      data = source.read()
+                      if len(data) != member.size:
+                          rejected.append({"member": member.name, "reason": "truncated", "expected": member.size, "actual": len(data)})
+                          continue
+                      target = Path("/tmp/vector-bootstrap-inspection/recovered") / member.name
+                      target.parent.mkdir(parents=True, exist_ok=True)
+                      target.write_bytes(data)
+                      recovered.append({
+                          "member": member.name,
+                          "bytes": len(data),
+                          "sha256": hashlib.sha256(data).hexdigest(),
+                      })
+
+          report = {
+              "partNames": [item.name for item in parts],
+              "encodedLength": len(encoded),
+              "decodedBytes": len(decoded),
+              "transportedSha256": hashlib.sha256(decoded).hexdigest(),
+              "inflatedBytes": len(uncompressed),
+              "gzipEof": inflater.eof,
+              "unusedDataBytes": len(inflater.unused_data),
+              "unconsumedTailBytes": len(inflater.unconsumed_tail),
+              "recovered": recovered,
+              "rejected": rejected,
+          }
+          Path("/tmp/vector-bootstrap-inspection/report.json").write_text(
+              json.dumps(report, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(report, indent=2))
+          PY
+
+      - name: Upload bounded inspection artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vector-bootstrap-payload-inspection-${{ github.sha }}
+          path: |
+            /tmp/vector-bootstrap-inspection/report.json
+            /tmp/vector-bootstrap-inspection/recovered/**
+          if-no-files-found: error
+          retention-days: 1
