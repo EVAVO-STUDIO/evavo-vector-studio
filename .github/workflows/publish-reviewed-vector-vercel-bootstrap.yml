@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: agent/vector-vercel-bootstrap-20260804
-          fetch-depth: 20
+          fetch-depth: 30
           persist-credentials: true
 
       - name: Use repository Node.js version
@@ -39,27 +39,85 @@ jobs:
         shell: bash
         env:
           PAYLOAD_SHA256: c66389cb336a2707e1d3ee499cc8fe465c4dd369da549ff97fb694615eb93b4b
+          PAYLOAD_BASE64_LENGTH: "72000"
         run: |
           set -euo pipefail
-          cat ops/reviewed/vector-vercel-bootstrap-payload/part-*.txt \
-            | tr -d '\r\n' \
-            | base64 --decode > /tmp/vector-vercel-bootstrap.tar.gz
-          test "$(sha256sum /tmp/vector-vercel-bootstrap.tar.gz | cut -d' ' -f1)" = "$PAYLOAD_SHA256"
           python - <<'PY'
-          from pathlib import Path
+          from __future__ import annotations
+
+          import base64
+          import hashlib
+          import os
+          import re
           import tarfile
+          from pathlib import Path
 
           root = Path.cwd().resolve()
-          archive_path = Path('/tmp/vector-vercel-bootstrap.tar.gz')
-          with tarfile.open(archive_path, 'r:gz') as archive:
-              for member in archive.getmembers():
-                  if not member.isfile() or member.name.startswith('/') or '..' in Path(member.name).parts:
-                      raise SystemExit(f'Unsafe archive member: {member.name}')
+          payload_root = root / "ops/reviewed/vector-vercel-bootstrap-payload"
+          expected_names = [
+              "part-01.txt",
+              "part-02.txt",
+              "part-03.txt",
+              "part-04.txt",
+              "part-05.txt",
+              "part-06.txt",
+              "part-07a.txt",
+              "part-07b.txt",
+          ]
+          parts = sorted(payload_root.glob("part-*.txt"), key=lambda item: item.name)
+          names = [item.name for item in parts]
+          if names != expected_names:
+              raise SystemExit(f"Unexpected payload parts: {names}")
+
+          encoded_parts = []
+          for item in parts:
+              text = item.read_text(encoding="ascii")
+              compact = "".join(text.split())
+              if not compact:
+                  raise SystemExit(f"Empty payload part: {item.name}")
+              if re.fullmatch(r"[A-Za-z0-9+/]*={0,2}", compact) is None:
+                  raise SystemExit(f"Non-base64 characters in payload part: {item.name}")
+              encoded_parts.append(compact)
+
+          encoded = "".join(encoded_parts)
+          expected_length = int(os.environ["PAYLOAD_BASE64_LENGTH"])
+          if len(encoded) != expected_length or len(encoded) % 4 != 0:
+              raise SystemExit(
+                  f"Unexpected base64 length: {len(encoded)} (expected {expected_length})"
+              )
+          if "=" in encoded[:-2]:
+              raise SystemExit("Base64 padding appeared before the final payload quartet")
+
+          try:
+              decoded = base64.b64decode(encoded, validate=True)
+          except Exception as error:
+              raise SystemExit(f"Base64 payload validation failed: {error}") from error
+
+          digest = hashlib.sha256(decoded).hexdigest()
+          expected_digest = os.environ["PAYLOAD_SHA256"]
+          if digest != expected_digest:
+              raise SystemExit(
+                  f"Payload digest mismatch: {digest} (expected {expected_digest})"
+              )
+
+          archive_path = Path("/tmp/vector-vercel-bootstrap.tar.gz")
+          archive_path.write_bytes(decoded)
+          with tarfile.open(archive_path, "r:gz") as archive:
+              members = archive.getmembers()
+              if not members:
+                  raise SystemExit("Reviewed bootstrap archive is empty")
+              for member in members:
+                  if (
+                      not member.isfile()
+                      or member.name.startswith("/")
+                      or ".." in Path(member.name).parts
+                  ):
+                      raise SystemExit(f"Unsafe archive member: {member.name}")
                   target = (root / member.name).resolve()
                   target.relative_to(root)
                   source = archive.extractfile(member)
                   if source is None:
-                      raise SystemExit(f'Missing archive body: {member.name}')
+                      raise SystemExit(f"Missing archive body: {member.name}")
                   target.parent.mkdir(parents=True, exist_ok=True)
                   target.write_bytes(source.read())
           PY
