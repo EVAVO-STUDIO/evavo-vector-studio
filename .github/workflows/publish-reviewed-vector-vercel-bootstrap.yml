@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: agent/vector-vercel-bootstrap-20260804
-          fetch-depth: 30
+          fetch-depth: 40
           persist-credentials: true
 
       - name: Use repository Node.js version
@@ -38,8 +38,8 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
-          PAYLOAD_SHA256: fff6b029dfca84d93eccec62c8a102dde943de9a7bc27ed792a312c487c530b5
-          PAYLOAD_BASE64_LENGTH: "72000"
+          PAYLOAD_COMMIT: 7cc1981d4879b05b774f71e6c2393a9147ca8411
+          PAYLOAD_SHA256: c66389cb336a2707e1d3ee499cc8fe465c4dd369da549ff97fb694615eb93b4b
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -49,55 +49,57 @@ jobs:
           import hashlib
           import os
           import re
+          import subprocess
           import tarfile
           from pathlib import Path
 
           root = Path.cwd().resolve()
-          payload_root = root / "ops/reviewed/vector-vercel-bootstrap-payload"
-          expected_names = [
-              "part-01.txt",
-              "part-02.txt",
-              "part-03.txt",
-              "part-04.txt",
-              "part-05.txt",
-              "part-06.txt",
-              "part-07a.txt",
-              "part-07b.txt",
+          source_commit = os.environ["PAYLOAD_COMMIT"]
+          expected_digest = os.environ["PAYLOAD_SHA256"]
+          payload_paths = [
+              "ops/reviewed/vector-vercel-bootstrap-payload/part-01.txt",
+              "ops/reviewed/vector-vercel-bootstrap-payload/part-02.txt",
+              "ops/reviewed/vector-vercel-bootstrap-payload/part-03.txt",
+              "ops/reviewed/vector-vercel-bootstrap-payload/part-04.txt",
+              "ops/reviewed/vector-vercel-bootstrap-payload/part-05.txt",
           ]
-          parts = sorted(payload_root.glob("part-*.txt"), key=lambda item: item.name)
-          names = [item.name for item in parts]
-          if names != expected_names:
-              raise SystemExit(f"Unexpected payload parts: {names}")
 
           encoded_parts = []
-          for item in parts:
-              text = item.read_text(encoding="ascii")
+          for relative_path in payload_paths:
+              completed = subprocess.run(
+                  ["git", "show", f"{source_commit}:{relative_path}"],
+                  check=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+              )
+              text = completed.stdout.decode("ascii")
               compact = "".join(text.split())
               if not compact:
-                  raise SystemExit(f"Empty payload part: {item.name}")
+                  raise SystemExit(f"Empty historical payload part: {relative_path}")
               if re.fullmatch(r"[A-Za-z0-9+/]*={0,2}", compact) is None:
-                  raise SystemExit(f"Non-base64 characters in payload part: {item.name}")
+                  invalid = sorted(set(re.sub(r"[A-Za-z0-9+/=]", "", compact)))
+                  raise SystemExit(
+                      f"Non-base64 historical payload characters in {relative_path}: {invalid}"
+                  )
               encoded_parts.append(compact)
 
           encoded = "".join(encoded_parts)
-          expected_length = int(os.environ["PAYLOAD_BASE64_LENGTH"])
-          if len(encoded) != expected_length or len(encoded) % 4 != 0:
-              raise SystemExit(
-                  f"Unexpected base64 length: {len(encoded)} (expected {expected_length})"
-              )
+          if len(encoded) % 4 != 0:
+              raise SystemExit(f"Historical base64 length is not aligned: {len(encoded)}")
           if "=" in encoded[:-2]:
-              raise SystemExit("Base64 padding appeared before the final payload quartet")
+              raise SystemExit("Historical base64 padding appeared before the final quartet")
 
           try:
               decoded = base64.b64decode(encoded, validate=True)
           except Exception as error:
-              raise SystemExit(f"Base64 payload validation failed: {error}") from error
+              raise SystemExit(
+                  f"Historical base64 validation failed at length {len(encoded)}: {error}"
+              ) from error
 
           digest = hashlib.sha256(decoded).hexdigest()
-          expected_digest = os.environ["PAYLOAD_SHA256"]
           if digest != expected_digest:
               raise SystemExit(
-                  f"Payload digest mismatch: {digest} (expected {expected_digest})"
+                  f"Historical payload digest mismatch: {digest} (expected {expected_digest}, encoded length {len(encoded)})"
               )
 
           archive_path = Path("/tmp/vector-vercel-bootstrap.tar.gz")
