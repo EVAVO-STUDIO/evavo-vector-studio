@@ -40,8 +40,7 @@ jobs:
           parts = sorted(payload.glob("part-*.txt"), key=lambda item: item.name)
           encoded = "".join("".join(item.read_text(encoding="ascii").split()) for item in parts)
           decoded = base64.b64decode(encoded, validate=True)
-          raw_path = Path("/tmp/vector-bootstrap-inspection/transported.tar.gz")
-          raw_path.write_bytes(decoded)
+          Path("/tmp/vector-bootstrap-inspection/transported.tar.gz").write_bytes(decoded)
 
           inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
           uncompressed = inflater.decompress(decoded)
@@ -49,8 +48,7 @@ jobs:
               uncompressed += inflater.flush()
           except zlib.error:
               pass
-          tar_path = Path("/tmp/vector-bootstrap-inspection/recovered.tar")
-          tar_path.write_bytes(uncompressed)
+          Path("/tmp/vector-bootstrap-inspection/recovered.tar").write_bytes(uncompressed)
 
           recovered = []
           rejected = []
@@ -88,13 +86,13 @@ jobs:
                   break
               data = uncompressed[offset:offset + size]
               offset += padded
-              path = PurePosixPath(name)
-              safe = bool(name) and not path.is_absolute() and ".." not in path.parts
+              member_path = PurePosixPath(name)
+              safe = bool(name) and not member_path.is_absolute() and ".." not in member_path.parts
               regular = typeflag in (b"\0", b"0", b"7")
               if not safe or not regular:
                   rejected.append({"member": name, "reason": "unsafe-or-non-file", "typeflag": typeflag.decode("ascii", "replace")})
                   continue
-              target = Path("/tmp/vector-bootstrap-inspection/recovered") / Path(*path.parts)
+              target = Path("/tmp/vector-bootstrap-inspection/recovered") / Path(*member_path.parts)
               target.parent.mkdir(parents=True, exist_ok=True)
               target.write_bytes(data)
               recovered.append({
@@ -133,4 +131,5 @@ jobs:
             /tmp/vector-bootstrap-inspection/report.json
             /tmp/vector-bootstrap-inspection/recovered/**
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 1
