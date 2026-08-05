@@ -84,23 +84,48 @@ jobs:
               encoded_parts.append(compact)
 
           encoded = "".join(encoded_parts)
-          if len(encoded) % 4 != 0:
-              raise SystemExit(f"Historical base64 length is not aligned: {len(encoded)}")
-          if "=" in encoded[:-2]:
-              raise SystemExit("Historical base64 padding appeared before the final quartet")
-
-          try:
-              decoded = base64.b64decode(encoded, validate=True)
-          except Exception as error:
-              raise SystemExit(
-                  f"Historical base64 validation failed at length {len(encoded)}: {error}"
-              ) from error
-
-          digest = hashlib.sha256(decoded).hexdigest()
-          if digest != expected_digest:
-              raise SystemExit(
-                  f"Historical payload digest mismatch: {digest} (expected {expected_digest}, encoded length {len(encoded)})"
+          decoded = None
+          if len(encoded) % 4 == 3:
+              matches = []
+              alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+              for candidate in alphabet:
+                  trial = encoded + candidate
+                  if "=" in trial[:-2]:
+                      continue
+                  try:
+                      value = base64.b64decode(trial, validate=True)
+                  except Exception:
+                      continue
+                  if hashlib.sha256(value).hexdigest() == expected_digest:
+                      matches.append((candidate, value))
+              if len(matches) != 1:
+                  raise SystemExit(
+                      f"Expected one hash-bound tail recovery, found {len(matches)} for historical length {len(encoded)}"
+                  )
+              recovered_character, decoded = matches[0]
+              print(
+                  f"Recovered one omitted historical base64 tail character using the reviewed SHA-256 ({ord(recovered_character)})."
               )
+          elif len(encoded) % 4 == 0:
+              if "=" in encoded[:-2]:
+                  raise SystemExit("Historical base64 padding appeared before the final quartet")
+              try:
+                  decoded = base64.b64decode(encoded, validate=True)
+              except Exception as error:
+                  raise SystemExit(
+                      f"Historical base64 validation failed at length {len(encoded)}: {error}"
+                  ) from error
+              if hashlib.sha256(decoded).hexdigest() != expected_digest:
+                  raise SystemExit(
+                      f"Historical payload digest mismatch at encoded length {len(encoded)}"
+                  )
+          else:
+              raise SystemExit(
+                  f"Historical base64 requires more than one recovery character: {len(encoded)}"
+              )
+
+          if decoded is None or hashlib.sha256(decoded).hexdigest() != expected_digest:
+              raise SystemExit("Recovered payload did not match the reviewed SHA-256")
 
           archive_path = Path("/tmp/vector-vercel-bootstrap.tar.gz")
           archive_path.write_bytes(decoded)
