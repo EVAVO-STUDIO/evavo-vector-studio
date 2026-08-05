@@ -31,11 +31,9 @@ jobs:
 
           import base64
           import hashlib
-          import io
           import json
-          import tarfile
           import zlib
-          from pathlib import Path
+          from pathlib import Path, PurePosixPath
 
           root = Path.cwd()
           payload = root / "ops/reviewed/vector-vercel-bootstrap-payload"
@@ -47,39 +45,63 @@ jobs:
 
           inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
           uncompressed = inflater.decompress(decoded)
-          uncompressed += inflater.flush()
+          try:
+              uncompressed += inflater.flush()
+          except zlib.error:
+              pass
           tar_path = Path("/tmp/vector-bootstrap-inspection/recovered.tar")
           tar_path.write_bytes(uncompressed)
 
           recovered = []
           rejected = []
-          try:
-              archive = tarfile.open(fileobj=io.BytesIO(uncompressed), mode="r:")
-          except Exception as error:
-              archive = None
-              rejected.append({"stage": "open", "error": type(error).__name__, "message": str(error)[:500]})
-          if archive is not None:
-              with archive:
-                  for member in archive.getmembers():
-                      if not member.isfile() or member.name.startswith("/") or ".." in Path(member.name).parts:
-                          rejected.append({"member": member.name, "reason": "unsafe-or-non-file"})
-                          continue
-                      source = archive.extractfile(member)
-                      if source is None:
-                          rejected.append({"member": member.name, "reason": "missing-body"})
-                          continue
-                      data = source.read()
-                      if len(data) != member.size:
-                          rejected.append({"member": member.name, "reason": "truncated", "expected": member.size, "actual": len(data)})
-                          continue
-                      target = Path("/tmp/vector-bootstrap-inspection/recovered") / member.name
-                      target.parent.mkdir(parents=True, exist_ok=True)
-                      target.write_bytes(data)
-                      recovered.append({
-                          "member": member.name,
-                          "bytes": len(data),
-                          "sha256": hashlib.sha256(data).hexdigest(),
-                      })
+          offset = 0
+          zero_blocks = 0
+          while offset + 512 <= len(uncompressed):
+              header = uncompressed[offset:offset + 512]
+              offset += 512
+              if header == b"\0" * 512:
+                  zero_blocks += 1
+                  if zero_blocks >= 2:
+                      break
+                  continue
+              zero_blocks = 0
+              name = header[0:100].split(b"\0", 1)[0].decode("utf-8", "replace")
+              prefix = header[345:500].split(b"\0", 1)[0].decode("utf-8", "replace")
+              if prefix:
+                  name = f"{prefix}/{name}"
+              size_field = header[124:136].split(b"\0", 1)[0].strip() or b"0"
+              try:
+                  size = int(size_field, 8)
+              except ValueError:
+                  rejected.append({"member": name, "reason": "invalid-size", "offset": offset - 512})
+                  break
+              typeflag = header[156:157]
+              padded = ((size + 511) // 512) * 512
+              if offset + padded > len(uncompressed):
+                  rejected.append({
+                      "member": name,
+                      "reason": "truncated",
+                      "expectedBytes": size,
+                      "availableBytes": max(0, len(uncompressed) - offset),
+                      "offset": offset - 512,
+                  })
+                  break
+              data = uncompressed[offset:offset + size]
+              offset += padded
+              path = PurePosixPath(name)
+              safe = bool(name) and not path.is_absolute() and ".." not in path.parts
+              regular = typeflag in (b"\0", b"0", b"7")
+              if not safe or not regular:
+                  rejected.append({"member": name, "reason": "unsafe-or-non-file", "typeflag": typeflag.decode("ascii", "replace")})
+                  continue
+              target = Path("/tmp/vector-bootstrap-inspection/recovered") / Path(*path.parts)
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(data)
+              recovered.append({
+                  "member": name,
+                  "bytes": len(data),
+                  "sha256": hashlib.sha256(data).hexdigest(),
+              })
 
           report = {
               "partNames": [item.name for item in parts],
@@ -90,6 +112,7 @@ jobs:
               "gzipEof": inflater.eof,
               "unusedDataBytes": len(inflater.unused_data),
               "unconsumedTailBytes": len(inflater.unconsumed_tail),
+              "parsedTarBytes": offset,
               "recovered": recovered,
               "rejected": rejected,
           }
@@ -98,6 +121,8 @@ jobs:
               encoding="utf-8",
           )
           print(json.dumps(report, indent=2))
+          if not recovered:
+              raise SystemExit("No complete safe tar members were recovered")
           PY
 
       - name: Upload bounded inspection artifact
