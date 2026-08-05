@@ -38,7 +38,7 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
-          PAYLOAD_SHA256: c66389cb336a2707e1d3ee499cc8fe465c4dd369da549ff97fb694615eb93b4b
+          PAYLOAD_SHA256: fff6b029dfca84d93eccec62c8a102dde943de9a7bc27ed792a312c487c530b5
           PAYLOAD_BASE64_LENGTH: "72000"
         run: |
           set -euo pipefail
