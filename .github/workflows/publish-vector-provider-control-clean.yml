@@ -1,0 +1,386 @@
+name: Publish reviewed Vector provider control
+
+on:
+  push:
+    branches:
+      - agent/vector-provider-control-clean-20260805
+    paths:
+      - "ops/reviewed/vector-provider-control-clean.ready"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: publish-reviewed-vector-provider-control
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      BASE_MAIN: 0049bcab6a2c6922a5c314e0811f604c26fb6b9e
+      PAYLOAD_SHA256: 03c59087e68cb26cef077d7fd64aa6a5b51857b03ae299eb57042fe88533753f
+      PAYLOAD_BASE64_LENGTH: "80124"
+      PUBLICATION_BRANCH: agent/vector-provider-control-clean-20260805
+    steps:
+      - name: Check out exact reviewed publication request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/vector-provider-control-clean-20260805
+          fetch-depth: 50
+          persist-credentials: true
+
+      - name: Use the repository Node.js version without package-manager caching
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Verify exact base and materialize the reviewed source tree
+        id: materialize
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          current_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$current_main" = "$BASE_MAIN"
+          rm -rf /tmp/vector-provider-control-payload /tmp/vector-provider-control-validation
+          mkdir -p /tmp/vector-provider-control-payload
+          python - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import hashlib
+          import json
+          import os
+          import re
+          import tarfile
+          from pathlib import Path, PurePosixPath
+
+          root = Path.cwd().resolve()
+          payload_root = root / "ops/reviewed/vector-provider-control-payload"
+          expected_parts = [f"part-{index:02d}.txt" for index in range(1, 8)]
+          parts = sorted(payload_root.glob("part-*.txt"), key=lambda item: item.name)
+          names = [item.name for item in parts]
+          if names != expected_parts:
+              raise SystemExit(f"Unexpected payload parts: {names}")
+
+          encoded_parts = []
+          for item in parts:
+              compact = "".join(item.read_text(encoding="ascii").split())
+              if not compact or re.fullmatch(r"[A-Za-z0-9+/]*={0,2}", compact) is None:
+                  raise SystemExit(f"Invalid base64 payload part: {item.name}")
+              if len(compact) % 4 != 0 and item != parts[-1]:
+                  raise SystemExit(f"Non-final payload part is not quartet-aligned: {item.name}")
+              encoded_parts.append(compact)
+
+          encoded = "".join(encoded_parts)
+          if len(encoded) != int(os.environ["PAYLOAD_BASE64_LENGTH"]):
+              raise SystemExit(f"Unexpected payload base64 length: {len(encoded)}")
+          decoded = base64.b64decode(encoded, validate=True)
+          digest = hashlib.sha256(decoded).hexdigest()
+          if digest != os.environ["PAYLOAD_SHA256"]:
+              raise SystemExit(f"Payload digest mismatch: {digest}")
+
+          destination = Path("/tmp/vector-provider-control-payload").resolve()
+          archive_path = destination / "payload.tar.gz"
+          archive_path.write_bytes(decoded)
+          with tarfile.open(archive_path, "r:gz") as archive:
+              members = archive.getmembers()
+              for member in members:
+                  member_path = PurePosixPath(member.name)
+                  if (
+                      not member.isfile()
+                      or member_path.is_absolute()
+                      or ".." in member_path.parts
+                  ):
+                      raise SystemExit(f"Unsafe payload member: {member.name}")
+                  target = (destination / Path(*member_path.parts)).resolve()
+                  target.relative_to(destination)
+              archive.extractall(destination, filter="data")
+
+          manifest_path = destination / "manifest.json"
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          expected_files = {
+              ".github/workflows/quality.yml",
+              ".github/workflows/vector-provider-control-dispatch.yml",
+              ".github/workflows/vector-vercel-production-deployment.yml",
+              ".github/workflows/vector-vercel-project-provisioning.yml",
+              ".github/workflows/vercel-deployment-contract.yml",
+              "apps/web/public/hub/evavo-vector-studio.deployment.json",
+              "docs/API.md",
+              "docs/PROVIDER-CONTROL.md",
+              "docs/VERCEL-DEPLOYMENT-PLAN-RECEIPTS.md",
+              "docs/VERCEL-DEPLOYMENT.md",
+              "docs/VERCEL-PROVISIONING-PLAN-RECEIPTS.md",
+              "package.json",
+              "schemas/provider-control-request-v1.schema.json",
+              "scripts/check-provider-control-contract.mjs",
+              "scripts/check-runtime-guard-contract.mjs",
+              "scripts/check-vercel-deployment-contract.mjs",
+              "scripts/check-vercel-deployment-plan-receipt-contract.mjs",
+              "scripts/check-vercel-production-deployment-contract.mjs",
+              "scripts/check-vercel-project-provisioning-contract.mjs",
+              "scripts/deploy-vector-studio-vercel.mjs",
+              "scripts/plan-vector-studio-vercel-provisioning.mjs",
+              "scripts/provision-vector-studio-vercel.mjs",
+              "scripts/resolve-provider-control-request.mjs",
+              "scripts/verify-live-capability-discovery.mjs",
+          }
+          expected_deletions = {
+              ".github/workflows/export-exact-source.yml",
+              "ops/reviewed/export-exact-source.ready",
+          }
+          if manifest.get("version") != "vector-provider-control-payload-v1":
+              raise SystemExit("Unexpected provider-control payload version")
+          if manifest.get("baseCommit") != os.environ["BASE_MAIN"]:
+              raise SystemExit("Provider-control payload is not bound to the expected main commit")
+          files = manifest.get("files")
+          deletions = manifest.get("deletions")
+          if not isinstance(files, list) or {item.get("path") for item in files} != expected_files:
+              raise SystemExit("Provider-control payload file set drifted")
+          if not isinstance(deletions, list) or set(deletions) != expected_deletions:
+              raise SystemExit("Provider-control payload deletion set drifted")
+          for item in files:
+              source = destination / "files" / item["path"]
+              data = source.read_bytes()
+              if len(data) != item.get("bytes"):
+                  raise SystemExit(f"Payload byte length mismatch: {item['path']}")
+              if hashlib.sha256(data).hexdigest() != item.get("sha256"):
+                  raise SystemExit(f"Payload digest mismatch: {item['path']}")
+          PY
+
+          git worktree add --detach /tmp/vector-provider-control-validation "$BASE_MAIN"
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import shutil
+          from pathlib import Path
+
+          payload = Path("/tmp/vector-provider-control-payload")
+          worktree = Path("/tmp/vector-provider-control-validation")
+          manifest = json.loads((payload / "manifest.json").read_text(encoding="utf-8"))
+          for item in manifest["files"]:
+              relative = Path(item["path"])
+              source = payload / "files" / relative
+              target = worktree / relative
+              target.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(source, target)
+          for relative_value in manifest["deletions"]:
+              target = worktree / relative_value
+              if target.exists() or target.is_symlink():
+                  target.unlink()
+          PY
+
+          python - <<'PY'
+          from __future__ import annotations
+
+          import subprocess
+          from pathlib import Path
+
+          worktree = Path("/tmp/vector-provider-control-validation")
+          expected = {
+              ".github/workflows/export-exact-source.yml",
+              ".github/workflows/quality.yml",
+              ".github/workflows/vector-provider-control-dispatch.yml",
+              ".github/workflows/vector-vercel-production-deployment.yml",
+              ".github/workflows/vector-vercel-project-provisioning.yml",
+              ".github/workflows/vercel-deployment-contract.yml",
+              "apps/web/public/hub/evavo-vector-studio.deployment.json",
+              "docs/API.md",
+              "docs/PROVIDER-CONTROL.md",
+              "docs/VERCEL-DEPLOYMENT-PLAN-RECEIPTS.md",
+              "docs/VERCEL-DEPLOYMENT.md",
+              "docs/VERCEL-PROVISIONING-PLAN-RECEIPTS.md",
+              "ops/reviewed/export-exact-source.ready",
+              "package.json",
+              "schemas/provider-control-request-v1.schema.json",
+              "scripts/check-provider-control-contract.mjs",
+              "scripts/check-runtime-guard-contract.mjs",
+              "scripts/check-vercel-deployment-contract.mjs",
+              "scripts/check-vercel-deployment-plan-receipt-contract.mjs",
+              "scripts/check-vercel-production-deployment-contract.mjs",
+              "scripts/check-vercel-project-provisioning-contract.mjs",
+              "scripts/deploy-vector-studio-vercel.mjs",
+              "scripts/plan-vector-studio-vercel-provisioning.mjs",
+              "scripts/provision-vector-studio-vercel.mjs",
+              "scripts/resolve-provider-control-request.mjs",
+              "scripts/verify-live-capability-discovery.mjs",
+          }
+          lines = subprocess.check_output(
+              ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+              cwd=worktree,
+              text=True,
+          ).splitlines()
+          actual = {line[3:] for line in lines}
+          if actual != expected:
+              raise SystemExit(f"Reviewed source changes drifted: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
+          PY
+          git -C /tmp/vector-provider-control-validation diff --check
+
+      - name: Activate exact pnpm through Corepack
+        id: pnpm
+        if: steps.materialize.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.14.0 --activate
+          test "$(pnpm --version)" = "10.14.0"
+
+      - name: Run dependency-free contracts and provider self-tests
+        id: source
+        if: steps.pnpm.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        working-directory: /tmp/vector-provider-control-validation
+        run: |
+          set -euo pipefail
+          for check in scripts/check-*.mjs; do node "$check"; done
+          node scripts/resolve-provider-control-request.mjs --self-test
+          node scripts/provision-vector-studio-vercel.mjs --self-test
+          node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test
+          node scripts/deploy-vector-studio-vercel.mjs --self-test
+          node scripts/verify-live-capability-discovery.mjs --self-test
+          git diff --check
+
+      - name: Install exact dependencies
+        id: install
+        if: steps.source.outcome == 'success'
+        continue-on-error: true
+        working-directory: /tmp/vector-provider-control-validation
+        run: pnpm install --frozen-lockfile
+
+      - name: Run complete repository validation
+        id: quality
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        working-directory: /tmp/vector-provider-control-validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm check
+          git diff --check
+          rm -rf .turbo .ci
+          rm -f apps/web/next-env.d.ts apps/web/tsconfig.tsbuildinfo
+
+      - name: Create one-parent reviewed commit
+        id: commit
+        if: steps.quality.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          worktree=/tmp/vector-provider-control-validation
+          current_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$current_main" = "$BASE_MAIN"
+          git -C "$worktree" config user.name "EVAVO reviewed publisher"
+          git -C "$worktree" config user.email "evavo.studio@gmail.com"
+          git -C "$worktree" add -A
+          git -C "$worktree" diff --cached --check
+          python - <<'PY'
+          from __future__ import annotations
+
+          import subprocess
+          from pathlib import Path
+
+          worktree = Path("/tmp/vector-provider-control-validation")
+          expected = {
+              ".github/workflows/export-exact-source.yml",
+              ".github/workflows/quality.yml",
+              ".github/workflows/vector-provider-control-dispatch.yml",
+              ".github/workflows/vector-vercel-production-deployment.yml",
+              ".github/workflows/vector-vercel-project-provisioning.yml",
+              ".github/workflows/vercel-deployment-contract.yml",
+              "apps/web/public/hub/evavo-vector-studio.deployment.json",
+              "docs/API.md",
+              "docs/PROVIDER-CONTROL.md",
+              "docs/VERCEL-DEPLOYMENT-PLAN-RECEIPTS.md",
+              "docs/VERCEL-DEPLOYMENT.md",
+              "docs/VERCEL-PROVISIONING-PLAN-RECEIPTS.md",
+              "ops/reviewed/export-exact-source.ready",
+              "package.json",
+              "schemas/provider-control-request-v1.schema.json",
+              "scripts/check-provider-control-contract.mjs",
+              "scripts/check-runtime-guard-contract.mjs",
+              "scripts/check-vercel-deployment-contract.mjs",
+              "scripts/check-vercel-deployment-plan-receipt-contract.mjs",
+              "scripts/check-vercel-production-deployment-contract.mjs",
+              "scripts/check-vercel-project-provisioning-contract.mjs",
+              "scripts/deploy-vector-studio-vercel.mjs",
+              "scripts/plan-vector-studio-vercel-provisioning.mjs",
+              "scripts/provision-vector-studio-vercel.mjs",
+              "scripts/resolve-provider-control-request.mjs",
+              "scripts/verify-live-capability-discovery.mjs",
+          }
+          actual = set(
+              subprocess.check_output(
+                  ["git", "diff", "--cached", "--name-only"],
+                  cwd=worktree,
+                  text=True,
+              ).splitlines()
+          )
+          if actual != expected:
+              raise SystemExit(f"Staged reviewed changes drifted: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
+          PY
+          tree="$(git -C "$worktree" write-tree)"
+          commit="$(printf '%s\n' 'feat(release): harden Vector provider control and Vercel bootstrap' | git -C "$worktree" commit-tree "$tree" -p "$BASE_MAIN")"
+          test "$(git -C "$worktree" rev-parse "$commit^")" = "$BASE_MAIN"
+          git push origin "$commit:refs/heads/$PUBLICATION_BRANCH" \
+            --force-with-lease="refs/heads/$PUBLICATION_BRANCH:$GITHUB_SHA"
+          echo "sha=$commit" >> "$GITHUB_OUTPUT"
+
+      - name: Publish reviewed publication status
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          MATERIALIZE_OUTCOME: ${{ steps.materialize.outcome }}
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          QUALITY_OUTCOME: ${{ steps.quality.outcome }}
+          COMMIT_OUTCOME: ${{ steps.commit.outcome }}
+        with:
+          script: |
+            const passed = [
+              process.env.MATERIALIZE_OUTCOME,
+              process.env.PNPM_OUTCOME,
+              process.env.SOURCE_OUTCOME,
+              process.env.INSTALL_OUTCOME,
+              process.env.QUALITY_OUTCOME,
+              process.env.COMMIT_OUTCOME,
+            ].every((value) => value === "success");
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? "success" : "failure",
+              context: "ci/vector-provider-control-publisher",
+              description: passed
+                ? "reviewed Vector provider-control commit published"
+                : "Vector provider-control publication failed",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Enforce reviewed publication result
+        if: always()
+        env:
+          MATERIALIZE_OUTCOME: ${{ steps.materialize.outcome }}
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          QUALITY_OUTCOME: ${{ steps.quality.outcome }}
+          COMMIT_OUTCOME: ${{ steps.commit.outcome }}
+        shell: bash
+        run: |
+          test "$MATERIALIZE_OUTCOME" = "success"
+          test "$PNPM_OUTCOME" = "success"
+          test "$SOURCE_OUTCOME" = "success"
+          test "$INSTALL_OUTCOME" = "success"
+          test "$QUALITY_OUTCOME" = "success"
+          test "$COMMIT_OUTCOME" = "success"
