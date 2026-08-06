@@ -17,7 +17,7 @@ concurrency:
 
 env:
   REVIEWED_BASE_SHA: 056e538e804f452f84b4f532e9042fd475378b8f
-  VALIDATED_BRANCH: agent/vector-provider-hardening-validated-20260806
+  VALIDATED_BRANCH: agent/vector-provider-hardening-blobs-20260806
   PATCH_SHA256: df520753dd1fdf58f2f20568c0152bafeebc81cba4af031d175b34d8b945cd47
 
 jobs:
@@ -39,7 +39,6 @@ jobs:
           package-manager-cache: false
 
       - name: Materialize reviewed patch on exact current main
-        id: materialize
         shell: bash
         run: |
           set -euo pipefail
@@ -131,28 +130,60 @@ jobs:
           git diff --exit-code
           git diff --cached --check
 
-      - name: Publish clean validated branch and prove remote identity
+      - name: Publish validated non-workflow blobs
         id: publish
         shell: bash
         run: |
           set -euo pipefail
+
+          git restore --source="$REVIEWED_BASE_SHA" --staged --worktree -- \
+            .github/workflows/vector-vercel-production-deployment.yml \
+            .github/workflows/vector-vercel-project-provisioning.yml \
+            .github/workflows/vercel-deployment-contract.yml
+
+          python - <<'PY'
+          import subprocess
+
+          expected = {
+              "apps/web/public/hub/evavo-vector-studio.deployment.json",
+              "docs/PROVIDER-CONTROL.md",
+              "docs/VERCEL-DEPLOYMENT.md",
+              "scripts/check-vercel-deployment-contract.mjs",
+              "scripts/check-vercel-production-deployment-contract.mjs",
+              "scripts/check-vercel-project-provisioning-contract.mjs",
+              "scripts/deploy-vector-studio-vercel.mjs",
+              "scripts/provision-vector-studio-vercel.mjs",
+          }
+          actual = set(
+              subprocess.check_output(
+                  ["git", "diff", "--cached", "--name-only"], text=True
+              ).splitlines()
+          )
+          if actual != expected:
+              raise SystemExit(
+                  f"Unexpected blob-export changeset. Missing={sorted(expected-actual)} Extra={sorted(actual-expected)}"
+              )
+          PY
+          git diff --cached --check
+          git diff --exit-code
+
           git config user.name "EVAVO reviewed publisher"
           git config user.email "evavo.studio@gmail.com"
-          git commit -m "feat(release): harden Vector Vercel provider control"
+          git commit -m "feat(release): materialize validated Vector provider blobs"
           published_sha="$(git rev-parse HEAD)"
           git push origin "HEAD:refs/heads/$VALIDATED_BRANCH"
           remote_sha="$(git ls-remote origin "refs/heads/$VALIDATED_BRANCH" | cut -f1)"
           test "$remote_sha" = "$published_sha"
           echo "published_sha=$published_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Publish successful validation status
+      - name: Publish successful blob-validation status
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           PUBLISHED_SHA: ${{ steps.publish.outputs.published_sha }}
         with:
           script: |
             if (!/^[a-f0-9]{40}$/.test(process.env.PUBLISHED_SHA || "")) {
-              core.setFailed("Validated provider commit SHA was not produced");
+              core.setFailed("Validated provider blob commit SHA was not produced");
               return;
             }
             await github.rest.repos.createCommitStatus({
@@ -160,7 +191,7 @@ jobs:
               repo: context.repo.repo,
               sha: process.env.PUBLISHED_SHA,
               state: "success",
-              context: "ci/vector-provider-hardening-review",
-              description: "provider hardening validated from exact current main",
+              context: "ci/vector-provider-hardening-blobs",
+              description: "provider source blobs validated against complete reviewed tree",
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
