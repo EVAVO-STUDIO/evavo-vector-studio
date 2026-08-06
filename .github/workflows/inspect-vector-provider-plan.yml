@@ -1,0 +1,120 @@
+name: Inspect Vector provider provisioning plan
+
+on:
+  push:
+    branches:
+      - agent/vector-provider-execution-20260806
+    paths:
+      - "ops/reviewed/vector-provider-plan.ready"
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: inspect-vector-provider-plan
+  cancel-in-progress: false
+
+env:
+  EXPECTED_MAIN_SHA: acddfe850966e7178cbc08fba00c8e6652bb7446
+
+jobs:
+  plan:
+    environment: vector-studio-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.EXPECTED_MAIN_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Reconfirm exact current main
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { data } = await github.rest.repos.getBranch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: "main",
+            });
+            if (data.commit.sha !== process.env.EXPECTED_MAIN_SHA) {
+              core.setFailed(`main advanced to ${data.commit.sha}`);
+            }
+
+      - name: Use repository Node.js version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Activate exact pnpm through Corepack
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.14.0 --activate
+          test "$(pnpm --version)" = "10.14.0"
+          git diff --exit-code
+
+      - name: Verify provider source boundary
+        run: |
+          node scripts/check-lockfile-integrity.mjs
+          node scripts/check-vercel-project-provisioning-contract.mjs
+          node scripts/provision-vector-studio-vercel.mjs --self-test
+          node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test
+
+      - name: Run bounded no-mutation provider plan
+        id: plan
+        continue-on-error: true
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          EVAVO_CLIENT_APP_LAUNCH_SECRET: ${{ secrets.EVAVO_CLIENT_APP_LAUNCH_SECRET }}
+          EVAVO_VECTOR_PRIVATE_SIGNING_SECRET: ${{ secrets.EVAVO_VECTOR_PRIVATE_SIGNING_SECRET }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          VECTOR_API_TOKEN: ${{ secrets.VECTOR_API_TOKEN }}
+          VECTOR_WORKER_API_TOKEN: ${{ secrets.VECTOR_WORKER_API_TOKEN }}
+        run: |
+          mkdir -p .ci
+          node scripts/plan-vector-studio-vercel-provisioning.mjs \
+            --commit "$EXPECTED_MAIN_SHA" \
+            --out .ci/vector-provider-plan.json
+
+      - name: Preserve bounded provider receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vector-provider-plan-${{ env.EXPECTED_MAIN_SHA }}
+          path: .ci/vector-provider-plan.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
+      - name: Publish provider-plan status
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PLAN_OUTCOME: ${{ steps.plan.outcome }}
+        with:
+          script: |
+            const passed = process.env.PLAN_OUTCOME === "success";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: process.env.EXPECTED_MAIN_SHA,
+              state: passed ? "success" : "failure",
+              context: "deploy/vector-provider-plan-inspection",
+              description: passed
+                ? "bounded provider plan passed without mutation"
+                : "bounded provider plan produced diagnostic gaps",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Enforce provider plan result
+        if: always()
+        env:
+          PLAN_OUTCOME: ${{ steps.plan.outcome }}
+        run: test "$PLAN_OUTCOME" = "success"
