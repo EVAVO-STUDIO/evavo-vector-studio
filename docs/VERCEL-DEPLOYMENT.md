@@ -4,18 +4,22 @@ Vector Studio is designed to run as a protected standalone Next.js application a
 
 ## Live platform audit
 
-The connected EVAVO Vercel team was inspected on 31 July 2026.
+The connected EVAVO Vercel team was inspected again on 6 August 2026.
 
 ```text
 Team                    EVAVO's projects
-Expected project        evavo-vector-studio
-Project found           no
-Production domain       not provisioned
-Deployment evidence     unavailable
+Project                 evavo-vector-studio
+Project ID              prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L
+Minimum state           project-created
+Framework               not yet configured
+Root directory          not yet configured
+Node.js                  24.x provider default; expected 22.x
+Production domain       not attached
+Production deployments  0
 Client release          withheld
 ```
 
-No `evavo-vector-studio` Vercel project exists in the connected team. The repository must therefore remain a `federated-candidate`, and the hub must not issue a Vector Studio launch token.
+The standalone Vercel project now exists, but project existence is not deployment readiness. The next governed transaction must reconcile the framework, exact Node.js version, monorepo commands, production environment and domain before a separate exact-commit deployment is attempted.
 
 ## Provisioning credential preflight
 
@@ -73,9 +77,9 @@ Both modes require an exact current `main` commit. Apply additionally requires t
 provision-evavo-vector-studio
 ```
 
-The transaction is idempotent. An existing project is reused only when its GitHub link belongs to `EVAVO-STUDIO/evavo-vector-studio`; a same-name project linked elsewhere fails closed. Build settings are reconciled to the committed monorepo contract, environment values are upserted only for production, the four signing/API authorities must remain distinct, and receipts contain only key names and bounded state.
+The transaction is idempotent and is pinned to project ID `prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L`. If that project disappears or its identity changes, apply fails closed instead of creating an unreviewed replacement. The project may remain API-managed with no Git integration because exact production deployments are repository-owned transactions. If a Git link is present, it must belong to `EVAVO-STUDIO/evavo-vector-studio`; a conflicting link fails closed. Framework, Node.js 22.x and build settings are reconciled to the committed monorepo contract, environment values are upserted only for production, the four signing/API authorities must remain distinct, and receipts contain only key names and bounded state.
 
-This provisioner does not deploy. Exact production deployment, deployment readiness polling, live private-response proof, durable replay proof, and one-time owner/client launch evidence remain separate governed transactions. A newly assigned but unverified domain leaves apply incomplete rather than claiming release readiness. Client release remains withheld throughout.
+This provisioner does not deploy. Exact production deployment, deployment readiness polling, live private-response proof, durable replay proof, and one-time owner/client launch evidence remain separate governed transactions. After attachment, the provisioner calls Vercel’s project-domain verification endpoint. A domain that remains unverified leaves apply incomplete rather than claiming release readiness. Client release remains withheld throughout.
 
 ## Governed exact production deployment
 
@@ -91,7 +95,7 @@ also has `plan` and `apply` modes. Both require an exact current `main` commit a
 deploy-evavo-vector-studio
 ```
 
-Before deployment, the workflow performs a no-mutation project plan with all seven separated credentials and creates a complete exact-source proof. The deployer then creates or reuses only a production deployment associated with the requested 40-character Git SHA. It polls bounded Vercel state until the deployment is `READY`, fails closed on `ERROR`, `CANCELED` or `BLOCKED`, proves the exact commit again from deployment metadata, and requires `vector.evavo.com.au` as the production alias.
+Before deployment, the workflow performs a no-mutation project plan with all seven separated credentials and creates a complete exact-source proof. The deployer accepts the pinned project in API-managed mode or with an exact matching GitHub link, rejects conflicting source-control links, and requires Node.js 22.x plus the governed monorepo settings. It then creates or reuses only a production deployment associated with the requested 40-character Git SHA. Deployment metadata records the repository’s current public source visibility truthfully; the deployed application remains private through its signed-launch and app-session boundary. It polls bounded Vercel state until the deployment is `READY`, fails closed on `ERROR`, `CANCELED` or `BLOCKED`, proves the exact commit again from deployment metadata, and requires `vector.evavo.com.au` as the production alias.
 
 After the alias is proven, the workflow runs the live private-response verifier and the public runtime verifier against the canonical HTTPS origin. It preserves bounded source, deployment, header and runtime receipts without storing secret values. A READY deployment alone is not release evidence if the commit, production alias, response headers or public capabilities are unproven.
 
@@ -113,10 +117,11 @@ These two profiles prove the deployed Vector Studio receiver, durable replay bou
 
 ## Project settings
 
-Create the future project with:
+The governed project is reconciled to:
 
 ```text
 Repository          EVAVO-STUDIO/evavo-vector-studio
+Project ID          prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L
 Project name        evavo-vector-studio
 Root directory      apps/web
 Framework           Next.js

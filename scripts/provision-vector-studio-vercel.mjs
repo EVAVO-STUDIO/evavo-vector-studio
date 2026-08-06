@@ -6,12 +6,14 @@ import path from "node:path";
 const CONTRACT_VERSION = "1.0";
 const TEAM_ID = "team_ckKLAnG3MGJK0mMpIVpjbogl";
 const TEAM_SLUG = "evavos-projects";
+const PROJECT_ID = "prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L";
 const PROJECT_NAME = "evavo-vector-studio";
 const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio";
 const REPOSITORY_ORG = "EVAVO-STUDIO";
 const REPOSITORY_NAME = "evavo-vector-studio";
 const ROOT_DIRECTORY = "apps/web";
 const FRAMEWORK = "nextjs";
+const NODE_VERSION = "22.x";
 const INSTALL_COMMAND = "cd ../.. && pnpm install --frozen-lockfile";
 const BUILD_COMMAND = "cd ../.. && pnpm exec turbo run build --filter=@evavo/vector-web";
 const PRODUCTION_ORIGIN = "https://vector.evavo.com.au";
@@ -191,6 +193,7 @@ function safeProject(project) {
     id: typeof project.id === "string" ? project.id : null,
     name: typeof project.name === "string" ? project.name : null,
     framework: typeof project.framework === "string" ? project.framework : null,
+    nodeVersion: typeof project.nodeVersion === "string" ? project.nodeVersion : null,
     rootDirectory: typeof project.rootDirectory === "string" ? project.rootDirectory : null,
     installCommand: typeof project.installCommand === "string" ? project.installCommand : null,
     buildCommand: typeof project.buildCommand === "string" ? project.buildCommand : null,
@@ -208,24 +211,46 @@ function projectSettings(project) {
   const safe = safeProject(project);
   return Object.freeze({
     frameworkMatched: safe?.framework === FRAMEWORK,
+    nodeVersionMatched: safe?.nodeVersion === NODE_VERSION,
     rootDirectoryMatched: safe?.rootDirectory === ROOT_DIRECTORY,
     installCommandMatched: safe?.installCommand === INSTALL_COMMAND,
     buildCommandMatched: safe?.buildCommand === BUILD_COMMAND,
   });
 }
 
+function projectIdentity(project) {
+  const safe = safeProject(project);
+  const idMatched = safe?.id === PROJECT_ID;
+  const nameMatched = safe?.name === PROJECT_NAME;
+  return Object.freeze({
+    idMatched,
+    nameMatched,
+    passed: idMatched && nameMatched,
+  });
+}
+
 function gitLinkState(project) {
   const link = safeProject(project)?.link;
-  if (!link) return Object.freeze({ present: false, matched: false });
+  if (!link) {
+    return Object.freeze({
+      present: false,
+      matched: false,
+      acceptable: true,
+      mode: "api-managed",
+    });
+  }
   const typeMatched = link.type === "github";
   const orgMatched = !link.org || link.org.toLowerCase() === REPOSITORY_ORG.toLowerCase();
   const repoMatched =
     !link.repo ||
     link.repo.toLowerCase() === REPOSITORY_NAME.toLowerCase() ||
     link.repo.toLowerCase() === REPOSITORY.toLowerCase();
+  const matched = typeMatched && orgMatched && repoMatched;
   return Object.freeze({
     present: true,
-    matched: typeMatched && orgMatched && repoMatched,
+    matched,
+    acceptable: matched,
+    mode: matched ? "git-linked" : "conflicting",
   });
 }
 
@@ -309,7 +334,10 @@ function apiClient(token, fetchImpl = fetch) {
       }
     }
     if (response.status === 404 && options.allow404) {
-      return Object.freeze({ status: response.status, value: null });
+      return Object.freeze({ status: response.status, value: null, ok: true });
+    }
+    if (!response.ok && options.allowFailure) {
+      return Object.freeze({ status: response.status, value, ok: false });
     }
     if (!response.ok) {
       fail(
@@ -323,14 +351,14 @@ function apiClient(token, fetchImpl = fetch) {
         },
       );
     }
-    return Object.freeze({ status: response.status, value });
+    return Object.freeze({ status: response.status, value, ok: true });
   }
   return Object.freeze({ request });
 }
 
 async function inspectProject(client) {
   const projectResponse = await client.request(
-    `/v9/projects/${encodeURIComponent(PROJECT_NAME)}?teamId=${encodeURIComponent(TEAM_ID)}`,
+    `/v9/projects/${encodeURIComponent(PROJECT_ID)}?teamId=${encodeURIComponent(TEAM_ID)}`,
     { allow404: true },
   );
   const project = projectResponse.value;
@@ -340,7 +368,7 @@ async function inspectProject(client) {
       domain: null,
     });
   }
-  const projectId = typeof project.id === "string" ? project.id : PROJECT_NAME;
+  const projectId = typeof project.id === "string" ? project.id : PROJECT_ID;
   const domainResponse = await client.request(
     `/v9/projects/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(PRODUCTION_DOMAIN)}?teamId=${encodeURIComponent(TEAM_ID)}`,
     { allow404: true },
@@ -353,6 +381,7 @@ async function inspectProject(client) {
 
 function planFromInspection(inspection) {
   const exists = Boolean(inspection.project);
+  const identity = projectIdentity(inspection.project);
   const settings = projectSettings(inspection.project);
   const gitLink = gitLinkState(inspection.project);
   const domainVerified = inspection.domain?.verified === true;
@@ -360,8 +389,11 @@ function planFromInspection(inspection) {
     project: Object.freeze({
       exists,
       id: safeProject(inspection.project)?.id ?? null,
-      action: exists ? "reconcile-settings" : "create",
+      expectedId: PROJECT_ID,
+      identity,
+      action: exists ? "reconcile-settings" : "restore-required",
       settings,
+      sourceControlMode: gitLink.mode,
       gitLink,
     }),
     environment: Object.freeze({
@@ -380,36 +412,17 @@ function planFromInspection(inspection) {
   });
 }
 
-async function createProject(client) {
-  const response = await client.request(
-    `/v10/projects?teamId=${encodeURIComponent(TEAM_ID)}`,
-    {
-      method: "POST",
-      body: {
-        name: PROJECT_NAME,
-        framework: FRAMEWORK,
-        rootDirectory: ROOT_DIRECTORY,
-        installCommand: INSTALL_COMMAND,
-        buildCommand: BUILD_COMMAND,
-        gitRepository: {
-          type: "github",
-          repo: REPOSITORY,
-        },
-        previewDeploymentsDisabled: true,
-        enablePreviewFeedback: false,
-        enableProductionFeedback: false,
-      },
-    },
-  );
-  if (!response.value || typeof response.value.id !== "string") {
-    fail("VERCEL_PROVISION_PROJECT_RESPONSE_INVALID", "Vercel did not return a project identifier.");
-  }
-  return response.value;
-}
-
 async function reconcileProject(client, project) {
+  const identity = projectIdentity(project);
+  if (!identity.passed) {
+    fail(
+      "VERCEL_PROVISION_PROJECT_IDENTITY_CONFLICT",
+      "The existing Vercel project does not match the pinned project identifier and name.",
+      identity,
+    );
+  }
   const link = gitLinkState(project);
-  if (!link.present || !link.matched) {
+  if (link.present && !link.matched) {
     fail(
       "VERCEL_PROVISION_PROJECT_GIT_CONFLICT",
       "An existing project with the expected name is not linked to the governed GitHub repository.",
@@ -425,6 +438,7 @@ async function reconcileProject(client, project) {
       method: "PATCH",
       body: {
         framework: FRAMEWORK,
+        nodeVersion: NODE_VERSION,
         rootDirectory: ROOT_DIRECTORY,
         installCommand: INSTALL_COMMAND,
         buildCommand: BUILD_COMMAND,
@@ -488,10 +502,29 @@ async function ensureDomain(client, projectId) {
       `/v9/projects/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(PRODUCTION_DOMAIN)}?teamId=${encodeURIComponent(TEAM_ID)}`,
     );
   }
+  let verificationAttempted = false;
+  let verificationAccepted = response.value?.verified === true;
+  if (!verificationAccepted) {
+    verificationAttempted = true;
+    const verification = await client.request(
+      `/v9/projects/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(PRODUCTION_DOMAIN)}/verify?teamId=${encodeURIComponent(TEAM_ID)}`,
+      { method: "POST", allowFailure: true },
+    );
+    verificationAccepted = verification.ok && verification.value?.verified === true;
+    if (verificationAccepted) {
+      response = verification;
+    } else {
+      response = await client.request(
+        `/v9/projects/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(PRODUCTION_DOMAIN)}?teamId=${encodeURIComponent(TEAM_ID)}`,
+      );
+    }
+  }
   return Object.freeze({
     created,
     name: typeof response.value?.name === "string" ? response.value.name : PRODUCTION_DOMAIN,
     verified: response.value?.verified === true,
+    verificationAttempted,
+    verificationAccepted,
     verificationRequired: response.value?.verified !== true,
     verificationRecordCount: Array.isArray(response.value?.verification)
       ? response.value.verification.length
@@ -554,7 +587,27 @@ async function runSelfTest() {
   assert.equal(duplicate.passed, false);
   assert.equal(duplicate.authoritySeparationPassed, false);
   const plan = planFromInspection({ project: null, domain: null });
-  assert.equal(plan.project.action, "create");
+  assert.equal(plan.project.action, "restore-required");
+  assert.equal(plan.project.sourceControlMode, "api-managed");
+  const apiManagedProject = {
+    id: PROJECT_ID,
+    name: PROJECT_NAME,
+    framework: FRAMEWORK,
+    nodeVersion: NODE_VERSION,
+    rootDirectory: ROOT_DIRECTORY,
+    installCommand: INSTALL_COMMAND,
+    buildCommand: BUILD_COMMAND,
+  };
+  assert.equal(projectIdentity(apiManagedProject).passed, true);
+  assert.equal(projectSettings(apiManagedProject).nodeVersionMatched, true);
+  assert.equal(gitLinkState(apiManagedProject).acceptable, true);
+  assert.equal(gitLinkState(apiManagedProject).mode, "api-managed");
+  const conflictingLink = gitLinkState({
+    ...apiManagedProject,
+    link: { type: "github", org: "another-org", repo: "another-repo" },
+  });
+  assert.equal(conflictingLink.acceptable, false);
+  assert.equal(conflictingLink.mode, "conflicting");
   assert.equal(plan.environment.keys.includes("VECTOR_HUB_REPLAY_MODE"), true);
   const payload = buildEnvironmentPayload(valid);
   assert.equal(payload.length, ENVIRONMENT_SPECS.length);
@@ -612,24 +665,27 @@ async function main() {
 
   if (options.mode === "apply") {
     let project = inspection.project;
-    let projectCreated = false;
+    const projectCreated = false;
     if (!project) {
-      project = await createProject(client);
-      projectCreated = true;
-    } else {
-      project = await reconcileProject(client, project);
+      fail(
+        "VERCEL_PROVISION_PROJECT_MISSING",
+        "The pinned Vector Studio Vercel project is missing and must be restored through an explicitly reviewed identity update.",
+        { expectedProjectId: PROJECT_ID, expectedProjectName: PROJECT_NAME },
+      );
     }
+    project = await reconcileProject(client, project);
     const projectId = safeProject(project)?.id;
     if (!projectId) fail("VERCEL_PROVISION_PROJECT_ID_MISSING", "The Vercel project has no identifier.");
     await upsertEnvironment(client, projectId, credentials.values);
     const domain = await ensureDomain(client, projectId);
     inspection = await inspectProject(client);
+    const finalIdentity = projectIdentity(inspection.project);
     const finalSettings = projectSettings(inspection.project);
     const finalLink = gitLinkState(inspection.project);
     const reconciled =
+      finalIdentity.passed &&
       Object.values(finalSettings).every(Boolean) &&
-      finalLink.present &&
-      finalLink.matched;
+      finalLink.acceptable;
     if (!reconciled) {
       fail(
         "VERCEL_PROVISION_PROJECT_RECONCILIATION_FAILED",
@@ -652,7 +708,9 @@ async function main() {
     commit: options.commit,
     mode: options.mode,
     team: Object.freeze({ id: TEAM_ID, slug: TEAM_SLUG }),
+    expectedProjectId: PROJECT_ID,
     expectedProject: PROJECT_NAME,
+    expectedNodeVersion: NODE_VERSION,
     expectedDomain: PRODUCTION_DOMAIN,
     startedAt: new Date(startedAtMs).toISOString(),
     completedAt: new Date(completedAtMs).toISOString(),

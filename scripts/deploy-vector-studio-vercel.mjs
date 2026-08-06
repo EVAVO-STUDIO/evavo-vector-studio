@@ -4,14 +4,16 @@ import path from "node:path";
 
 const CONTRACT_VERSION = "1.0";
 const TEAM_ID = "team_ckKLAnG3MGJK0mMpIVpjbogl";
+const PROJECT_ID = "prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L";
 const PROJECT_NAME = "evavo-vector-studio";
 const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio";
 const REPOSITORY_ORG = "EVAVO-STUDIO";
 const REPOSITORY_NAME = "evavo-vector-studio";
-const GITHUB_REPOSITORY_VISIBILITY = "private";
+const GITHUB_REPOSITORY_VISIBILITY = "public";
 const PRODUCTION_DOMAIN = "vector.evavo.com.au";
 const ROOT_DIRECTORY = "apps/web";
 const FRAMEWORK = "nextjs";
+const NODE_VERSION = "22.x";
 const INSTALL_COMMAND = "cd ../.. && pnpm install --frozen-lockfile";
 const BUILD_COMMAND = "cd ../.. && pnpm exec turbo run build --filter=@evavo/vector-web";
 const APPLY_CONFIRMATION = "deploy-evavo-vector-studio";
@@ -223,6 +225,7 @@ function safeProject(project) {
     id: typeof project.id === "string" ? project.id : null,
     name: typeof project.name === "string" ? project.name : null,
     framework: typeof project.framework === "string" ? project.framework : null,
+    nodeVersion: typeof project.nodeVersion === "string" ? project.nodeVersion : null,
     rootDirectory: typeof project.rootDirectory === "string" ? project.rootDirectory : null,
     installCommand: typeof project.installCommand === "string" ? project.installCommand : null,
     buildCommand: typeof project.buildCommand === "string" ? project.buildCommand : null,
@@ -240,27 +243,43 @@ function safeProject(project) {
   });
 }
 
+function sourceControlState(project) {
+  const link = safeProject(project)?.link;
+  if (!link) {
+    return Object.freeze({
+      present: false,
+      acceptable: true,
+      mode: "api-managed",
+    });
+  }
+  const typeMatched = link.type === "github";
+  const orgMatched =
+    !link.org || link.org.toLowerCase() === REPOSITORY_ORG.toLowerCase();
+  const repoMatched =
+    !link.repo ||
+    link.repo.toLowerCase() === REPOSITORY_NAME.toLowerCase() ||
+    link.repo.toLowerCase() === REPOSITORY.toLowerCase();
+  const acceptable = typeMatched && orgMatched && repoMatched;
+  return Object.freeze({
+    present: true,
+    acceptable,
+    mode: acceptable ? "git-linked" : "conflict",
+  });
+}
+
 function projectReady(project) {
   const safe = safeProject(project);
-  if (!safe?.id || safe.name !== PROJECT_NAME) return false;
+  if (safe?.id !== PROJECT_ID || safe.name !== PROJECT_NAME) return false;
   if (
     safe.framework !== FRAMEWORK ||
+    safe.nodeVersion !== NODE_VERSION ||
     safe.rootDirectory !== ROOT_DIRECTORY ||
     safe.installCommand !== INSTALL_COMMAND ||
     safe.buildCommand !== BUILD_COMMAND
   ) {
     return false;
   }
-  if (!safe.link || safe.link.type !== "github") return false;
-  if (safe.link.org && safe.link.org.toLowerCase() !== REPOSITORY_ORG.toLowerCase()) return false;
-  if (
-    safe.link.repo &&
-    safe.link.repo.toLowerCase() !== REPOSITORY_NAME.toLowerCase() &&
-    safe.link.repo.toLowerCase() !== REPOSITORY.toLowerCase()
-  ) {
-    return false;
-  }
-  return true;
+  return sourceControlState(project).acceptable;
 }
 
 function deploymentList(value) {
@@ -325,7 +344,7 @@ function safeDeployment(value) {
 
 async function inspect(client, commit) {
   const projectResponse = await client.request(
-    `/v9/projects/${encodeURIComponent(PROJECT_NAME)}?teamId=${encodeURIComponent(TEAM_ID)}`,
+    `/v9/projects/${encodeURIComponent(PROJECT_ID)}?teamId=${encodeURIComponent(TEAM_ID)}`,
     { allow404: true },
   );
   const project = projectResponse.value;
@@ -337,7 +356,7 @@ async function inspect(client, commit) {
     });
   }
 
-  const projectId = safeProject(project)?.id ?? PROJECT_NAME;
+  const projectId = safeProject(project)?.id ?? PROJECT_ID;
   const domainResponse = await client.request(
     `/v9/projects/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(PRODUCTION_DOMAIN)}?teamId=${encodeURIComponent(TEAM_ID)}`,
     { allow404: true },
@@ -376,6 +395,7 @@ function planFromInspection(inspection, commit) {
       exists: Boolean(inspection.project),
       id: safeProject(inspection.project)?.id ?? null,
       ready: projectReady(inspection.project),
+      sourceControl: sourceControlState(inspection.project),
     }),
     domain: Object.freeze({
       exists: Boolean(inspection.domain),
@@ -399,7 +419,7 @@ function deploymentBoundaryBlockers(plan) {
     if (!plan.project.ready) {
       blockers.push(Object.freeze({
         code: "VERCEL_DEPLOY_PROJECT_NOT_READY",
-        message: "The Vercel project does not match the governed GitHub and monorepo build contract.",
+        message: "The Vercel project does not match the governed source-control and monorepo build contract.",
         details: null,
       }));
     }
@@ -461,7 +481,7 @@ async function createDeployment(client, projectId, commit) {
           framework: FRAMEWORK,
           installCommand: INSTALL_COMMAND,
           buildCommand: BUILD_COMMAND,
-          nodeVersion: "22.x",
+          nodeVersion: NODE_VERSION,
         },
       },
     },
@@ -621,7 +641,7 @@ async function writePlanFailureReceipt(options, error) {
 async function runSelfTest() {
   assert.equal(credentialState({ VERCEL_TOKEN: "v".repeat(40) }).passed, true);
   assert.equal(credentialState({ VERCEL_TOKEN: "short" }).passed, false);
-  assert.equal(GITHUB_REPOSITORY_VISIBILITY, "private");
+  assert.equal(GITHUB_REPOSITORY_VISIBILITY, "public");
   const deployment = safeDeployment({
     id: "dpl_test",
     url: "example.vercel.app",
@@ -637,9 +657,10 @@ async function runSelfTest() {
   const plan = planFromInspection(
     {
       project: {
-        id: "prj_test",
+        id: PROJECT_ID,
         name: PROJECT_NAME,
         framework: FRAMEWORK,
+        nodeVersion: NODE_VERSION,
         rootDirectory: ROOT_DIRECTORY,
         installCommand: INSTALL_COMMAND,
         buildCommand: BUILD_COMMAND,
@@ -651,7 +672,49 @@ async function runSelfTest() {
     "a".repeat(40),
   );
   assert.equal(plan.action, "reuse-ready-exact-commit");
+  assert.equal(plan.project.sourceControl.mode, "git-linked");
   assert.equal(deploymentBoundaryBlockers(plan).length, 0);
+
+  const apiManagedPlan = planFromInspection(
+    {
+      project: {
+        id: PROJECT_ID,
+        name: PROJECT_NAME,
+        framework: FRAMEWORK,
+        nodeVersion: NODE_VERSION,
+        rootDirectory: ROOT_DIRECTORY,
+        installCommand: INSTALL_COMMAND,
+        buildCommand: BUILD_COMMAND,
+      },
+      domain: { verified: true },
+      deployments: [],
+    },
+    "c".repeat(40),
+  );
+  assert.equal(apiManagedPlan.project.ready, true);
+  assert.equal(apiManagedPlan.project.sourceControl.mode, "api-managed");
+  assert.equal(deploymentBoundaryBlockers(apiManagedPlan).length, 0);
+
+  const conflictingLinkPlan = planFromInspection(
+    {
+      project: {
+        id: PROJECT_ID,
+        name: PROJECT_NAME,
+        framework: FRAMEWORK,
+        nodeVersion: NODE_VERSION,
+        rootDirectory: ROOT_DIRECTORY,
+        installCommand: INSTALL_COMMAND,
+        buildCommand: BUILD_COMMAND,
+        link: { type: "github", org: "another-org", repo: "another-repo" },
+      },
+      domain: { verified: true },
+      deployments: [],
+    },
+    "d".repeat(40),
+  );
+  assert.equal(conflictingLinkPlan.project.ready, false);
+  assert.equal(conflictingLinkPlan.project.sourceControl.mode, "conflict");
+  assert.equal(deploymentBoundaryBlockers(conflictingLinkPlan)[0].code, "VERCEL_DEPLOY_PROJECT_NOT_READY");
 
   const missingProject = planFromInspection(
     { project: null, domain: null, deployments: [] },
@@ -754,6 +817,7 @@ async function main() {
     repository: REPOSITORY,
     commit: options.commit,
     mode: options.mode,
+    expectedProjectId: PROJECT_ID,
     projectId: plan.project.id,
     productionDomain: PRODUCTION_DOMAIN,
     startedAt: new Date(activeStartedAtMs).toISOString(),

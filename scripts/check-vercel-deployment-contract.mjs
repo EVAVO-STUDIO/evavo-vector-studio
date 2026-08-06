@@ -113,11 +113,14 @@ requireTokens(files.healthRoute, sources.healthRoute, [
 if (deploymentManifest?.schemaVersion !== 2) errors.push("Deployment metadata must use schema version 2.");
 if (deploymentManifest?.productionOrigin !== "https://vector.evavo.com.au") errors.push("Deployment metadata must retain the canonical private origin.");
 if (deploymentManifest?.platform?.provider !== "vercel") errors.push("Deployment metadata must identify Vercel as the staged provider.");
+if (deploymentManifest?.platform?.projectId !== "prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L") errors.push("Deployment metadata must retain the pinned Vercel project identifier.");
 if (deploymentManifest?.platform?.projectRoot !== "apps/web") errors.push("Deployment metadata must identify apps/web as the project root.");
+if (deploymentManifest?.platform?.expectedNodeVersion !== "22.x") errors.push("Deployment metadata must retain the governed Node.js version.");
+if (deploymentManifest?.platform?.sourceControlMode !== "api-managed-or-exact-github") errors.push("Deployment metadata must retain the governed source-control modes.");
 if (deploymentManifest?.platform?.installCommand !== "pnpm install --frozen-lockfile") errors.push("Deployment metadata must retain frozen installation.");
 if (deploymentManifest?.promotionState?.status !== "staged") errors.push("Deployment promotion must remain staged.");
 if (deploymentManifest?.promotionState?.clientReleaseEligible !== false) errors.push("Client release must remain ineligible.");
-if (deploymentManifest?.promotionState?.vercelProjectProvisioned !== false) errors.push("The unprovisioned Vercel project cannot be marked verified.");
+if (deploymentManifest?.promotionState?.vercelProjectProvisioned !== true) errors.push("The created Vercel project must remain recorded while later release evidence stays staged.");
 if (deploymentManifest?.promotionState?.productionDomainProvisioned !== false) errors.push("The production domain cannot be marked verified.");
 if (deploymentManifest?.largeObjectTransport?.providerDirectPrivateStorageConfigured !== false) errors.push("Provider-direct private storage must remain unavailable until implemented.");
 for (const [key, value] of Object.entries(deploymentManifest?.promotionState ?? {})) {
@@ -133,7 +136,10 @@ if (!Array.isArray(turbo?.tasks?.build?.dependsOn) || !turbo.tasks.build.depends
 }
 
 requireTokens(files.docs, sources.docs, [
-  "No `evavo-vector-studio` Vercel project exists",
+  "Project ID              prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L",
+  "Minimum state           project-created",
+  "Production deployments  0",
+  "The standalone Vercel project now exists",
   "vector-vercel-provisioning-preflight.yml",
   "all seven required repository secrets absent",
   "performed no Vercel mutation",
@@ -145,6 +151,13 @@ requireTokens(files.docs, sources.docs, [
 ]);
 requireTokens(files.workflow, sources.workflow, [
   "Vector Studio Vercel deployment contract",
+  "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+  "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+  "actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3",
+  "node-version-file: .nvmrc",
+  "corepack prepare pnpm@10.14.0 --activate",
+  "node scripts/check-lockfile-integrity.mjs",
+  "git diff --exit-code",
   "node scripts/check-vercel-deployment-contract.mjs",
   "node scripts/check-private-response-contract.mjs",
   "pnpm install --frozen-lockfile",
@@ -153,6 +166,8 @@ requireTokens(files.workflow, sources.workflow, [
 ]);
 forbidTokens(files.workflow, sources.workflow, [
   "pnpm --filter @evavo/vector-web build",
+  "pnpm/action-setup@",
+  "node-version: 22",
 ]);
 requireTokens(files.preflightWorkflow, sources.preflightWorkflow, [
   "Vector Studio Vercel provisioning preflight",
@@ -202,6 +217,7 @@ process.stdout.write(`${JSON.stringify({
   productionOrigin: "https://vector.evavo.com.au",
   promotionStatus: "staged",
   clientReleaseEligible: false,
+  vercelProjectProvisioned: true,
   providerDirectPrivateStorageConfigured: false,
   provisioningPreflightGoverned: true,
   checkedFiles: [...checkedFiles].sort(),
