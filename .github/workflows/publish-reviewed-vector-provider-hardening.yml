@@ -1,0 +1,205 @@
+name: Publish reviewed Vector provider hardening
+
+on:
+  push:
+    branches:
+      - agent/vector-provider-hardening-20260806
+    paths:
+      - "ops/reviewed/vector-provider-hardening.ready"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: publish-reviewed-vector-provider-hardening
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out exact reviewed branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/vector-provider-hardening-20260806
+          fetch-depth: 5
+          persist-credentials: true
+
+      - name: Use repository Node.js version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Apply hash-verified reviewed patch
+        id: patch
+        continue-on-error: true
+        shell: bash
+        env:
+          PATCH_SHA256: df520753dd1fdf58f2f20568c0152bafeebc81cba4af031d175b34d8b945cd47
+        run: |
+          set -euo pipefail
+          base64 --decode ops/reviewed/vector-provider-hardening.patch.gz.b64 \
+            | gzip -dc > /tmp/vector-provider-hardening.patch
+          test "$(sha256sum /tmp/vector-provider-hardening.patch | cut -d' ' -f1)" = "$PATCH_SHA256"
+          git apply --check /tmp/vector-provider-hardening.patch
+          git apply /tmp/vector-provider-hardening.patch
+          rm -f .github/workflows/publish-reviewed-vector-provider-hardening.yml
+          rm -f ops/reviewed/vector-provider-hardening.patch.gz.b64
+          rm -f ops/reviewed/vector-provider-hardening.ready
+          git add -A
+
+      - name: Verify exact reviewed changeset
+        id: changeset
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --cached --check
+          python - <<'PY'
+          import subprocess
+
+          expected = {
+              ".github/workflows/publish-reviewed-vector-provider-hardening.yml",
+              ".github/workflows/vector-vercel-production-deployment.yml",
+              ".github/workflows/vector-vercel-project-provisioning.yml",
+              ".github/workflows/vercel-deployment-contract.yml",
+              "apps/web/public/hub/evavo-vector-studio.deployment.json",
+              "docs/PROVIDER-CONTROL.md",
+              "docs/VERCEL-DEPLOYMENT.md",
+              "ops/reviewed/vector-provider-hardening.patch.gz.b64",
+              "ops/reviewed/vector-provider-hardening.ready",
+              "scripts/check-vercel-deployment-contract.mjs",
+              "scripts/check-vercel-production-deployment-contract.mjs",
+              "scripts/check-vercel-project-provisioning-contract.mjs",
+              "scripts/deploy-vector-studio-vercel.mjs",
+              "scripts/provision-vector-studio-vercel.mjs",
+          }
+          actual = {
+              line.split("\t", 1)[1]
+              for line in subprocess.check_output(
+                  ["git", "diff", "--cached", "--name-status"], text=True
+              ).splitlines()
+          }
+          if actual != expected:
+              raise SystemExit(
+                  f"Unexpected reviewed changeset. Missing={sorted(expected-actual)} Extra={sorted(actual-expected)}"
+              )
+          PY
+          test ! -e .github/workflows/publish-reviewed-vector-provider-hardening.yml
+          test ! -e ops/reviewed/vector-provider-hardening.patch.gz.b64
+          test ! -e ops/reviewed/vector-provider-hardening.ready
+
+      - name: Activate exact pnpm through Corepack
+        id: pnpm
+        if: steps.changeset.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.14.0 --activate
+          test "$(pnpm --version)" = "10.14.0"
+          git diff --exit-code
+
+      - name: Run provider contracts and self-tests
+        id: source
+        if: steps.pnpm.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/check-lockfile-integrity.mjs
+          node scripts/check-vercel-deployment-contract.mjs
+          node scripts/check-vercel-project-provisioning-contract.mjs
+          node scripts/check-vercel-production-deployment-contract.mjs
+          node scripts/provision-vector-studio-vercel.mjs --self-test
+          node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test
+          node scripts/deploy-vector-studio-vercel.mjs --self-test
+
+      - name: Install exact dependencies
+        id: install
+        if: steps.source.outcome == 'success'
+        continue-on-error: true
+        run: pnpm install --frozen-lockfile
+
+      - name: Run exhaustive repository validation
+        id: quality
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm check
+          git diff --exit-code
+          git diff --cached --check
+
+      - name: Publish reviewed source commit
+        id: publish
+        if: steps.quality.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "EVAVO reviewed publisher"
+          git config user.email "evavo.studio@gmail.com"
+          git commit -m "feat(release): harden Vector Vercel provider control"
+          git push origin HEAD:agent/vector-provider-hardening-20260806
+
+      - name: Publish validation status
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PATCH_OUTCOME: ${{ steps.patch.outcome }}
+          CHANGESET_OUTCOME: ${{ steps.changeset.outcome }}
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          QUALITY_OUTCOME: ${{ steps.quality.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+        with:
+          script: |
+            const outcomes = [
+              process.env.PATCH_OUTCOME,
+              process.env.CHANGESET_OUTCOME,
+              process.env.PNPM_OUTCOME,
+              process.env.SOURCE_OUTCOME,
+              process.env.INSTALL_OUTCOME,
+              process.env.QUALITY_OUTCOME,
+              process.env.PUBLISH_OUTCOME,
+            ];
+            const passed = outcomes.every((value) => value === "success");
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? "success" : "failure",
+              context: "ci/vector-provider-hardening-review",
+              description: passed
+                ? "reviewed provider hardening validated and published"
+                : "reviewed provider hardening publication failed",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Enforce publication result
+        if: always()
+        env:
+          PATCH_OUTCOME: ${{ steps.patch.outcome }}
+          CHANGESET_OUTCOME: ${{ steps.changeset.outcome }}
+          PNPM_OUTCOME: ${{ steps.pnpm.outcome }}
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          QUALITY_OUTCOME: ${{ steps.quality.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+        shell: bash
+        run: |
+          test "$PATCH_OUTCOME" = "success"
+          test "$CHANGESET_OUTCOME" = "success"
+          test "$PNPM_OUTCOME" = "success"
+          test "$SOURCE_OUTCOME" = "success"
+          test "$INSTALL_OUTCOME" = "success"
+          test "$QUALITY_OUTCOME" = "success"
+          test "$PUBLISH_OUTCOME" = "success"
