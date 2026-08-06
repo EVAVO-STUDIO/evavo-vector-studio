@@ -1,0 +1,140 @@
+name: Vector Studio Vercel project v1
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "ops/provider/vector-studio-vercel-project-v1.json"
+      - "scripts/verify-vector-studio-vercel-project-v1.mjs"
+      - "scripts/check-vector-studio-vercel-project-v1.mjs"
+      - "docs/VERCEL-PROJECT-STATE-V1.md"
+      - ".github/workflows/vector-studio-vercel-project-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: vector-studio-vercel-project-v1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Use the repository Node.js version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Confirm exact current main
+        id: main_head
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { data } = await github.rest.repos.getBranch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: "main",
+            });
+            const currentMain = data.commit.sha;
+            const localHead = (
+              await exec.getExecOutput("git", ["rev-parse", "HEAD"], { silent: true })
+            ).stdout.trim();
+            if (!/^[a-f0-9]{40}$/.test(currentMain) || currentMain !== localHead) {
+              throw new Error("Vercel project v1 validation is not on exact current main.");
+            }
+            core.setOutput("sha", currentMain);
+
+      - name: Verify Vercel project source contract
+        id: contract
+        continue-on-error: true
+        run: node scripts/check-vector-studio-vercel-project-v1.mjs
+
+      - name: Verify Vercel project verifier self-test
+        id: selftest
+        continue-on-error: true
+        run: node scripts/verify-vector-studio-vercel-project-v1.mjs --self-test
+
+      - name: Verify clean repository
+        id: clean
+        if: always()
+        continue-on-error: true
+        run: |
+          git diff --exit-code
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Confirm validated head remains current main
+        id: final_main
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          VALIDATED_SHA: ${{ steps.main_head.outputs.sha }}
+        with:
+          script: |
+            const validated = String(process.env.VALIDATED_SHA || "").trim();
+            const { data } = await github.rest.repos.getBranch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: "main",
+            });
+            const currentMain = data.commit.sha;
+            const localHead = (
+              await exec.getExecOutput("git", ["rev-parse", "HEAD"], { silent: true })
+            ).stdout.trim();
+            if (validated !== currentMain || validated !== localHead) {
+              throw new Error("Vercel project v1 validation no longer represents current main.");
+            }
+
+      - name: Publish Vercel project status
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
+          SELFTEST_OUTCOME: ${{ steps.selftest.outcome }}
+          CLEAN_OUTCOME: ${{ steps.clean.outcome }}
+          FINAL_MAIN_OUTCOME: ${{ steps.final_main.outcome }}
+        with:
+          script: |
+            const passed = [
+              process.env.CONTRACT_OUTCOME,
+              process.env.SELFTEST_OUTCOME,
+              process.env.CLEAN_OUTCOME,
+              process.env.FINAL_MAIN_OUTCOME,
+            ].every((value) => value === "success");
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? "success" : "failure",
+              context: "provider/vector-project-v1",
+              description: passed
+                ? "bounded Vector Vercel project contract passed"
+                : "Vector Vercel project contract failed",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Enforce Vercel project result
+        if: always()
+        env:
+          CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
+          SELFTEST_OUTCOME: ${{ steps.selftest.outcome }}
+          CLEAN_OUTCOME: ${{ steps.clean.outcome }}
+          FINAL_MAIN_OUTCOME: ${{ steps.final_main.outcome }}
+        run: |
+          test "$CONTRACT_OUTCOME" = "success"
+          test "$SELFTEST_OUTCOME" = "success"
+          test "$CLEAN_OUTCOME" = "success"
+          test "$FINAL_MAIN_OUTCOME" = "success"

@@ -1,0 +1,47 @@
+{
+  "contractVersion": "1.0",
+  "provider": "vercel",
+  "team": {
+    "id": "team_ckKLAnG3MGJK0mMpIVpjbogl",
+    "slug": "evavos-projects"
+  },
+  "project": {
+    "id": "prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L",
+    "name": "evavo-vector-studio",
+    "repository": "EVAVO-STUDIO/evavo-vector-studio",
+    "rootDirectory": "apps/web",
+    "framework": "nextjs",
+    "nodeVersion": "22.x",
+    "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+    "buildCommand": "cd ../.. && pnpm exec turbo run build --filter=@evavo/vector-web"
+  },
+  "production": {
+    "origin": "https://vector.evavo.com.au",
+    "domain": "vector.evavo.com.au"
+  },
+  "requiredEnvironmentKeys": [
+    "VECTOR_PUBLIC_ORIGIN",
+    "VECTOR_HUB_REPLAY_MODE",
+    "EVAVO_CLIENT_APP_LAUNCH_SECRET",
+    "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
+    "UPSTASH_REDIS_REST_URL",
+    "UPSTASH_REDIS_REST_TOKEN",
+    "VECTOR_API_TOKEN",
+    "VECTOR_WORKER_API_TOKEN"
+  ],
+  "stateModel": [
+    "source-ready",
+    "project-created",
+    "project-configured",
+    "domain-verified",
+    "production-deployed",
+    "owner-launch-proven",
+    "client-launch-proven",
+    "replay-rejection-proven",
+    "release-promoted"
+  ],
+  "currentMinimumState": "project-created",
+  "clientReleaseEligible": false,
+  "mutationAuthority": "repository-owned-guarded-workflows",
+  "secretValuesIncluded": false
+}
