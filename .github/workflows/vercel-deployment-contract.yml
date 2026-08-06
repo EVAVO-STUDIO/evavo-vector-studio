@@ -32,6 +32,7 @@ on:
       - "scripts/verify-live-deployment.mjs"
       - "scripts/verify-live-capability-discovery.mjs"
       - "docs/VERCEL-DEPLOYMENT.md"
+      - "docs/PROVIDER-CONTROL.md"
       - "docs/VERCEL-PROVISIONING-PLAN-RECEIPTS.md"
       - "docs/VERCEL-DEPLOYMENT-PLAN-RECEIPTS.md"
       - "docs/PRIVATE-APPLICATION-SECURITY.md"
@@ -68,6 +69,7 @@ on:
       - "scripts/verify-live-deployment.mjs"
       - "scripts/verify-live-capability-discovery.mjs"
       - "docs/VERCEL-DEPLOYMENT.md"
+      - "docs/PROVIDER-CONTROL.md"
       - "docs/VERCEL-PROVISIONING-PLAN-RECEIPTS.md"
       - "docs/VERCEL-DEPLOYMENT-PLAN-RECEIPTS.md"
       - "docs/PRIVATE-APPLICATION-SECURITY.md"
@@ -89,20 +91,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+      - name: Check out exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.1.0
+      - name: Use the repository Node.js version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          version: 10.14.0
+          node-version-file: .nvmrc
+          package-manager-cache: false
 
-      - name: Use Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
+      - name: Activate exact pnpm through Corepack
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.14.0 --activate
+          test "$(pnpm --version)" = "10.14.0"
+          git diff --exit-code
+
+      - name: Verify lockfile integrity
+        run: node scripts/check-lockfile-integrity.mjs
 
       - name: Verify source deployment contract
         run: node scripts/check-vercel-deployment-contract.mjs
@@ -146,9 +156,12 @@ jobs:
       - name: Build private web application through Turbo
         run: pnpm exec turbo run build --filter=@evavo/vector-web
 
+      - name: Verify no tracked source mutation
+        run: git diff --exit-code
+
       - name: Publish deployment proof status
         if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.0.1
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const passed = "${{ job.status }}" === "success";

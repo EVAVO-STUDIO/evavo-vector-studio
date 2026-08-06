@@ -2,7 +2,7 @@
 
 ## Decision
 
-EVAVO Vector Studio is a protected standalone runtime. It requires its own Vercel project named `evavo-vector-studio`, linked to `EVAVO-STUDIO/evavo-vector-studio`, with `apps/web` as the Vercel root directory and `vector.evavo.com.au` as the canonical production domain.
+EVAVO Vector Studio is a protected standalone runtime. It requires its own Vercel project named `evavo-vector-studio`, owned by `EVAVO-STUDIO/evavo-vector-studio`, with `apps/web` as the Vercel root directory and `vector.evavo.com.au` as the canonical production domain.
 
 It must not be deployed inside the `next-website` Vercel project. The EVAVO Hub remains the central catalogue, assignment, release-policy and signed-launch authority; Vector Studio remains a separately deployed private application.
 
@@ -16,20 +16,21 @@ scripts/provision-vector-studio-vercel.mjs
 
 It already governs:
 
-- EVAVO team and project identity;
-- GitHub repository linkage;
-- `apps/web` root-directory configuration;
+- pinned EVAVO team and project identity (`prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L`);
+- an API-managed project by default, while accepting only an exact matching GitHub link when one is present;
+- fail-closed behavior when the pinned project is missing instead of creating an unreviewed replacement;
+- `apps/web` root-directory and Node.js 22.x configuration;
 - monorepo install and Turbo build commands;
 - idempotent project creation or safe settings reconciliation;
 - production environment-variable upserts;
 - authority separation;
 - durable Upstash replay configuration;
-- `vector.evavo.com.au` domain attachment;
+- `vector.evavo.com.au` domain attachment and verification attempts;
 - bounded, secret-free receipts;
 - explicit `plan` and protected `apply` modes;
 - no production deployment inside the provisioning transaction.
 
-Exact production deployment and live release proof remain a separate governed transaction.
+Exact production deployment and live release proof remain a separate governed transaction. The deployer accepts the pinned API-managed project, records the GitHub repository’s current public visibility in provider metadata, and rejects any conflicting source-control link.
 
 ## Required production authorities
 
@@ -69,7 +70,7 @@ Read access must not be represented as write access. When connected mutation cov
 1. Produce a green exact-head source proof.
 2. Run the read-only provisioning plan.
 3. Run protected provisioning apply for the same exact `main` commit.
-4. Confirm project, Git link, environment keys and domain state.
+4. Confirm project settings, API-managed or exact-match Git source mode, environment keys and domain state.
 5. Run the separate exact-commit production deployment transaction.
 6. Verify private headers, readiness and capabilities on the live host.
 7. Prove one-time owner and assigned-client launches and replay rejection.
