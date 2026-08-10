@@ -22,10 +22,14 @@ The four package binaries point to checked-in `.mjs` launch shims. The shims exi
 
 Compiled tests depend on same-package `build` and dependency `^build` tasks. Tests consume immutable `dist` output but declare no cache output of their own, preventing misleading “no output files found” warnings.
 
+## Retired one-time publishers
+
+One-time source migration workflows and their trigger markers are removed after their reviewed source is incorporated. Keeping those write-enabled publishers would create duplicate push-time jobs, stale setup paths and unnecessary repository mutation authority. The hygiene contract therefore fails if a retired `one-time-*.yml` workflow or its paired trigger marker returns. The permanent quality, readiness, Hub and deployment-contract workflows remain the supported evidence paths.
+
 ## Enforcement
 
 ```text
 pnpm hygiene:check
 ```
 
-The dependency-free guard checks the ignore policy, tracked-file boundary, temporary publisher removal, permanent readiness workflow, CLI bin map and shims, Turbo test semantics, and the focused readiness workflow gates. It records no secret values and performs no mutation.
+The dependency-free guard checks the ignore policy, tracked-file boundary, temporary publisher removal, retired one-time publisher removal, permanent readiness workflow, CLI bin map and shims, Turbo test semantics, and the focused readiness workflow gates. It records no secret values and performs no mutation.

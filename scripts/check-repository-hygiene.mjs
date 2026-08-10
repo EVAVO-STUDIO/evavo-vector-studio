@@ -124,6 +124,24 @@ const temporaryPaths = new Set([
   "ops/reviewed/align-test-isolation-contracts-v1.py",
   "ops/reviewed/vector-runtime-readiness-v1.ready",
 ]);
+const retiredPublicationPaths = new Set([
+  ".github/finalise-vercel-contract.trigger",
+  ".github/hosted-motion-limits.trigger",
+  ".github/hosted-route-repair.trigger",
+  ".github/hosted-ui-capabilities.trigger",
+  ".github/private-response-integration.trigger",
+  ".github/proof-redaction-repair.trigger",
+  ".github/release-proof-integration.trigger",
+  ".github/release-source-reconcile.trigger",
+  ".github/workflows/one-time-finalise-vercel-contract.yml",
+  ".github/workflows/one-time-hosted-motion-limits.yml",
+  ".github/workflows/one-time-hosted-route-repair.yml",
+  ".github/workflows/one-time-hosted-ui-capabilities.yml",
+  ".github/workflows/one-time-private-response-integration.yml",
+  ".github/workflows/one-time-proof-redaction-repair.yml",
+  ".github/workflows/one-time-release-proof-integration.yml",
+  ".github/workflows/one-time-release-source-reconcile.yml",
+]);
 const generatedTracked = tracked.filter((relativePath) =>
   relativePath.startsWith(".turbo/") ||
   relativePath.startsWith(".ci/") ||
@@ -135,6 +153,9 @@ const generatedTracked = tracked.filter((relativePath) =>
 for (const relativePath of generatedTracked) errors.push(`Generated repository state must not be tracked: ${relativePath}.`);
 for (const relativePath of tracked) {
   if (temporaryPaths.has(relativePath)) errors.push(`Superseded reviewed-publisher material must be absent: ${relativePath}.`);
+  if (retiredPublicationPaths.has(relativePath)) {
+    errors.push(`Retired one-time publication authority must be absent: ${relativePath}.`);
+  }
 }
 
 if (errors.length > 0) {
@@ -156,6 +177,7 @@ process.stdout.write(`${JSON.stringify({
   checkedInCliLaunchShims: Object.keys(shimTargets),
   turboTestOutputsRetained: false,
   temporaryPublisherAbsent: true,
+  retiredPublicationAuthoritiesAbsent: true,
   sensitiveValuesRecorded: false,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
