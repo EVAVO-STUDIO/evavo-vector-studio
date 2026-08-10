@@ -91,12 +91,24 @@ const expectedAuthorities = Object.freeze([
   "VECTOR_API_TOKEN",
   "VECTOR_WORKER_API_TOKEN",
 ]);
+const expectedApplicationEnvironment = Object.freeze([
+  "EVAVO_CLIENT_APP_LAUNCH_SECRET",
+  "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
+  "UPSTASH_REDIS_REST_URL",
+  "UPSTASH_REDIS_REST_TOKEN",
+  "VECTOR_API_TOKEN",
+  "VECTOR_WORKER_API_TOKEN",
+]);
 exactArray("runtime authority list", frozenStringArray(files.readiness, sources.readiness, "VECTOR_RUNTIME_AUTHORITY_KEYS"), expectedAuthorities);
 exactArray("provisioning authority list", frozenStringArray(files.provisioning, sources.provisioning, "AUTHORITY_KEYS"), expectedAuthorities);
-const requiredProvisioning = frozenStringArray(files.provisioning, sources.provisioning, "REQUIRED_SECRETS");
-for (const name of ["VERCEL_TOKEN", ...expectedAuthorities, "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"]) {
-  if (!requiredProvisioning.includes(name)) errors.push(`${files.provisioning} is missing governed provisioning credential ${name}.`);
-}
+exactArray("provider access list", frozenStringArray(files.provisioning, sources.provisioning, "PROVIDER_ACCESS_KEYS"), ["VERCEL_TOKEN"]);
+exactArray("application environment list", frozenStringArray(files.provisioning, sources.provisioning, "APPLICATION_ENVIRONMENT_KEYS"), expectedApplicationEnvironment);
+requireTokens(files.provisioning, sources.provisioning, [
+  "providerAccess:",
+  "applicationAuthorities:",
+  "providerOnlyInspectionSupported: true",
+  "applicationAuthoritiesRequiredForApply: true",
+]);
 
 requireTokens(files.readiness, sources.readiness, [
   'VECTOR_RUNTIME_READINESS_CONTRACT_VERSION = "1.0"',

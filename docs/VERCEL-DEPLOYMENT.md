@@ -21,7 +21,7 @@ Client release          withheld
 
 The standalone Vercel project now exists, but project existence is not deployment readiness. The next governed transaction must reconcile the framework, exact Node.js version, monorepo commands, production environment and domain before a separate exact-commit deployment is attempted.
 
-## Provisioning credential preflight
+## Provisioning provider preflight
 
 The read-only workflow:
 
@@ -29,19 +29,18 @@ The read-only workflow:
 .github/workflows/vector-vercel-provisioning-preflight.yml
 ```
 
-checks deployment readiness without creating a project, writing environment variables, assigning a domain, or deploying code. It verifies only:
+runs the canonical provisioning plan and independently enforces its bounded provider-inspection receipt. It does not create a project, write environment variables, assign a domain, deploy code, or retain provider response bodies.
 
-- required GitHub Actions secret names are populated;
-- minimum secret lengths and URL form;
-- the hub handoff, Vector session, machine API, and worker-control authorities are distinct;
-- `VERCEL_TOKEN` can read the expected EVAVO team;
-- whether `evavo-vector-studio` already exists;
-- no secret value is written to the report or logs.
+Provider access requires only `VERCEL_TOKEN`. With that single credential the plan can inspect:
 
-The preflight run against commit `3b6f3604c9abfcfaebb6d2507f5d709b128c7e8b` found all seven required repository secrets absent:
+- the exact pinned Vercel project identity;
+- framework, Node.js, root-directory, install-command and build-command state;
+- API-managed or exact matching GitHub source-control mode;
+- production-domain attachment and verification state.
+
+Application authorities remain a separate apply gate:
 
 ```text
-VERCEL_TOKEN
 EVAVO_CLIENT_APP_LAUNCH_SECRET
 EVAVO_VECTOR_PRIVATE_SIGNING_SECRET
 UPSTASH_REDIS_REST_URL
@@ -50,7 +49,9 @@ VECTOR_API_TOKEN
 VECTOR_WORKER_API_TOKEN
 ```
 
-That run performed no Vercel mutation and recorded no sensitive values. Project provisioning must remain blocked until the credentials are added through GitHub repository or environment secrets and the preflight passes. Reusing one secret for multiple authorities is not permitted.
+The preflight records only missing or invalid key names and bounded booleans. A provider inspection can pass while `readyToApply` remains false. In that state the receipt retains `VERCEL_PROVISION_APPLICATION_AUTHORITIES_INCOMPLETE`, project settings that still require reconciliation, and an unverified or absent domain without misreporting the provider inspection as unavailable.
+
+The earlier preflight against commit `3b6f3604c9abfcfaebb6d2507f5d709b128c7e8b` found all seven values absent, including provider access, so provider inspection was unavailable. That run performed no Vercel mutation and recorded no sensitive values. Reusing one secret for multiple signing or API authorities remains prohibited.
 
 The check can be rerun manually with `workflow_dispatch` or by updating:
 
@@ -68,8 +69,8 @@ The manual workflow:
 
 has two explicit modes:
 
-- `plan` validates all seven credentials, reads the EVAVO Vercel team, inspects the expected project and domain, and writes a bounded receipt without mutation;
-- `apply` creates or safely reconciles the project, upserts the production environment, and assigns `vector.evavo.com.au`.
+- `plan` requires only provider access, reads the exact EVAVO Vercel project and domain, writes a bounded canonical receipt without mutation, and reports application-authority gaps separately;
+- `apply` requires provider access plus all six valid, separated application authorities, safely reconciles the project, upserts the production environment, and assigns `vector.evavo.com.au`.
 
 Both modes require an exact current `main` commit. Apply additionally requires the protected `vector-studio-production` GitHub environment, a complete exact-commit source proof, and the literal confirmation:
 

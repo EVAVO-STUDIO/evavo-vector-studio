@@ -85,10 +85,11 @@ jobs:
       - name: Verify lockfile integrity
         run: node scripts/check-lockfile-integrity.mjs
 
-      - name: Verify provisioner and plan-wrapper self-tests
+      - name: Verify provisioner, wrapper and provider-receipt self-tests
         run: |
           node scripts/provision-vector-studio-vercel.mjs --self-test
           node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test
+          node scripts/enforce-vercel-provider-inspection-receipt.mjs --self-test
 
       - name: Create bounded no-mutation plan
         id: provision
@@ -106,6 +107,15 @@ jobs:
             --commit "${{ inputs.commit }}" \
             --out .ci/vector-vercel-provision-plan.json
 
+      - name: Enforce exact provider inspection receipt
+        id: provider_inspection
+        if: always()
+        continue-on-error: true
+        run: |
+          node scripts/enforce-vercel-provider-inspection-receipt.mjs \
+            --receipt .ci/vector-vercel-provision-plan.json \
+            --commit "${{ inputs.commit }}"
+
       - name: Preserve bounded plan
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -120,10 +130,10 @@ jobs:
         if: always()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          PROVISION_OUTCOME: ${{ steps.provision.outcome }}
+          INSPECTION_OUTCOME: ${{ steps.provider_inspection.outcome }}
         with:
           script: |
-            const passed = process.env.PROVISION_OUTCOME === "success";
+            const passed = process.env.INSPECTION_OUTCOME === "success";
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -131,16 +141,16 @@ jobs:
               state: passed ? "success" : "failure",
               context: "deploy/vector-studio-vercel-provision-plan",
               description: passed
-                ? "bounded Vercel project plan passed without mutation"
-                : "Vector Studio Vercel project plan failed",
+                ? "exact read-only Vercel provider inspection passed"
+                : "Vector Studio Vercel provider inspection failed",
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
       - name: Enforce plan result
         if: always()
         env:
-          PROVISION_OUTCOME: ${{ steps.provision.outcome }}
-        run: test "$PROVISION_OUTCOME" = "success"
+          INSPECTION_OUTCOME: ${{ steps.provider_inspection.outcome }}
+        run: test "$INSPECTION_OUTCOME" = "success"
 
   apply:
     if: ${{ inputs.mode == 'apply' }}
@@ -199,10 +209,11 @@ jobs:
       - name: Verify lockfile integrity
         run: node scripts/check-lockfile-integrity.mjs
 
-      - name: Verify provisioner and plan-wrapper self-tests
+      - name: Verify provisioner, wrapper and provider-receipt self-tests
         run: |
           node scripts/provision-vector-studio-vercel.mjs --self-test
           node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test
+          node scripts/enforce-vercel-provider-inspection-receipt.mjs --self-test
 
       - name: Create exact source proof before mutation
         run: |

@@ -79,6 +79,16 @@ Direct SVG headers include `X-Vector-Job-Id`, `X-Vector-Review-Required`, `X-Vec
 
 Expected trace errors include `RASTER_INPUT_TOO_LARGE`, `RASTER_MULTI_IMAGE_UNSUPPORTED`, `RASTER_PIXEL_LIMIT_EXCEEDED`, `RASTER_RUNTIME_BUSY` and `RASTER_RUNTIME_TIMEOUT`.
 
+The hosted trace runtime is bounded by:
+
+```dotenv
+VECTOR_TRACE_TIMEOUT_MS=45000
+VECTOR_TRACE_MAX_CONCURRENT=1
+VECTOR_TRACE_RETRY_AFTER_SECONDS=5
+```
+
+`VECTOR_TRACE_TIMEOUT_MS` accepts 5,000 to 180,000 milliseconds. `VECTOR_TRACE_MAX_CONCURRENT` accepts 1 to 4 active traces per runtime instance. When the concurrency ceiling is reached, the API returns `RASTER_RUNTIME_BUSY` with a bounded `Retry-After` header; timed-out work returns `RASTER_RUNTIME_TIMEOUT`. These limits protect the hosted synchronous route and do not reduce local CLI, MCP, batch or self-hosted worker capability.
+
 # Animated SVG API
 
 ## Motion service discovery

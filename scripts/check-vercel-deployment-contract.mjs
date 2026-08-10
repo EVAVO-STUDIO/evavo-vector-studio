@@ -38,7 +38,7 @@ function forbidTokens(relativePath, source, tokens) {
   }
 }
 
-const files = {
+const files = Object.freeze({
   rootPackage: "package.json",
   lockfile: "pnpm-lock.yaml",
   vercelConfig: "apps/web/vercel.json",
@@ -50,7 +50,8 @@ const files = {
   docs: "docs/VERCEL-DEPLOYMENT.md",
   workflow: ".github/workflows/vercel-deployment-contract.yml",
   preflightWorkflow: ".github/workflows/vector-vercel-provisioning-preflight.yml",
-};
+  providerEnforcer: "scripts/enforce-vercel-provider-inspection-receipt.mjs",
+});
 const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
 );
@@ -141,7 +142,9 @@ requireTokens(files.docs, sources.docs, [
   "Production deployments  0",
   "The standalone Vercel project now exists",
   "vector-vercel-provisioning-preflight.yml",
-  "all seven required repository secrets absent",
+  "Provider access requires only `VERCEL_TOKEN`",
+  "Application authorities remain a separate apply gate",
+  "provider inspection can pass while `readyToApply` remains false",
   "performed no Vercel mutation",
   "4.5 MB",
   "3,250,000",
@@ -157,21 +160,29 @@ requireTokens(files.workflow, sources.workflow, [
   "node-version-file: .nvmrc",
   "corepack prepare pnpm@10.14.0 --activate",
   "node scripts/check-lockfile-integrity.mjs",
-  "git diff --exit-code",
   "node scripts/check-vercel-deployment-contract.mjs",
+  "node scripts/check-vercel-project-provisioning-contract.mjs",
+  "node scripts/check-vercel-provisioning-plan-receipt-contract.mjs",
+  "node scripts/enforce-vercel-provider-inspection-receipt.mjs --self-test",
   "node scripts/check-private-response-contract.mjs",
   "pnpm install --frozen-lockfile",
   "pnpm --filter @evavo/vector-web typecheck",
   "pnpm exec turbo run build --filter=@evavo/vector-web",
+  "git diff --exit-code",
 ]);
 forbidTokens(files.workflow, sources.workflow, [
   "pnpm --filter @evavo/vector-web build",
   "pnpm/action-setup@",
   "node-version: 22",
 ]);
+
 requireTokens(files.preflightWorkflow, sources.preflightWorkflow, [
   "Vector Studio Vercel provisioning preflight",
   ".github/vector-vercel-preflight.trigger",
+  "Check out exact current main",
+  "Verify exact current main identity",
+  "node-version-file: .nvmrc",
+  "corepack prepare pnpm@10.14.0 --activate",
   'VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}',
   'EVAVO_CLIENT_APP_LAUNCH_SECRET: ${{ secrets.EVAVO_CLIENT_APP_LAUNCH_SECRET }}',
   'EVAVO_VECTOR_PRIVATE_SIGNING_SECRET: ${{ secrets.EVAVO_VECTOR_PRIVATE_SIGNING_SECRET }}',
@@ -179,12 +190,16 @@ requireTokens(files.preflightWorkflow, sources.preflightWorkflow, [
   'UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}',
   'VECTOR_API_TOKEN: ${{ secrets.VECTOR_API_TOKEN }}',
   'VECTOR_WORKER_API_TOKEN: ${{ secrets.VECTOR_WORKER_API_TOKEN }}',
-  'method: "GET"',
-  'mutationPerformed: false',
-  'sensitiveValuesRecorded: false',
+  "Create bounded no-mutation provider plan",
+  "node scripts/plan-vector-studio-vercel-provisioning.mjs",
+  "Enforce bounded provider inspection receipt",
+  "node scripts/enforce-vercel-provider-inspection-receipt.mjs",
+  "read-only Vector provider inspection passed",
   'context: "deploy/vector-studio-vercel-preflight"',
 ]);
 forbidTokens(files.preflightWorkflow, sources.preflightWorkflow, [
+  "node <<'NODE'",
+  "fetch(`https://api.vercel.com",
   "vercel project add",
   "vercel deploy",
   "vercel --prod",
@@ -192,6 +207,23 @@ forbidTokens(files.preflightWorkflow, sources.preflightWorkflow, [
   'method: "PATCH"',
   'method: "DELETE"',
   "contents: write",
+]);
+requireTokens(files.providerEnforcer, sources.providerEnforcer, [
+  'const ENFORCER_CHECK = "vector-studio-vercel-provider-inspection-receipt"',
+  'const PROJECT_ID = "prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L"',
+  "plan.inspectionAvailable !== true",
+  "project.identity?.passed !== true",
+  "project.gitLink?.acceptable !== true",
+  "receipt.deploymentPerformed !== false",
+  "receipt.mutationPerformed !== false",
+  "receipt.sensitiveValuesRecorded !== false",
+]);
+forbidTokens(files.providerEnforcer, sources.providerEnforcer, [
+  "fetch(",
+  "process.env.VERCEL_TOKEN",
+  'method: "POST"',
+  'method: "PATCH"',
+  'method: "DELETE"',
 ]);
 forbidTokens(files.vercelConfig, sources.vercelConfig, [
   '"installCommand": "npm install"',
@@ -202,7 +234,7 @@ if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-studio-vercel-deployment",
     ok: false,
-    contractVersion: "1.0",
+    contractVersion: "1.1",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -211,7 +243,7 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-vercel-deployment",
   ok: true,
-  contractVersion: "1.0",
+  contractVersion: "1.1",
   projectName: "evavo-vector-studio",
   projectRoot: "apps/web",
   productionOrigin: "https://vector.evavo.com.au",
@@ -219,6 +251,8 @@ process.stdout.write(`${JSON.stringify({
   clientReleaseEligible: false,
   vercelProjectProvisioned: true,
   providerDirectPrivateStorageConfigured: false,
-  provisioningPreflightGoverned: true,
+  providerOnlyInspectionGoverned: true,
+  applicationAuthoritiesSeparatedFromProviderAccess: true,
+  canonicalProviderReceiptEnforced: true,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);

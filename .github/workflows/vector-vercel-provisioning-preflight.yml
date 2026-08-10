@@ -18,18 +18,49 @@ concurrency:
 jobs:
   preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - name: Checkout exact main source
-        uses: actions/checkout@v4
-
-      - name: Use Node.js
-        uses: actions/setup-node@v4
+      - name: Check out exact current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 22
+          persist-credentials: false
+          fetch-depth: 1
 
-      - name: Check credentials and connected Vercel state without mutation
-        id: preflight
+      - name: Verify exact current main identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Use repository Node.js version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Activate exact pnpm through Corepack
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.14.0 --activate
+          test "$(pnpm --version)" = "10.14.0"
+          git diff --exit-code
+
+      - name: Verify provider inspection source boundary
+        run: |
+          node scripts/check-lockfile-integrity.mjs
+          node scripts/check-vercel-project-provisioning-contract.mjs
+          node scripts/check-vercel-provisioning-plan-receipt-contract.mjs
+          node scripts/provision-vector-studio-vercel.mjs --self-test
+          node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test
+          node scripts/enforce-vercel-provider-inspection-receipt.mjs --self-test
+
+      - name: Create bounded no-mutation provider plan
+        id: plan
         continue-on-error: true
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -43,160 +74,37 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .ci
-          node <<'NODE'
-          const fs = require("node:fs");
-          const crypto = require("node:crypto");
+          node scripts/plan-vector-studio-vercel-provisioning.mjs \
+            --commit "$GITHUB_SHA" \
+            --out .ci/vector-vercel-provisioning-preflight.json
 
-          const TEAM_ID = "team_ckKLAnG3MGJK0mMpIVpjbogl";
-          const TEAM_SLUG = "evavos-projects";
-          const PROJECT_NAME = "evavo-vector-studio";
-          const required = [
-            "VERCEL_TOKEN",
-            "EVAVO_CLIENT_APP_LAUNCH_SECRET",
-            "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
-            "UPSTASH_REDIS_REST_URL",
-            "UPSTASH_REDIS_REST_TOKEN",
-            "VECTOR_API_TOKEN",
-            "VECTOR_WORKER_API_TOKEN",
-          ];
-          const authorityKeys = [
-            "EVAVO_CLIENT_APP_LAUNCH_SECRET",
-            "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
-            "VECTOR_API_TOKEN",
-            "VECTOR_WORKER_API_TOKEN",
-          ];
-          const missing = required.filter((key) => !String(process.env[key] ?? "").trim());
-          const invalid = [];
-
-          for (const key of required) {
-            const value = String(process.env[key] ?? "").trim();
-            if (!value) continue;
-            if (key === "UPSTASH_REDIS_REST_URL") {
-              try {
-                const url = new URL(value);
-                if (url.protocol !== "https:" || url.username || url.password || url.hash) invalid.push(`${key}:invalid-https-url`);
-              } catch {
-                invalid.push(`${key}:invalid-https-url`);
-              }
-              continue;
-            }
-            const minimum = key === "VERCEL_TOKEN" ? 20 : 32;
-            if (value.length < minimum) invalid.push(`${key}:below-minimum-length`);
-            if (/\s/.test(value)) invalid.push(`${key}:contains-whitespace`);
-          }
-
-          const seenAuthorities = new Map();
-          for (const key of authorityKeys) {
-            const value = String(process.env[key] ?? "").trim();
-            if (!value) continue;
-            const digest = crypto.createHash("sha256").update(value).digest("hex");
-            const previous = seenAuthorities.get(digest);
-            if (previous) invalid.push(`${key}:duplicates-${previous}`);
-            else seenAuthorities.set(digest, key);
-          }
-
-          let vercelAuthPassed = false;
-          let projectExists = null;
-          let projectId = null;
-          let projectCount = null;
-          let vercelApiStatus = null;
-          let vercelApiError = null;
-
-          async function inspectVercel() {
-            const token = String(process.env.VERCEL_TOKEN ?? "").trim();
-            if (!token || missing.includes("VERCEL_TOKEN") || invalid.some((item) => item.startsWith("VERCEL_TOKEN:"))) return;
-            try {
-              const response = await fetch(`https://api.vercel.com/v9/projects?teamId=${encodeURIComponent(TEAM_ID)}&limit=100`, {
-                method: "GET",
-                headers: {
-                  authorization: `Bearer ${token}`,
-                  accept: "application/json",
-                  "accept-encoding": "identity",
-                },
-                redirect: "error",
-                signal: AbortSignal.timeout(20_000),
-              });
-              vercelApiStatus = response.status;
-              const text = await response.text();
-              if (Buffer.byteLength(text, "utf8") > 1_000_000) throw new Error("bounded Vercel response exceeded");
-              if (!response.ok) {
-                vercelApiError = `HTTP_${response.status}`;
-                return;
-              }
-              const payload = JSON.parse(text);
-              const projects = Array.isArray(payload.projects) ? payload.projects : [];
-              projectCount = projects.length;
-              const project = projects.find((item) => item && item.name === PROJECT_NAME) ?? null;
-              projectExists = Boolean(project);
-              projectId = typeof project?.id === "string" ? project.id : null;
-              vercelAuthPassed = true;
-            } catch (error) {
-              vercelApiError = error instanceof Error ? error.name : "VERCEL_API_FAILED";
-            }
-          }
-
-          inspectVercel().then(() => {
-            const passed = missing.length === 0 && invalid.length === 0 && vercelAuthPassed;
-            const report = Object.freeze({
-              version: "1.0",
-              check: "vector-studio-vercel-provisioning-preflight",
-              repository: "EVAVO-STUDIO/evavo-vector-studio",
-              commit: process.env.GITHUB_SHA ?? null,
-              team: Object.freeze({ id: TEAM_ID, slug: TEAM_SLUG }),
-              expectedProject: PROJECT_NAME,
-              passed,
-              credentials: Object.freeze({
-                required: Object.freeze(required),
-                missing: Object.freeze(missing),
-                invalid: Object.freeze(invalid),
-                authoritySeparationPassed: !invalid.some((item) => item.includes(":duplicates-")),
-              }),
-              vercel: Object.freeze({
-                authenticationPassed: vercelAuthPassed,
-                apiStatus: vercelApiStatus,
-                apiError: vercelApiError,
-                projectCount,
-                projectExists,
-                projectId,
-              }),
-              mutationPerformed: false,
-              sensitiveValuesRecorded: false,
-            });
-            const serialized = `${JSON.stringify(report, null, 2)}\n`;
-            if (Buffer.byteLength(serialized, "utf8") > 64 * 1024) throw new Error("preflight report exceeded bounded size");
-            fs.writeFileSync(".ci/vector-vercel-provisioning-preflight.json", serialized, { encoding: "utf8", flag: "wx" });
-            process.stdout.write(serialized);
-            if (!passed) process.exitCode = 1;
-          }).catch((error) => {
-            process.stderr.write(`${JSON.stringify({
-              check: "vector-studio-vercel-provisioning-preflight",
-              passed: false,
-              error: error instanceof Error ? error.message : String(error),
-              mutationPerformed: false,
-              sensitiveValuesRecorded: false,
-            }, null, 2)}\n`);
-            process.exitCode = 1;
-          });
-          NODE
-
-      - name: Preserve bounded preflight report
+      - name: Enforce bounded provider inspection receipt
+        id: inspection
         if: always()
-        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        run: |
+          node scripts/enforce-vercel-provider-inspection-receipt.mjs \
+            --receipt .ci/vector-vercel-provisioning-preflight.json \
+            --commit "$GITHUB_SHA"
+
+      - name: Preserve bounded provider receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vector-vercel-provisioning-preflight-${{ github.sha }}
           path: .ci/vector-vercel-provisioning-preflight.json
-          if-no-files-found: warn
+          if-no-files-found: error
           include-hidden-files: true
           retention-days: 7
 
-      - name: Publish provisioning preflight status
+      - name: Publish provider inspection status
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
+          INSPECTION_OUTCOME: ${{ steps.inspection.outcome }}
         with:
           script: |
-            const passed = process.env.PREFLIGHT_OUTCOME === "success";
+            const passed = process.env.INSPECTION_OUTCOME === "success";
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -204,13 +112,13 @@ jobs:
               state: passed ? "success" : "failure",
               context: "deploy/vector-studio-vercel-preflight",
               description: passed
-                ? "production credentials and Vercel authentication passed"
-                : "Vector Studio Vercel provisioning preflight failed",
+                ? "read-only Vector provider inspection passed"
+                : "Vector provider inspection is unavailable or contradictory",
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
-      - name: Enforce preflight result
+      - name: Enforce provider inspection result
         if: always()
         env:
-          PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
-        run: test "$PREFLIGHT_OUTCOME" = "success"
+          INSPECTION_OUTCOME: ${{ steps.inspection.outcome }}
+        run: test "$INSPECTION_OUTCOME" = "success"

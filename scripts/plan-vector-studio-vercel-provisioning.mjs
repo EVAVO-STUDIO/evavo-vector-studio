@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { link, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -14,14 +14,20 @@ const MAX_CHILD_OUTPUT_BYTES = 256 * 1024;
 const CHILD_TIMEOUT_MS = 2 * 60 * 1000;
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 
-const REQUIRED_SECRETS = Object.freeze([
+const PROVIDER_ACCESS_KEYS = Object.freeze([
   "VERCEL_TOKEN",
+]);
+const APPLICATION_ENVIRONMENT_KEYS = Object.freeze([
   "EVAVO_CLIENT_APP_LAUNCH_SECRET",
   "EVAVO_VECTOR_PRIVATE_SIGNING_SECRET",
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
   "VECTOR_API_TOKEN",
   "VECTOR_WORKER_API_TOKEN",
+]);
+const ALL_SECRET_KEYS = Object.freeze([
+  ...PROVIDER_ACCESS_KEYS,
+  ...APPLICATION_ENVIRONMENT_KEYS,
 ]);
 const AUTHORITY_KEYS = Object.freeze([
   "EVAVO_CLIENT_APP_LAUNCH_SECRET",
@@ -63,37 +69,52 @@ function parseArgs(argv) {
   return result;
 }
 
-function credentialReadiness(environment = process.env) {
-  const missing = [];
+function validateCredential(key, value) {
   const invalid = [];
-  const values = {};
-  for (const key of REQUIRED_SECRETS) {
-    const value = String(environment[key] ?? "").trim();
-    values[key] = value;
-    if (!value) {
-      missing.push(key);
-      continue;
-    }
-    if (key === "UPSTASH_REDIS_REST_URL") {
-      try {
-        const url = new URL(value);
-        if (
-          url.protocol !== "https:" ||
-          url.username ||
-          url.password ||
-          url.search ||
-          url.hash
-        ) {
-          invalid.push(`${key}:invalid-https-url`);
-        }
-      } catch {
+  if (key === "UPSTASH_REDIS_REST_URL") {
+    try {
+      const url = new URL(value);
+      if (
+        url.protocol !== "https:" ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash
+      ) {
         invalid.push(`${key}:invalid-https-url`);
       }
+    } catch {
+      invalid.push(`${key}:invalid-https-url`);
+    }
+    return invalid;
+  }
+  const minimum = key === "VERCEL_TOKEN" ? 20 : 32;
+  if (value.length < minimum) invalid.push(`${key}:below-minimum-length`);
+  if (/\s/.test(value)) invalid.push(`${key}:contains-whitespace`);
+  return invalid;
+}
+
+function credentialReadiness(environment = process.env) {
+  const values = {};
+  const providerMissing = [];
+  const providerInvalid = [];
+  const applicationMissing = [];
+  const applicationInvalid = [];
+
+  for (const key of ALL_SECRET_KEYS) {
+    const value = String(environment[key] ?? "").trim();
+    values[key] = value;
+    const missingTarget = PROVIDER_ACCESS_KEYS.includes(key)
+      ? providerMissing
+      : applicationMissing;
+    const invalidTarget = PROVIDER_ACCESS_KEYS.includes(key)
+      ? providerInvalid
+      : applicationInvalid;
+    if (!value) {
+      missingTarget.push(key);
       continue;
     }
-    const minimum = key === "VERCEL_TOKEN" ? 20 : 32;
-    if (value.length < minimum) invalid.push(`${key}:below-minimum-length`);
-    if (/\s/.test(value)) invalid.push(`${key}:contains-whitespace`);
+    invalidTarget.push(...validateCredential(key, value));
   }
 
   const seenAuthorities = new Map();
@@ -102,16 +123,31 @@ function credentialReadiness(environment = process.env) {
     if (!value) continue;
     const digest = createHash("sha256").update(value).digest("hex");
     const prior = seenAuthorities.get(digest);
-    if (prior) invalid.push(`${key}:duplicates-${prior}`);
+    if (prior) applicationInvalid.push(`${key}:duplicates-${prior}`);
     else seenAuthorities.set(digest, key);
   }
 
+  const authoritySeparationPassed = !applicationInvalid.some((item) =>
+    item.includes(":duplicates-"),
+  );
   return Object.freeze({
-    missing: Object.freeze(missing),
-    invalid: Object.freeze(invalid),
+    providerAccess: Object.freeze({
+      requiredKeys: PROVIDER_ACCESS_KEYS,
+      missing: Object.freeze(providerMissing),
+      invalid: Object.freeze(providerInvalid),
+      passed: providerMissing.length === 0 && providerInvalid.length === 0,
+    }),
+    applicationAuthorities: Object.freeze({
+      requiredKeys: APPLICATION_ENVIRONMENT_KEYS,
+      missing: Object.freeze(applicationMissing),
+      invalid: Object.freeze(applicationInvalid),
+      authoritySeparationPassed,
+      ready:
+        applicationMissing.length === 0 &&
+        applicationInvalid.length === 0 &&
+        authoritySeparationPassed,
+    }),
     values: Object.freeze(values),
-    passed: missing.length === 0 && invalid.length === 0,
-    authoritySeparationPassed: !invalid.some((item) => item.includes(":duplicates-")),
   });
 }
 
@@ -148,14 +184,13 @@ async function atomicNewFile(target, source) {
 }
 
 function childFailure(result, readiness) {
-  if (!readiness.passed) {
+  if (!readiness.providerAccess.passed) {
     return Object.freeze({
-      code: "VERCEL_PROVISION_CREDENTIALS_INVALID",
-      message: "Required provisioning credentials are missing, malformed or not separated.",
+      code: "VERCEL_PROVISION_PROVIDER_ACCESS_INVALID",
+      message: "Vercel provider access is missing or malformed.",
       details: Object.freeze({
-        missing: readiness.missing,
-        invalid: readiness.invalid,
-        authoritySeparationPassed: readiness.authoritySeparationPassed,
+        missing: readiness.providerAccess.missing,
+        invalid: readiness.providerAccess.invalid,
       }),
     });
   }
@@ -176,8 +211,15 @@ function childFailure(result, readiness) {
   });
 }
 
+function publicCredentialReadiness(readiness) {
+  return Object.freeze({
+    providerAccess: readiness.providerAccess,
+    applicationAuthorities: readiness.applicationAuthorities,
+  });
+}
+
 function assertSecretFree(serialized, readiness) {
-  for (const key of REQUIRED_SECRETS) {
+  for (const key of ALL_SECRET_KEYS) {
     const value = readiness.values[key];
     if (value && serialized.includes(value)) {
       fail(
@@ -204,12 +246,7 @@ async function writeDiagnosticReceipt(options, result, readiness, startedAtMs) {
     durationMs: Math.max(0, completedAtMs - startedAtMs),
     passed: false,
     readyToApply: false,
-    credentialReadiness: Object.freeze({
-      requiredKeys: REQUIRED_SECRETS,
-      missing: readiness.missing,
-      invalid: readiness.invalid,
-      authoritySeparationPassed: readiness.authoritySeparationPassed,
-    }),
+    credentialReadiness: publicCredentialReadiness(readiness),
     plan: Object.freeze({
       inspectionAvailable: false,
       action: "inspection-unavailable",
@@ -256,7 +293,7 @@ async function writeDiagnosticReceipt(options, result, readiness, startedAtMs) {
 function safeChildSuccessOutput(result, readiness) {
   const source = String(result.stdout ?? "");
   if (Buffer.byteLength(source, "utf8") > MAX_CHILD_OUTPUT_BYTES) return null;
-  for (const key of REQUIRED_SECRETS) {
+  for (const key of ALL_SECRET_KEYS) {
     const value = readiness.values[key];
     if (value && source.includes(value)) return null;
   }
@@ -302,6 +339,8 @@ async function runPlan(options, environment = process.env) {
           output,
           childStatus: 0,
           canonicalReceiptProduced: true,
+          providerInspectionAvailable: true,
+          applicationAuthoritiesReady: readiness.applicationAuthorities.ready,
           mutationAttempted: false,
           mutationPerformed: false,
           sensitiveValuesRecorded: false,
@@ -345,35 +384,43 @@ async function runPlan(options, environment = process.env) {
 
 async function runSelfTest() {
   const missing = credentialReadiness({});
-  assert.equal(missing.passed, false);
-  assert.deepEqual(missing.missing, REQUIRED_SECRETS);
-  assert.equal(missing.authoritySeparationPassed, true);
+  assert.equal(missing.providerAccess.passed, false);
+  assert.deepEqual(missing.providerAccess.missing, PROVIDER_ACCESS_KEYS);
+  assert.deepEqual(missing.applicationAuthorities.missing, APPLICATION_ENVIRONMENT_KEYS);
 
-  const separated = Object.fromEntries(
-    REQUIRED_SECRETS.map((key, index) => [
-      key,
-      key === "UPSTASH_REDIS_REST_URL"
-        ? "https://example.upstash.io"
-        : `${String(index + 1).padStart(2, "0")}-${"x".repeat(40)}`,
-    ]),
-  );
-  const valid = credentialReadiness(separated);
-  assert.equal(valid.passed, true);
+  const providerOnly = credentialReadiness({ VERCEL_TOKEN: "v".repeat(40) });
+  assert.equal(providerOnly.providerAccess.passed, true);
+  assert.equal(providerOnly.applicationAuthorities.ready, false);
 
-  const duplicated = {
-    ...separated,
-    VECTOR_WORKER_API_TOKEN: separated.VECTOR_API_TOKEN,
+  const separatedEnvironment = {
+    VERCEL_TOKEN: "v".repeat(40),
+    EVAVO_CLIENT_APP_LAUNCH_SECRET: "a".repeat(40),
+    EVAVO_VECTOR_PRIVATE_SIGNING_SECRET: "b".repeat(40),
+    UPSTASH_REDIS_REST_URL: "https://example.upstash.io",
+    UPSTASH_REDIS_REST_TOKEN: "c".repeat(40),
+    VECTOR_API_TOKEN: "d".repeat(40),
+    VECTOR_WORKER_API_TOKEN: "e".repeat(40),
   };
-  const duplicateState = credentialReadiness(duplicated);
-  assert.equal(duplicateState.passed, false);
-  assert.equal(duplicateState.authoritySeparationPassed, false);
+  const valid = credentialReadiness(separatedEnvironment);
+  assert.equal(valid.providerAccess.passed, true);
+  assert.equal(valid.applicationAuthorities.ready, true);
+
+  const duplicated = credentialReadiness({
+    ...separatedEnvironment,
+    VECTOR_WORKER_API_TOKEN: separatedEnvironment.VECTOR_API_TOKEN,
+  });
+  assert.equal(duplicated.applicationAuthorities.ready, false);
+  assert.equal(duplicated.applicationAuthorities.authoritySeparationPassed, false);
 
   process.stdout.write(`${JSON.stringify({
     ok: true,
     check: "vector-studio-vercel-provision-plan-self-test",
     contractVersion: CONTRACT_VERSION,
-    requiredCredentialCount: REQUIRED_SECRETS.length,
-    diagnosticReceiptOnFailure: true,
+    providerOnlyInspectionSupported: true,
+    applicationAuthoritiesRequiredForApply: true,
+    requiredProviderCredentialCount: PROVIDER_ACCESS_KEYS.length,
+    requiredApplicationAuthorityCount: APPLICATION_ENVIRONMENT_KEYS.length,
+    diagnosticReceiptOnProviderFailure: true,
     mutationAttempted: false,
     mutationPerformed: false,
     sensitiveValuesRecorded: false,

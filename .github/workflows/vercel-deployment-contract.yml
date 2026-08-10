@@ -26,6 +26,7 @@ on:
       - "scripts/check-private-response-contract.mjs"
       - "scripts/provision-vector-studio-vercel.mjs"
       - "scripts/plan-vector-studio-vercel-provisioning.mjs"
+      - "scripts/enforce-vercel-provider-inspection-receipt.mjs"
       - "scripts/deploy-vector-studio-vercel.mjs"
       - "scripts/create-vector-live-launch-token.mjs"
       - "scripts/verify-live-private-response.mjs"
@@ -38,6 +39,7 @@ on:
       - "docs/PRIVATE-APPLICATION-SECURITY.md"
       - ".github/workflows/public-deployment-proof.yml"
       - ".github/workflows/vector-vercel-project-provisioning.yml"
+      - ".github/workflows/vector-vercel-provisioning-preflight.yml"
       - ".github/workflows/vector-vercel-production-deployment.yml"
       - ".github/workflows/vercel-deployment-contract.yml"
   pull_request:
@@ -63,6 +65,7 @@ on:
       - "scripts/check-private-response-contract.mjs"
       - "scripts/provision-vector-studio-vercel.mjs"
       - "scripts/plan-vector-studio-vercel-provisioning.mjs"
+      - "scripts/enforce-vercel-provider-inspection-receipt.mjs"
       - "scripts/deploy-vector-studio-vercel.mjs"
       - "scripts/create-vector-live-launch-token.mjs"
       - "scripts/verify-live-private-response.mjs"
@@ -75,6 +78,7 @@ on:
       - "docs/PRIVATE-APPLICATION-SECURITY.md"
       - ".github/workflows/public-deployment-proof.yml"
       - ".github/workflows/vector-vercel-project-provisioning.yml"
+      - ".github/workflows/vector-vercel-provisioning-preflight.yml"
       - ".github/workflows/vector-vercel-production-deployment.yml"
       - ".github/workflows/vercel-deployment-contract.yml"
 
@@ -134,6 +138,9 @@ jobs:
 
       - name: Verify Vercel provisioning plan-wrapper self-test
         run: node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test
+
+      - name: Verify provider inspection receipt enforcer self-test
+        run: node scripts/enforce-vercel-provider-inspection-receipt.mjs --self-test
 
       - name: Verify exact Vercel deployer self-test
         run: node scripts/deploy-vector-studio-vercel.mjs --self-test
