@@ -8,6 +8,7 @@ const MANIFEST_PATH = "ops/provider/vector-studio-vercel-project-v1.json";
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 1_000_000;
 const MAX_RECEIPT_BYTES = 128 * 1024;
+const MAX_DEPLOYMENTS = 20;
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 
 function fail(code, message, details = undefined) {
@@ -151,6 +152,34 @@ function safeProject(project) {
   });
 }
 
+function sourceControlState(project, repository) {
+  const link = safeProject(project).gitLink;
+  if (!link) {
+    return Object.freeze({
+      present: false,
+      acceptable: true,
+      exactMatch: false,
+      mode: "api-managed",
+    });
+  }
+  const [expectedOrg, expectedRepo] = repository.split("/");
+  const typeMatched = link.type === "github";
+  const orgMatched =
+    typeof link.org === "string" &&
+    link.org.toLowerCase() === expectedOrg.toLowerCase();
+  const repoMatched =
+    typeof link.repo === "string" &&
+    (link.repo.toLowerCase() === expectedRepo.toLowerCase() ||
+      link.repo.toLowerCase() === repository.toLowerCase());
+  const exactMatch = typeMatched && orgMatched && repoMatched;
+  return Object.freeze({
+    present: true,
+    acceptable: exactMatch,
+    exactMatch,
+    mode: exactMatch ? "github-linked" : "conflicting",
+  });
+}
+
 function domainsFrom(value) {
   const domains = Array.isArray(value?.domains) ? value.domains : [];
   return domains
@@ -170,8 +199,70 @@ function environmentKeysFrom(value) {
   );
 }
 
-function evaluate({ manifest, project, domains, environmentKeys, commit }) {
+function deploymentList(value) {
+  if (Array.isArray(value?.deployments)) return value.deployments;
+  if (Array.isArray(value?.data?.deployments)) return value.data.deployments;
+  if (Array.isArray(value?.data)) return value.data;
+  return [];
+}
+
+function deploymentCommit(value) {
+  const candidates = [
+    value?.gitSource?.sha,
+    value?.gitMetadata?.commitSha,
+    value?.meta?.githubCommitSha,
+    value?.meta?.gitCommitSha,
+  ];
+  return (
+    candidates.find(
+      (candidate) => typeof candidate === "string" && SHA_PATTERN.test(candidate),
+    ) ?? null
+  );
+}
+
+function safeDeployment(value) {
+  if (!value || typeof value !== "object") return null;
+  return Object.freeze({
+    id: typeof value.id === "string" ? value.id : null,
+    name: typeof value.name === "string" ? value.name : null,
+    url: typeof value.url === "string" ? value.url : null,
+    readyState:
+      typeof value.readyState === "string"
+        ? value.readyState
+        : typeof value.state === "string"
+          ? value.state
+          : null,
+    target: typeof value.target === "string" ? value.target : null,
+    createdAt: Number.isSafeInteger(value.createdAt) ? value.createdAt : null,
+    commit: deploymentCommit(value),
+  });
+}
+
+function deploymentsFrom(value) {
+  return Object.freeze(
+    deploymentList(value)
+      .slice(0, MAX_DEPLOYMENTS)
+      .map(safeDeployment)
+      .filter(Boolean),
+  );
+}
+
+function currentProviderState({
+  projectIdentityPassed,
+  projectConfigured,
+  domainVerified,
+  productionDeployed,
+}) {
+  if (productionDeployed) return "production-deployed";
+  if (domainVerified) return "domain-verified";
+  if (projectConfigured) return "project-configured";
+  if (projectIdentityPassed) return "project-created";
+  return "source-ready";
+}
+
+function evaluate({ manifest, project, domains, environmentKeys, deployments, commit }) {
   const safe = safeProject(project);
+  const sourceControl = sourceControlState(project, manifest.project.repository);
   const domain = domains.find((entry) => entry.name === manifest.production.domain) ?? null;
   const missingEnvironmentKeys = manifest.requiredEnvironmentKeys.filter(
     (key) => !environmentKeys.includes(key),
@@ -186,12 +277,32 @@ function evaluate({ manifest, project, domains, environmentKeys, commit }) {
   const projectIdentityPassed =
     safe.id === manifest.project.id && safe.name === manifest.project.name;
   const settingsPassed = Object.values(settings).every(Boolean);
+  const projectConfigured =
+    projectIdentityPassed && settingsPassed && sourceControl.acceptable;
   const domainVerified = domain?.verified === true;
   const environmentPassed = missingEnvironmentKeys.length === 0;
+  const exactCommitProductionDeployment =
+    deployments.find(
+      (deployment) =>
+        deployment.commit === commit &&
+        deployment.readyState === "READY" &&
+        deployment.target === "production",
+    ) ?? null;
+  const productionDeployed = Boolean(exactCommitProductionDeployment);
+  const releaseReady =
+    projectConfigured && domainVerified && environmentPassed && productionDeployed;
+  const providerState = currentProviderState({
+    projectIdentityPassed,
+    projectConfigured,
+    domainVerified: projectConfigured && domainVerified,
+    productionDeployed: releaseReady,
+  });
+
   return Object.freeze({
     contractVersion: manifest.contractVersion,
     inspectedCommit: commit,
     provider: manifest.provider,
+    providerState,
     team: manifest.team,
     project: safe,
     expected: Object.freeze({
@@ -205,11 +316,15 @@ function evaluate({ manifest, project, domains, environmentKeys, commit }) {
     }),
     checks: Object.freeze({
       projectIdentity: projectIdentityPassed,
+      sourceControl,
+      sourceControlAcceptable: sourceControl.acceptable,
       settings,
       settingsPassed,
+      projectConfigured,
       productionDomainPresent: Boolean(domain),
       productionDomainVerified: domainVerified,
       requiredEnvironmentKeysPresent: environmentPassed,
+      exactCommitProductionDeploymentReady: productionDeployed,
     }),
     environment: Object.freeze({
       requiredKeyCount: manifest.requiredEnvironmentKeys.length,
@@ -218,8 +333,12 @@ function evaluate({ manifest, project, domains, environmentKeys, commit }) {
       missingKeys: Object.freeze(missingEnvironmentKeys),
       valuesRecorded: false,
     }),
-    releaseReady:
-      projectIdentityPassed && settingsPassed && domainVerified && environmentPassed,
+    deployment: Object.freeze({
+      inspectedCandidateCount: deployments.length,
+      exactCommitProduction: exactCommitProductionDeployment,
+      rawResponsesRecorded: false,
+    }),
+    releaseReady,
     clientReleaseEligible: false,
     mutationAttempted: false,
     mutationPerformed: false,
@@ -245,28 +364,86 @@ async function writeReceipt(out, receipt) {
   });
 }
 
+function completeProject(manifest) {
+  return {
+    id: manifest.project.id,
+    name: manifest.project.name,
+    framework: manifest.project.framework,
+    rootDirectory: manifest.project.rootDirectory,
+    nodeVersion: manifest.project.nodeVersion,
+    installCommand: manifest.project.installCommand,
+    buildCommand: manifest.project.buildCommand,
+    link: { type: "github", org: "EVAVO-STUDIO", repo: "evavo-vector-studio" },
+  };
+}
+
+function readyDeployment(commit) {
+  return {
+    id: "dpl_ready",
+    name: "evavo-vector-studio",
+    url: "evavo-vector-studio.example.vercel.app",
+    readyState: "READY",
+    target: "production",
+    createdAt: 1,
+    gitSource: { sha: commit },
+  };
+}
+
 async function selfTest() {
   const manifest = loadManifest();
+  const commit = "a".repeat(40);
   const receipt = evaluate({
     manifest,
-    commit: "a".repeat(40),
-    project: {
-      id: manifest.project.id,
-      name: manifest.project.name,
-      framework: manifest.project.framework,
-      rootDirectory: manifest.project.rootDirectory,
-      nodeVersion: manifest.project.nodeVersion,
-      installCommand: manifest.project.installCommand,
-      buildCommand: manifest.project.buildCommand,
-      link: { type: "github", org: "EVAVO-STUDIO", repo: "evavo-vector-studio" },
-    },
+    commit,
+    project: completeProject(manifest),
     domains: [{ name: manifest.production.domain, verified: true }],
     environmentKeys: [...manifest.requiredEnvironmentKeys],
+    deployments: deploymentsFrom({ deployments: [readyDeployment(commit)] }),
   });
   assert.equal(receipt.releaseReady, true);
+  assert.equal(receipt.providerState, "production-deployed");
+  assert.equal(receipt.checks.sourceControlAcceptable, true);
+  assert.equal(receipt.checks.exactCommitProductionDeploymentReady, true);
   assert.equal(receipt.clientReleaseEligible, false);
   assert.equal(receipt.mutationPerformed, false);
   assert.equal(receipt.sensitiveValuesRecorded, false);
+
+  const apiManaged = evaluate({
+    manifest,
+    commit,
+    project: { ...completeProject(manifest), link: null },
+    domains: [{ name: manifest.production.domain, verified: true }],
+    environmentKeys: [...manifest.requiredEnvironmentKeys],
+    deployments: deploymentsFrom({ deployments: [readyDeployment(commit)] }),
+  });
+  assert.equal(apiManaged.releaseReady, true);
+  assert.equal(apiManaged.checks.sourceControl.mode, "api-managed");
+
+  const conflicting = evaluate({
+    manifest,
+    commit,
+    project: {
+      ...completeProject(manifest),
+      link: { type: "github", org: "EVAVO-STUDIO", repo: "wrong-repository" },
+    },
+    domains: [{ name: manifest.production.domain, verified: true }],
+    environmentKeys: [...manifest.requiredEnvironmentKeys],
+    deployments: deploymentsFrom({ deployments: [readyDeployment(commit)] }),
+  });
+  assert.equal(conflicting.releaseReady, false);
+  assert.equal(conflicting.checks.sourceControl.mode, "conflicting");
+
+  const noDeployment = evaluate({
+    manifest,
+    commit,
+    project: completeProject(manifest),
+    domains: [{ name: manifest.production.domain, verified: true }],
+    environmentKeys: [...manifest.requiredEnvironmentKeys],
+    deployments: Object.freeze([]),
+  });
+  assert.equal(noDeployment.releaseReady, false);
+  assert.equal(noDeployment.providerState, "domain-verified");
+  assert.equal(noDeployment.checks.exactCommitProductionDeploymentReady, false);
 
   const incomplete = evaluate({
     manifest,
@@ -274,6 +451,7 @@ async function selfTest() {
     project: { id: manifest.project.id, name: manifest.project.name },
     domains: [],
     environmentKeys: [],
+    deployments: Object.freeze([]),
   });
   assert.equal(incomplete.releaseReady, false);
   assert.equal(
@@ -298,7 +476,7 @@ async function main() {
     token,
     `/v9/projects/${encodeURIComponent(manifest.project.name)}?teamId=${encodeURIComponent(manifest.team.id)}`,
   );
-  const [domainsValue, environmentValue] = await Promise.all([
+  const [domainsValue, environmentValue, deploymentsValue] = await Promise.all([
     requestJson(
       token,
       `/v9/projects/${encodeURIComponent(manifest.project.id)}/domains?teamId=${encodeURIComponent(manifest.team.id)}`,
@@ -307,23 +485,32 @@ async function main() {
       token,
       `/v9/projects/${encodeURIComponent(manifest.project.id)}/env?teamId=${encodeURIComponent(manifest.team.id)}`,
     ),
+    requestJson(
+      token,
+      `/v7/deployments?projectId=${encodeURIComponent(manifest.project.id)}&sha=${encodeURIComponent(options.commit)}&target=production&limit=${MAX_DEPLOYMENTS}&teamId=${encodeURIComponent(manifest.team.id)}`,
+    ),
   ]);
   const receipt = evaluate({
     manifest,
     project,
     domains: domainsFrom(domainsValue),
     environmentKeys: environmentKeysFrom(environmentValue),
+    deployments: deploymentsFrom(deploymentsValue),
     commit: options.commit,
   });
   await writeReceipt(options.out, receipt);
   console.log(
     JSON.stringify({
       contractVersion: receipt.contractVersion,
+      providerState: receipt.providerState,
       projectId: receipt.project.id,
       projectIdentityPassed: receipt.checks.projectIdentity,
+      sourceControlAcceptable: receipt.checks.sourceControlAcceptable,
       settingsPassed: receipt.checks.settingsPassed,
       productionDomainVerified: receipt.checks.productionDomainVerified,
       requiredEnvironmentKeysPresent: receipt.checks.requiredEnvironmentKeysPresent,
+      exactCommitProductionDeploymentReady:
+        receipt.checks.exactCommitProductionDeploymentReady,
       releaseReady: receipt.releaseReady,
       clientReleaseEligible: false,
       receiptSha256: createHash("sha256")

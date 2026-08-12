@@ -63,6 +63,14 @@ requireTokens("Vercel project verifier", verifier, [
   'valuesRecorded: false',
   'process.env.VERCEL_TOKEN',
   '--self-test',
+  'sourceControlState',
+  'sourceControlAcceptable',
+  'exactCommitProductionDeploymentReady',
+  'deploymentCommit',
+  'rawResponsesRecorded: false',
+  '/v7/deployments?projectId=',
+  'providerState',
+  'production-deployed',
 ]);
 forbidTokens("Vercel project verifier", verifier, [
   'method: "POST"',
@@ -84,6 +92,11 @@ requireTokens("Vercel project documentation", documentation, [
   "release-withheld",
   "No secret values",
   "verify-vector-studio-vercel-project-v1.mjs",
+  "API-managed",
+  "conflicting GitHub link",
+  "exact inspected commit",
+  "`READY` production deployment",
+  "provider runtime proof",
 ]);
 
 requireTokens("Vercel project workflow", workflow, [

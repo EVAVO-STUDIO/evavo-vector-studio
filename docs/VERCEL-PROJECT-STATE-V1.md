@@ -49,12 +49,17 @@ node scripts/verify-vector-studio-vercel-project-v1.mjs \
 The verifier checks:
 
 - the exact EVAVO team, project ID and project name;
+- an API-managed project with no Git link, or an exact GitHub link to `EVAVO-STUDIO/evavo-vector-studio`;
+- rejection of any conflicting GitHub link rather than silently building another repository;
 - Next.js, `apps/web`, Node 22, frozen monorepo installation and the governed Turbo build command;
 - the canonical `vector.evavo.com.au` domain and its verification state;
 - only the names of the eight required production environment variables;
-- whether the provider state is ready for the separate deployment and live-proof transaction.
+- a bounded deployment listing filtered to the exact inspected commit and production target;
+- an exact `READY` production deployment for that commit before the provider runtime proof can pass.
 
-The verifier performs bounded `GET` requests only. It uses a 30-second request timeout, a 1 MB response ceiling and a 128 KiB new-file-only receipt. The receipt is written with mode `0600`.
+The verifier performs bounded `GET` requests only. It uses a 30-second request timeout, a 1 MB response ceiling, a maximum of 20 deployment candidates and a 128 KiB new-file-only receipt. The receipt is written with mode `0600`.
+
+`releaseReady` in this provider receipt means that project identity, source-control boundary, settings, domain, environment-key presence and the exact-commit production deployment all passed together. It is provider runtime proof only. It never means client release, owner launch proof, client launch proof, replay rejection or central Hub promotion.
 
 No secret values, raw provider responses, credentials, launch tokens, object keys or workspace identities are retained. The receipt explicitly records that no mutation was attempted or performed.
 
