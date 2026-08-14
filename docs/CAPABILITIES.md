@@ -173,15 +173,15 @@ The dependency-free contract checks that every `@evavo/*` workspace import is de
 
 It derives the canonical MCP tool inventory from direct server registrations and the print, Lottie, dotLottie and durable-batch tool-name contracts. The exposed MCP contract version, 16-tool count and MCP batch ceiling must agree with those source files. Duplicate tool names, stale counts or stale limits fail before dependency installation, TypeScript or the production build.
 
-The focused capability workflow watches `packages/mcp/**` as well as the route and other capability-bearing packages. An MCP capability change therefore cannot bypass the focused contract, frozen dependency installation, web typecheck and production build.
+The capability and print source surfaces remain inside the universal automatic quality gate. Their operator-dispatched deep workflows retain separately named frozen-install, executable-test, typecheck and production-build receipts without repeating those expensive jobs for every ordinary push.
 
-The separate print-preflight workflow watches the print core, CLI, authenticated API route, MCP print tool, discovery metadata and print documentation. It runs the print contract, exact dependency installation, executable core, CLI and MCP tests, Vector web typecheck and the workspace-aware production build.
+The capability deep proof still watches `packages/mcp/**` as well as the route and other capability-bearing packages when it is deliberately dispatched against an approved commit. The separate print-preflight proof retains the print core, CLI, authenticated API route, MCP print tool, discovery metadata and print documentation boundaries.
 
 The service version in the capability response is checked against the root package version. The obsolete duplicate checker is required to remain absent so there is one canonical discovery contract.
 
-## Exact focused CI runtime
+## Operator-dispatched deep CI runtime
 
-The focused capability workflow resolves Node.js from `.nvmrc` and asserts the exact governed value (`22.16.0`). It activates pnpm `10.14.0` through Corepack with package-manager caching disabled, then verifies the checkout remained unchanged before running any contract or dependency installation.
+The focused capability workflow retains exact dependency installation and resolves Node.js from `.nvmrc` and asserts the exact governed value (`22.16.0`). It activates pnpm `10.14.0` through Corepack with package-manager caching disabled, then verifies the checkout remained unchanged before running any contract or dependency installation.
 
 The workflow publishes `api/vector-capabilities-toolchain` separately from the existing contract, dependency, typecheck and build statuses. A toolchain failure therefore cannot be misreported as a capability implementation failure, and later gates cannot run after an unverified runtime bootstrap.
 
@@ -189,7 +189,7 @@ The workflow publishes `api/vector-capabilities-toolchain` separately from the e
 
 The Vector web application consumes workspace packages whose runtime exports point to compiled `dist` entrypoints. A standalone `next build` after dependency installation is therefore not sufficient in a clean checkout, even when TypeScript can resolve source declarations.
 
-The focused workflow runs:
+The operator-dispatched focused workflow runs:
 
 ```powershell
 pnpm build:packages
@@ -209,6 +209,6 @@ pnpm print-api:check
 pnpm mcp:check
 ```
 
-The focused GitHub workflows run their contracts, exact dependency installation, required workspace builds, executable tests, Vector web typecheck and production build whenever their source capability surfaces change.
+The full repository quality workflow runs automatically for every governed source revision. The capability and print workflows remain operator-dispatched deep proofs for commits that require independently named specialist evidence.
 
-The full repository quality chain includes all three contracts before dependency-backed lint, typecheck, tests and build.
+The full repository quality chain includes all three contracts before dependency-backed lint, typecheck, tests and build. The automatic dependency-free governance workflow separately verifies the CI budget and workflow trigger policy.
