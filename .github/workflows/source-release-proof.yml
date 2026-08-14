@@ -2,23 +2,6 @@ name: Vector Studio source release proof
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - ".nvmrc"
-      - "pnpm-lock.yaml"
-      - "package.json"
-      - "apps/web/**"
-      - "packages/hub-auth/**"
-      - "scripts/check-runtime-version.mjs"
-      - "scripts/create-source-proof.mjs"
-      - "scripts/verify-live-deployment.mjs"
-      - "scripts/check-release-proof-contract.mjs"
-      - "schemas/source-proof-v1.schema.json"
-      - "schemas/deployment-proof-v1.schema.json"
-      - "docs/RELEASE-PROOF.md"
-      - ".github/workflows/source-release-proof.yml"
-      - ".github/workflows/public-deployment-proof.yml"
 
 permissions:
   contents: read
