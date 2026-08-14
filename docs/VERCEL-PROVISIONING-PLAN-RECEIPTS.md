@@ -111,7 +111,11 @@ A successful bounded child summary can be forwarded only when it contains no cre
 
 ## Workflow behavior
 
-Both the dedicated provisioning plan and the pre-deployment provisioning check use the canonical wrapper. Receipt artifacts use:
+The dedicated provider preflight is manual-only through `workflow_dispatch`. A caller must provide the exact current `main` SHA, and the job is bound to the protected `vector-studio-production` environment before any provider credential can be read. The workflow has no `push`, `pull_request` or scheduled trigger.
+
+The tracked `.github/vector-vercel-preflight.trigger` file is now an inert compatibility marker. Updating it performs no automatic dispatch. This separation keeps source validation in the normal quality and deployment-contract workflows while avoiding a guaranteed-failure provider job on ordinary source edits. It preserves GitHub Actions minutes without weakening the production gate: a manual run still fails truthfully, publishes the exact-commit provider status and preserves a bounded diagnostic receipt when provider access is absent or contradictory.
+
+Both the manual preflight and the pre-deployment provisioning check use the canonical wrapper. Receipt artifacts use:
 
 ```text
 if: always()

@@ -50,6 +50,7 @@ const files = Object.freeze({
   docs: "docs/VERCEL-DEPLOYMENT.md",
   workflow: ".github/workflows/vercel-deployment-contract.yml",
   preflightWorkflow: ".github/workflows/vector-vercel-provisioning-preflight.yml",
+  preflightMarker: ".github/vector-vercel-preflight.trigger",
   providerEnforcer: "scripts/enforce-vercel-provider-inspection-receipt.mjs",
 });
 const sources = Object.fromEntries(
@@ -146,6 +147,10 @@ requireTokens(files.docs, sources.docs, [
   "Application authorities remain a separate apply gate",
   "provider inspection can pass while `readyToApply` remains false",
   "performed no Vercel mutation",
+  "manual-only",
+  "exact current `main` SHA",
+  "Actions minutes",
+  "inert compatibility marker",
   "4.5 MB",
   "3,250,000",
   "pnpm install --frozen-lockfile",
@@ -178,8 +183,15 @@ forbidTokens(files.workflow, sources.workflow, [
 
 requireTokens(files.preflightWorkflow, sources.preflightWorkflow, [
   "Vector Studio Vercel provisioning preflight",
+  "run-name: Vector provider preflight @ ${{ inputs.commit }}",
   ".github/vector-vercel-preflight.trigger",
+  "workflow_dispatch:",
+  "commit:",
+  "environment: vector-studio-production",
   "Check out exact current main",
+  "ref: ${{ inputs.commit }}",
+  "Resolve exact current main",
+  'test "$CURRENT_MAIN_SHA" = "${{ inputs.commit }}"',
   "Verify exact current main identity",
   "node-version-file: .nvmrc",
   "corepack prepare pnpm@10.14.0 --activate",
@@ -207,6 +219,14 @@ forbidTokens(files.preflightWorkflow, sources.preflightWorkflow, [
   'method: "PATCH"',
   'method: "DELETE"',
   "contents: write",
+  "\n  push:",
+  "\n  pull_request:",
+  "\n  schedule:",
+]);
+requireTokens(files.preflightMarker, sources.preflightMarker, [
+  "retired compatibility marker",
+  "manual-only through workflow_dispatch",
+  "performs no automatic dispatch",
 ]);
 requireTokens(files.providerEnforcer, sources.providerEnforcer, [
   'const ENFORCER_CHECK = "vector-studio-vercel-provider-inspection-receipt"',

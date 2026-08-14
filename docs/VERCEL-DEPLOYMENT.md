@@ -53,11 +53,9 @@ The preflight records only missing or invalid key names and bounded booleans. A 
 
 The earlier preflight against commit `3b6f3604c9abfcfaebb6d2507f5d709b128c7e8b` found all seven values absent, including provider access, so provider inspection was unavailable. That run performed no Vercel mutation and recorded no sensitive values. Reusing one secret for multiple signing or API authorities remains prohibited.
 
-The check can be rerun manually with `workflow_dispatch` or by updating:
+The provider preflight is manual-only through `workflow_dispatch`. It requires the exact current `main` SHA and the protected `vector-studio-production` environment. It has no automatic push, pull-request or scheduled trigger.
 
-```text
-.github/vector-vercel-preflight.trigger
-```
+The tracked `.github/vector-vercel-preflight.trigger` file is retained only as an inert compatibility marker. Updating it performs no automatic dispatch. This keeps ordinary source validation in the permanent quality and deployment-contract workflows while avoiding a known-failing provider job when credentials are intentionally unavailable. The production boundary remains fail-closed, but it no longer spends GitHub Actions minutes on unrelated source commits.
 
 ## Governed project provisioning
 

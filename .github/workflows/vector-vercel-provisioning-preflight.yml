@@ -1,21 +1,14 @@
 name: Vector Studio Vercel provisioning preflight
+run-name: Vector provider preflight @ ${{ inputs.commit }}
 
 on:
+  # Retired compatibility marker: .github/vector-vercel-preflight.trigger
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - ".github/vector-vercel-preflight.trigger"
-      - ".github/workflows/vector-vercel-provisioning-preflight.yml"
-      - ".nvmrc"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "scripts/check-lockfile-integrity.mjs"
-      - "scripts/check-vercel-project-provisioning-contract.mjs"
-      - "scripts/check-vercel-provisioning-plan-receipt-contract.mjs"
-      - "scripts/provision-vector-studio-vercel.mjs"
-      - "scripts/plan-vector-studio-vercel-provisioning.mjs"
-      - "scripts/enforce-vercel-provider-inspection-receipt.mjs"
+    inputs:
+      commit:
+        description: Exact lowercase 40-character current main commit
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -34,7 +27,7 @@ jobs:
       - name: Check out exact current main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main
+          ref: ${{ inputs.commit }}
           persist-credentials: false
           fetch-depth: 1
 
@@ -56,9 +49,14 @@ jobs:
           CURRENT_MAIN_SHA: ${{ steps.current_main.outputs.sha }}
         run: |
           set -euo pipefail
+          if [[ ! "${{ inputs.commit }}" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "The provider preflight commit must be a lowercase 40-character SHA." >&2
+            exit 1
+          fi
           test "$GITHUB_REF" = "refs/heads/main"
           test "$GITHUB_SHA" = "$CURRENT_MAIN_SHA"
-          test "$(git rev-parse HEAD)" = "$CURRENT_MAIN_SHA"
+          test "$CURRENT_MAIN_SHA" = "${{ inputs.commit }}"
+          test "$(git rev-parse HEAD)" = "${{ inputs.commit }}"
           git diff --exit-code
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
 
@@ -102,7 +100,7 @@ jobs:
           set -euo pipefail
           mkdir -p .ci
           node scripts/plan-vector-studio-vercel-provisioning.mjs \
-            --commit "$GITHUB_SHA" \
+            --commit "${{ inputs.commit }}" \
             --out .ci/vector-vercel-provisioning-preflight.json
 
       - name: Enforce bounded provider inspection receipt
@@ -112,13 +110,13 @@ jobs:
         run: |
           node scripts/enforce-vercel-provider-inspection-receipt.mjs \
             --receipt .ci/vector-vercel-provisioning-preflight.json \
-            --commit "$GITHUB_SHA"
+            --commit "${{ inputs.commit }}"
 
       - name: Preserve bounded provider receipt
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: vector-vercel-provisioning-preflight-${{ github.sha }}
+          name: vector-vercel-provisioning-preflight-${{ inputs.commit }}
           path: .ci/vector-vercel-provisioning-preflight.json
           if-no-files-found: error
           include-hidden-files: true
@@ -129,13 +127,14 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INSPECTION_OUTCOME: ${{ steps.inspection.outcome }}
+          INSPECTED_COMMIT: ${{ inputs.commit }}
         with:
           script: |
             const passed = process.env.INSPECTION_OUTCOME === "success";
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              sha: context.sha,
+              sha: process.env.INSPECTED_COMMIT,
               state: passed ? "success" : "failure",
               context: "deploy/vector-studio-vercel-preflight",
               description: passed

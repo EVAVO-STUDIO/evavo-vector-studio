@@ -1,2 +1,3 @@
-audit production credential readiness and connected Vercel project state without mutation
-request-id: provider-inspection-20260810-v2
+retired compatibility marker
+provider preflight is manual-only through workflow_dispatch
+updating this file performs no automatic dispatch
