@@ -54,6 +54,7 @@ const files = Object.freeze({
   wrapper: "scripts/plan-vector-studio-vercel-provisioning.mjs",
   provisioner: "scripts/provision-vector-studio-vercel.mjs",
   enforcer: "scripts/enforce-vercel-provider-inspection-receipt.mjs",
+  projector: "scripts/project-vector-provider-remediation-receipt.mjs",
   checker: "scripts/check-vercel-provisioning-plan-receipt-contract.mjs",
   workflow: ".github/workflows/vector-vercel-provisioning-preflight.yml",
   docs: "docs/VERCEL-PROVISIONING-PLAN-RECEIPTS.md",
@@ -244,6 +245,41 @@ async function executableDiagnosticTest() {
   }
 }
 
+async function executableProjectionTest() {
+  const result = spawnSync(
+    process.execPath,
+    [files.projector, "--self-test"],
+    {
+      cwd: root,
+      env: sanitizedEnvironment(),
+      encoding: "utf8",
+      shell: false,
+      timeout: 30_000,
+      maxBuffer: 256 * 1024,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.error, undefined);
+  const summary = JSON.parse(result.stdout);
+  assert.equal(
+    summary.check,
+    "vector-studio-provider-remediation-projection-self-test",
+  );
+  assert.equal(summary.actionCount, 12);
+  assert.equal(summary.domainBeforeDeployment, true);
+  assert.equal(summary.laterReleaseProofsRemainSeparate, true);
+  assert.equal(summary.providerMutationPerformed, false);
+  assert.equal(summary.sensitiveValuesRecorded, false);
+  return Object.freeze({
+    status: result.status,
+    actionCount: summary.actionCount,
+    domainBeforeDeployment: summary.domainBeforeDeployment,
+    laterReleaseProofsRemainSeparate:
+      summary.laterReleaseProofsRemainSeparate,
+    mutationPerformed: false,
+  });
+}
+
 async function executableProviderOnlyTest() {
   await mkdir(path.join(root, ".ci"), { recursive: true });
   const directory = await mkdtemp(path.join(root, ".ci", "provider-plan-canonical-"));
@@ -345,6 +381,7 @@ async function executableProviderOnlyTest() {
 
 let diagnostic = null;
 let providerOnly = null;
+let projection = null;
 try {
   diagnostic = await executableDiagnosticTest();
 } catch (error) {
@@ -357,6 +394,13 @@ try {
 } catch (error) {
   errors.push(
     `Executable provider-only provisioning-plan test failed (${error instanceof Error ? error.message : String(error)}).`,
+  );
+}
+try {
+  projection = await executableProjectionTest();
+} catch (error) {
+  errors.push(
+    `Executable remediation-projection test failed (${error instanceof Error ? error.message : String(error)}).`,
   );
 }
 
@@ -381,6 +425,6 @@ process.stdout.write(`${JSON.stringify({
   newFileOnly: true,
   secretFree: true,
   exactCurrentMainInputRequired: true,
-  executable: { diagnostic, providerOnly },
+  executable: { diagnostic, providerOnly, projection },
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
