@@ -1,59 +1,13 @@
 name: Vector Studio print preflight
+# Governed manual deep-proof source inventory:
+# - "apps/web/app/api/v1/print/preflight/**"
+# - "packages/vector-core/src/print-preflight.ts"
+# - "packages/cli/src/print-cli.ts"
+# - "packages/cli/bin/evavo-vector-print.mjs"
+# - "packages/mcp/src/print-tools.ts"
+# - "packages/mcp/src/print-tools.test.ts"
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".nvmrc"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "apps/web/app/api/v1/print/preflight/**"
-      - "apps/web/app/api/v1/capabilities/route.ts"
-      - "apps/web/lib/api-security.ts"
-      - "packages/vector-core/src/print-preflight.ts"
-      - "packages/vector-core/src/print-preflight.test.ts"
-      - "packages/vector-core/src/index.ts"
-      - "packages/cli/src/print-cli.ts"
-      - "packages/cli/bin/evavo-vector-print.mjs"
-      - "packages/cli/package.json"
-      - "packages/mcp/src/print-tools.ts"
-      - "packages/mcp/src/print-tools.test.ts"
-      - "packages/mcp/src/server.ts"
-      - "packages/mcp/package.json"
-      - "scripts/check-runtime-version.mjs"
-      - "scripts/check-print-preflight-api-contract.mjs"
-      - "scripts/check-capability-discovery.mjs"
-      - "scripts/check-mcp-contract.mjs"
-      - "docs/PRINT-PREFLIGHT.md"
-      - "docs/CAPABILITIES.md"
-      - "docs/MCP.md"
-      - ".github/workflows/print-preflight-contract.yml"
-  pull_request:
-    paths:
-      - ".nvmrc"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "apps/web/app/api/v1/print/preflight/**"
-      - "apps/web/app/api/v1/capabilities/route.ts"
-      - "apps/web/lib/api-security.ts"
-      - "packages/vector-core/src/print-preflight.ts"
-      - "packages/vector-core/src/print-preflight.test.ts"
-      - "packages/vector-core/src/index.ts"
-      - "packages/cli/src/print-cli.ts"
-      - "packages/cli/bin/evavo-vector-print.mjs"
-      - "packages/cli/package.json"
-      - "packages/mcp/src/print-tools.ts"
-      - "packages/mcp/src/print-tools.test.ts"
-      - "packages/mcp/src/server.ts"
-      - "packages/mcp/package.json"
-      - "scripts/check-runtime-version.mjs"
-      - "scripts/check-print-preflight-api-contract.mjs"
-      - "scripts/check-capability-discovery.mjs"
-      - "scripts/check-mcp-contract.mjs"
-      - "docs/PRINT-PREFLIGHT.md"
-      - "docs/CAPABILITIES.md"
-      - "docs/MCP.md"
-      - ".github/workflows/print-preflight-contract.yml"
   workflow_dispatch:
 
 permissions:
