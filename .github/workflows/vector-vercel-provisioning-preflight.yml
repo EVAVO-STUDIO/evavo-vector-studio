@@ -6,6 +6,16 @@ on:
     branches: [main]
     paths:
       - ".github/vector-vercel-preflight.trigger"
+      - ".github/workflows/vector-vercel-provisioning-preflight.yml"
+      - ".nvmrc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "scripts/check-lockfile-integrity.mjs"
+      - "scripts/check-vercel-project-provisioning-contract.mjs"
+      - "scripts/check-vercel-provisioning-plan-receipt-contract.mjs"
+      - "scripts/provision-vector-studio-vercel.mjs"
+      - "scripts/plan-vector-studio-vercel-provisioning.mjs"
+      - "scripts/enforce-vercel-provider-inspection-receipt.mjs"
 
 permissions:
   contents: read
@@ -17,21 +27,38 @@ concurrency:
 
 jobs:
   preflight:
+    environment: vector-studio-production
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Check out exact current main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
           persist-credentials: false
           fetch-depth: 1
 
+      - name: Resolve exact current main
+        id: current_main
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { data } = await github.rest.repos.getBranch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: "main",
+            });
+            core.setOutput("sha", data.commit.sha);
+
       - name: Verify exact current main identity
         shell: bash
+        env:
+          CURRENT_MAIN_SHA: ${{ steps.current_main.outputs.sha }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_SHA" = "$CURRENT_MAIN_SHA"
+          test "$(git rev-parse HEAD)" = "$CURRENT_MAIN_SHA"
           git diff --exit-code
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
 
