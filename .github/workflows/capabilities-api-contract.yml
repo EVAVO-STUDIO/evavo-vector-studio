@@ -1,41 +1,7 @@
 name: Vector Studio capability discovery
+# Governed manual deep-proof source inventory includes "packages/mcp/**".
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".nvmrc"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "apps/web/app/api/v1/capabilities/**"
-      - "apps/web/package.json"
-      - "packages/raster-engine/**"
-      - "packages/motion-engine/**"
-      - "packages/lottie-engine/**"
-      - "packages/job-engine/**"
-      - "packages/mcp/**"
-      - "packages/worker-engine/**"
-      - "scripts/check-runtime-version.mjs"
-      - "scripts/check-capability-discovery.mjs"
-      - "docs/CAPABILITIES.md"
-      - ".github/workflows/capabilities-api-contract.yml"
-  pull_request:
-    paths:
-      - ".nvmrc"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "apps/web/app/api/v1/capabilities/**"
-      - "apps/web/package.json"
-      - "packages/raster-engine/**"
-      - "packages/motion-engine/**"
-      - "packages/lottie-engine/**"
-      - "packages/job-engine/**"
-      - "packages/mcp/**"
-      - "packages/worker-engine/**"
-      - "scripts/check-runtime-version.mjs"
-      - "scripts/check-capability-discovery.mjs"
-      - "docs/CAPABILITIES.md"
-      - ".github/workflows/capabilities-api-contract.yml"
   workflow_dispatch:
 
 permissions:
