@@ -3,7 +3,46 @@ name: HTTP Worker contract
 on:
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/http-worker-contract.yml"
+      - ".env.example"
+      - ".nvmrc"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "tsconfig.json"
+      - "workers/http-worker/**"
+      - "packages/job-control/**"
+      - "packages/worker-client/**"
+      - "packages/worker-engine/**"
+      - "packages/worker-protocol/**"
+      - "apps/web/app/api/v1/worker/**"
+      - "scripts/check-http-worker-contract.mjs"
+      - "docs/HTTP-WORKER.md"
+      - "docs/OBJECT-TRANSFER.md"
+      - "docs/WORKER-API.md"
+      - "docs/WORKER-CLIENT.md"
+      - "docs/WORKER.md"
   pull_request:
+    paths:
+      - ".github/workflows/http-worker-contract.yml"
+      - ".env.example"
+      - ".nvmrc"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - "tsconfig.json"
+      - "workers/http-worker/**"
+      - "packages/job-control/**"
+      - "packages/worker-client/**"
+      - "packages/worker-engine/**"
+      - "packages/worker-protocol/**"
+      - "apps/web/app/api/v1/worker/**"
+      - "scripts/check-http-worker-contract.mjs"
+      - "docs/HTTP-WORKER.md"
+      - "docs/OBJECT-TRANSFER.md"
+      - "docs/WORKER-API.md"
+      - "docs/WORKER-CLIENT.md"
+      - "docs/WORKER.md"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,13 +56,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Use Node.js
-        uses: actions/setup-node@v4
+      - name: Check out exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 22
+          persist-credentials: false
+
+      - name: Use the repository Node.js version without package-manager caching
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Verify HTTP-coordinated worker contract
         run: node scripts/check-http-worker-contract.mjs
+
+      - name: Verify no tracked source mutation
+        run: git diff --exit-code
