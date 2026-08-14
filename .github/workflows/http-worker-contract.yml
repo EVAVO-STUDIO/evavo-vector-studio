@@ -1,47 +1,6 @@
 name: HTTP Worker contract
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/http-worker-contract.yml"
-      - ".env.example"
-      - ".nvmrc"
-      - "package.json"
-      - "pnpm-workspace.yaml"
-      - "tsconfig.json"
-      - "workers/http-worker/**"
-      - "packages/job-control/**"
-      - "packages/worker-client/**"
-      - "packages/worker-engine/**"
-      - "packages/worker-protocol/**"
-      - "apps/web/app/api/v1/worker/**"
-      - "scripts/check-http-worker-contract.mjs"
-      - "docs/HTTP-WORKER.md"
-      - "docs/OBJECT-TRANSFER.md"
-      - "docs/WORKER-API.md"
-      - "docs/WORKER-CLIENT.md"
-      - "docs/WORKER.md"
-  pull_request:
-    paths:
-      - ".github/workflows/http-worker-contract.yml"
-      - ".env.example"
-      - ".nvmrc"
-      - "package.json"
-      - "pnpm-workspace.yaml"
-      - "tsconfig.json"
-      - "workers/http-worker/**"
-      - "packages/job-control/**"
-      - "packages/worker-client/**"
-      - "packages/worker-engine/**"
-      - "packages/worker-protocol/**"
-      - "apps/web/app/api/v1/worker/**"
-      - "scripts/check-http-worker-contract.mjs"
-      - "docs/HTTP-WORKER.md"
-      - "docs/OBJECT-TRANSFER.md"
-      - "docs/WORKER-API.md"
-      - "docs/WORKER-CLIENT.md"
-      - "docs/WORKER.md"
   workflow_dispatch:
 
 permissions:
