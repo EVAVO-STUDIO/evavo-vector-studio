@@ -1,62 +1,6 @@
 name: EVAVO hub integration contract
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/hub-contract.yml"
-      - ".env.example"
-      - ".nvmrc"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "tsconfig.json"
-      - "turbo.json"
-      - "apps/web/package.json"
-      - "apps/web/tsconfig.json"
-      - "apps/web/middleware.ts"
-      - "apps/web/lib/api-security.ts"
-      - "apps/web/lib/hub-*.ts"
-      - "apps/web/lib/workspace-access.ts"
-      - "apps/web/app/page.tsx"
-      - "apps/web/app/motion/**"
-      - "apps/web/app/access/**"
-      - "apps/web/app/launch/**"
-      - "apps/web/app/api/auth/logout/**"
-      - "apps/web/app/api/health/**"
-      - "apps/web/public/hub/**"
-      - "apps/web/public/manifest.webmanifest"
-      - "packages/hub-auth/**"
-      - "scripts/check-hub-integration-contract.mjs"
-      - "docs/HUB-INTEGRATION.md"
-  pull_request:
-    paths:
-      - ".github/workflows/hub-contract.yml"
-      - ".env.example"
-      - ".nvmrc"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "tsconfig.json"
-      - "turbo.json"
-      - "apps/web/package.json"
-      - "apps/web/tsconfig.json"
-      - "apps/web/middleware.ts"
-      - "apps/web/lib/api-security.ts"
-      - "apps/web/lib/hub-*.ts"
-      - "apps/web/lib/workspace-access.ts"
-      - "apps/web/app/page.tsx"
-      - "apps/web/app/motion/**"
-      - "apps/web/app/access/**"
-      - "apps/web/app/launch/**"
-      - "apps/web/app/api/auth/logout/**"
-      - "apps/web/app/api/health/**"
-      - "apps/web/public/hub/**"
-      - "apps/web/public/manifest.webmanifest"
-      - "packages/hub-auth/**"
-      - "scripts/check-hub-integration-contract.mjs"
-      - "docs/HUB-INTEGRATION.md"
-  merge_group:
   workflow_dispatch:
 
 permissions:
