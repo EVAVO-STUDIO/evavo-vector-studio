@@ -132,7 +132,8 @@ requireTokens(files.quality, sources.quality, [
   "pnpm typecheck",
   "pnpm test",
   "pnpm build",
-  "vector/contracts",
+  '["contracts", ".ci/contracts.log", process.env.CONTRACTS_OUTCOME]',
+  "context: `vector/${name}`",
 ]);
 forbidTokens(files.quality, sources.quality, [
   "contents: write",
