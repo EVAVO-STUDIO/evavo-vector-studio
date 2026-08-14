@@ -30,12 +30,14 @@ on:
       - "apps/web/app/api/v1/capabilities/route.ts"
       - "apps/web/lib/readiness.ts"
       - "apps/web/lib/api-security.ts"
+      - "ops/provider/vector-studio-provider-remediation-v1.json"
       - "scripts/check-ci-budget-contract.mjs"
       - "scripts/check-repository-hygiene.mjs"
       - "scripts/check-test-build-isolation.mjs"
       - "scripts/check-readiness-contract.mjs"
       - "scripts/check-capability-discovery.mjs"
       - "scripts/check-mcp-contract.mjs"
+      - "scripts/check-vector-provider-remediation-contract.mjs"
       - "scripts/plan-vector-studio-vercel-provisioning.mjs"
       - "docs/CI-BUDGET.md"
       - "docs/REPOSITORY-HYGIENE.md"
@@ -44,6 +46,7 @@ on:
       - "docs/API.md"
       - "docs/CAPABILITIES.md"
       - "docs/PRINT-PREFLIGHT.md"
+      - "docs/VERCEL-REMEDIATION.md"
       - "README.md"
   pull_request:
     paths:
@@ -73,12 +76,14 @@ on:
       - "apps/web/app/api/v1/capabilities/route.ts"
       - "apps/web/lib/readiness.ts"
       - "apps/web/lib/api-security.ts"
+      - "ops/provider/vector-studio-provider-remediation-v1.json"
       - "scripts/check-ci-budget-contract.mjs"
       - "scripts/check-repository-hygiene.mjs"
       - "scripts/check-test-build-isolation.mjs"
       - "scripts/check-readiness-contract.mjs"
       - "scripts/check-capability-discovery.mjs"
       - "scripts/check-mcp-contract.mjs"
+      - "scripts/check-vector-provider-remediation-contract.mjs"
       - "scripts/plan-vector-studio-vercel-provisioning.mjs"
       - "docs/CI-BUDGET.md"
       - "docs/REPOSITORY-HYGIENE.md"
@@ -87,6 +92,7 @@ on:
       - "docs/API.md"
       - "docs/CAPABILITIES.md"
       - "docs/PRINT-PREFLIGHT.md"
+      - "docs/VERCEL-REMEDIATION.md"
       - "README.md"
   workflow_dispatch:
 
@@ -148,6 +154,12 @@ jobs:
         continue-on-error: true
         run: node scripts/check-readiness-contract.mjs
 
+      - name: Verify provider remediation contract
+        id: provider_remediation
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        continue-on-error: true
+        run: node scripts/check-vector-provider-remediation-contract.mjs
+
       - name: Verify clean tracked and untracked boundary
         id: clean
         if: always()
@@ -166,6 +178,7 @@ jobs:
           HYGIENE_OUTCOME: ${{ steps.hygiene.outcome }}
           ISOLATION_OUTCOME: ${{ steps.isolation.outcome }}
           READINESS_OUTCOME: ${{ steps.readiness.outcome }}
+          PROVIDER_REMEDIATION_OUTCOME: ${{ steps.provider_remediation.outcome }}
           CLEAN_OUTCOME: ${{ steps.clean.outcome }}
         with:
           script: |
@@ -176,6 +189,7 @@ jobs:
               ["api/vector-repository-hygiene", runtimePassed && process.env.HYGIENE_OUTCOME === "success", "repository hygiene"],
               ["api/vector-test-build-isolation", runtimePassed && process.env.ISOLATION_OUTCOME === "success", "test build isolation"],
               ["api/vector-readiness-contract", runtimePassed && process.env.READINESS_OUTCOME === "success", "readiness contract"],
+              ["provider/vector-remediation-contract", runtimePassed && process.env.PROVIDER_REMEDIATION_OUTCOME === "success", "provider remediation contract"],
               ["governance/vector-clean-tree", process.env.CLEAN_OUTCOME === "success", "clean tree"],
             ];
             for (const [contextName, passed, label] of gates) {
@@ -199,6 +213,7 @@ jobs:
           HYGIENE_OUTCOME: ${{ steps.hygiene.outcome }}
           ISOLATION_OUTCOME: ${{ steps.isolation.outcome }}
           READINESS_OUTCOME: ${{ steps.readiness.outcome }}
+          PROVIDER_REMEDIATION_OUTCOME: ${{ steps.provider_remediation.outcome }}
           CLEAN_OUTCOME: ${{ steps.clean.outcome }}
         run: |
           test "$RUNTIME_OUTCOME" = "success"
@@ -206,4 +221,5 @@ jobs:
           test "$HYGIENE_OUTCOME" = "success"
           test "$ISOLATION_OUTCOME" = "success"
           test "$READINESS_OUTCOME" = "success"
+          test "$PROVIDER_REMEDIATION_OUTCOME" = "success"
           test "$CLEAN_OUTCOME" = "success"

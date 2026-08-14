@@ -1,0 +1,157 @@
+{
+  "contractVersion": "1.0",
+  "provider": "vercel",
+  "projectContract": "ops/provider/vector-studio-vercel-project-v1.json",
+  "project": {
+    "id": "prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L",
+    "name": "evavo-vector-studio",
+    "teamId": "team_ckKLAnG3MGJK0mMpIVpjbogl",
+    "repository": "EVAVO-STUDIO/evavo-vector-studio",
+    "rootDirectory": "apps/web",
+    "framework": "nextjs",
+    "nodeVersion": "22.x",
+    "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+    "buildCommand": "cd ../.. && pnpm exec turbo run build --filter=@evavo/vector-web",
+    "canonicalDomain": "vector.evavo.com.au"
+  },
+  "sourcePolicy": {
+    "branch": "main",
+    "exactCurrentMainRequired": true,
+    "sourceProofRequired": true
+  },
+  "stateModel": [
+    "source-ready",
+    "project-created",
+    "project-configured",
+    "domain-verified",
+    "production-deployed",
+    "owner-launch-proven",
+    "client-launch-proven",
+    "replay-rejection-proven",
+    "release-promoted"
+  ],
+  "actions": [
+    {
+      "sequence": 1,
+      "code": "CONFIRM_SOURCE_CONTROL_BOUNDARY",
+      "scope": "project-source-control",
+      "target": "EVAVO-STUDIO/evavo-vector-studio",
+      "mutationRequired": false,
+      "authority": "provider-read",
+      "completionEvidence": "matching-github-link-or-api-managed-project"
+    },
+    {
+      "sequence": 2,
+      "code": "SET_ROOT_DIRECTORY",
+      "scope": "project-settings",
+      "target": "apps/web",
+      "mutationRequired": true,
+      "authority": "protected-provider-apply",
+      "completionEvidence": "root-directory-matches"
+    },
+    {
+      "sequence": 3,
+      "code": "SET_FRAMEWORK",
+      "scope": "project-settings",
+      "target": "nextjs",
+      "mutationRequired": true,
+      "authority": "protected-provider-apply",
+      "completionEvidence": "framework-matches"
+    },
+    {
+      "sequence": 4,
+      "code": "SET_NODE_VERSION",
+      "scope": "project-settings",
+      "target": "22.x",
+      "mutationRequired": true,
+      "authority": "protected-provider-apply",
+      "completionEvidence": "node-version-matches"
+    },
+    {
+      "sequence": 5,
+      "code": "SET_INSTALL_COMMAND",
+      "scope": "project-settings",
+      "target": "cd ../.. && pnpm install --frozen-lockfile",
+      "mutationRequired": true,
+      "authority": "protected-provider-apply",
+      "completionEvidence": "install-command-matches"
+    },
+    {
+      "sequence": 6,
+      "code": "SET_BUILD_COMMAND",
+      "scope": "project-settings",
+      "target": "cd ../.. && pnpm exec turbo run build --filter=@evavo/vector-web",
+      "mutationRequired": true,
+      "authority": "protected-provider-apply",
+      "completionEvidence": "build-command-matches"
+    },
+    {
+      "sequence": 7,
+      "code": "CONFIGURE_RUNTIME_AUTHORITIES",
+      "scope": "production-environment",
+      "target": "all-required-production-authorities-valid-and-separated",
+      "mutationRequired": true,
+      "authority": "protected-provider-apply",
+      "completionEvidence": "authority-readiness-receipt"
+    },
+    {
+      "sequence": 8,
+      "code": "ATTACH_CANONICAL_DOMAIN",
+      "scope": "production-domain",
+      "target": "vector.evavo.com.au",
+      "mutationRequired": true,
+      "authority": "protected-provider-apply",
+      "completionEvidence": "canonical-domain-verified"
+    },
+    {
+      "sequence": 9,
+      "code": "DEPLOY_EXACT_SOURCE",
+      "scope": "production-deployment",
+      "target": "exact-current-main",
+      "mutationRequired": true,
+      "authority": "protected-production-deploy",
+      "completionEvidence": "ready-production-deployment-bound-to-source"
+    },
+    {
+      "sequence": 10,
+      "code": "VERIFY_LIVE_RUNTIME",
+      "scope": "public-runtime-proof",
+      "target": "readiness-and-capabilities-verified",
+      "mutationRequired": false,
+      "authority": "read-only-verification",
+      "completionEvidence": "bounded-live-runtime-receipt"
+    },
+    {
+      "sequence": 11,
+      "code": "RUN_SIGNED_LAUNCH_PROOFS",
+      "scope": "release-evidence",
+      "target": "owner-client-and-replay-proven",
+      "mutationRequired": false,
+      "authority": "human-approved-proof",
+      "completionEvidence": "one-time-launch-and-replay-rejection-receipts"
+    },
+    {
+      "sequence": 12,
+      "code": "PROMOTE_FROM_CENTRAL_HUB",
+      "scope": "release-policy",
+      "target": "explicit-human-approved-promotion",
+      "mutationRequired": true,
+      "authority": "central-human-promotion",
+      "completionEvidence": "reviewed-release-policy-commit"
+    }
+  ],
+  "release": {
+    "providerConfigurationProofRequired": true,
+    "canonicalDomainProofRequired": true,
+    "exactProductionDeploymentProofRequired": true,
+    "liveRuntimeProofRequired": true,
+    "ownerLaunchProofRequired": true,
+    "clientLaunchProofRequired": true,
+    "replayRejectionProofRequired": true,
+    "centralHumanPromotionRequired": true,
+    "clientReleaseEligible": false,
+    "automaticPromotionAllowed": false
+  },
+  "mutationAuthority": "repository-owned-guarded-workflows",
+  "secretValuesIncluded": false
+}
