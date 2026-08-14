@@ -80,6 +80,7 @@ jobs:
           node scripts/check-lockfile-integrity.mjs
           node scripts/check-vercel-project-provisioning-contract.mjs
           node scripts/check-vercel-provisioning-plan-receipt-contract.mjs
+          node scripts/project-vector-provider-remediation-receipt.mjs --self-test
           node scripts/provision-vector-studio-vercel.mjs --self-test
           node scripts/plan-vector-studio-vercel-provisioning.mjs --self-test
           node scripts/enforce-vercel-provider-inspection-receipt.mjs --self-test
@@ -112,12 +113,25 @@ jobs:
             --receipt .ci/vector-vercel-provisioning-preflight.json \
             --commit "${{ inputs.commit }}"
 
+      - name: Project canonical remediation state
+        id: projection
+        if: ${{ always() && steps.inspection.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          node scripts/project-vector-provider-remediation-receipt.mjs \
+            --receipt .ci/vector-vercel-provisioning-preflight.json \
+            --commit "${{ inputs.commit }}" \
+            --out .ci/vector-provider-remediation-projection.json
+
       - name: Preserve bounded provider receipt
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vector-vercel-provisioning-preflight-${{ inputs.commit }}
-          path: .ci/vector-vercel-provisioning-preflight.json
+          path: |
+            .ci/vector-vercel-provisioning-preflight.json
+            .ci/vector-provider-remediation-projection.json
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 7
@@ -127,10 +141,13 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           INSPECTION_OUTCOME: ${{ steps.inspection.outcome }}
+          PROJECTION_OUTCOME: ${{ steps.projection.outcome }}
           INSPECTED_COMMIT: ${{ inputs.commit }}
         with:
           script: |
-            const passed = process.env.INSPECTION_OUTCOME === "success";
+            const passed =
+              process.env.INSPECTION_OUTCOME === "success" &&
+              process.env.PROJECTION_OUTCOME === "success";
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -138,8 +155,8 @@ jobs:
               state: passed ? "success" : "failure",
               context: "deploy/vector-studio-vercel-preflight",
               description: passed
-                ? "read-only Vector provider inspection passed"
-                : "Vector provider inspection is unavailable or contradictory",
+                ? "read-only Vector provider inspection passed; remediation projection passed"
+                : "Vector provider inspection or remediation projection is unavailable or contradictory",
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
@@ -147,4 +164,7 @@ jobs:
         if: always()
         env:
           INSPECTION_OUTCOME: ${{ steps.inspection.outcome }}
-        run: test "$INSPECTION_OUTCOME" = "success"
+          PROJECTION_OUTCOME: ${{ steps.projection.outcome }}
+        run: |
+          test "$INSPECTION_OUTCOME" = "success"
+          test "$PROJECTION_OUTCOME" = "success"
