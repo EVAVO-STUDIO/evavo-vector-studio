@@ -87,6 +87,7 @@ const files = Object.freeze({
   providerPreflight: ".github/workflows/vector-vercel-provisioning-preflight.yml",
   providerProvision: ".github/workflows/vector-vercel-project-provisioning.yml",
   providerDeploy: ".github/workflows/vector-vercel-production-deployment.yml",
+  providerCompatibilityMarker: ".github/vector-vercel-preflight.trigger",
   hygiene: "scripts/check-repository-hygiene.mjs",
   documentation: "docs/CI-BUDGET.md",
 });
@@ -185,6 +186,12 @@ forbidTokens(files.governance, sources.governance, [
   "secrets.",
 ]);
 
+requireTokens(files.providerCompatibilityMarker, sources.providerCompatibilityMarker, [
+  "retired compatibility marker",
+  "manual-only through workflow_dispatch",
+  "performs no automatic dispatch",
+]);
+
 requireTokens(files.hygiene, sources.hygiene, [
   "retiredPublicationAuthoritiesAbsent: true",
   '".github/workflows/one-time-finalise-vercel-contract.yml"',
@@ -197,16 +204,13 @@ requireTokens(files.documentation, sources.documentation, [
   "Operator-dispatched deep proofs",
   "repair-pnpm-lockfile-once.yml",
   "vector-vercel-preflight.trigger",
+  "inert compatibility marker",
+  "performs no automatic dispatch",
   "no provider mutation",
   "Client release remains withheld",
 ]);
 
-for (const retiredPath of [
-  ".github/workflows/repair-pnpm-lockfile-once.yml",
-  ".github/vector-vercel-preflight.trigger",
-]) {
-  await requireAbsent(retiredPath);
-}
+await requireAbsent(".github/workflows/repair-pnpm-lockfile-once.yml");
 
 if (errors.length > 0) {
   process.stderr.write(
@@ -234,7 +238,7 @@ process.stdout.write(
       automaticDependencyFreeGovernanceGates: 1,
       focusedDeepProofsManualOnly: true,
       retiredWriteEnabledRepairAbsent: true,
-      retiredProviderTriggerAbsent: true,
+      inertProviderCompatibilityMarkerGoverned: true,
       providerMutationManualOnly: true,
       clientReleaseEligible: false,
       mutationPerformed: false,
