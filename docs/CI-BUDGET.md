@@ -50,18 +50,25 @@ approve client release
 
 Client release remains withheld until the governed provider, live launch, replay and central human-promotion evidence is complete.
 
-## Retired authority
+## Retired write authority
 
-The following obsolete paths must remain absent:
+The obsolete write-enabled recovery workflow must remain absent:
 
 ```text
 .github/workflows/repair-pnpm-lockfile-once.yml
+```
+
+That workflow could commit to `main` and cancel Actions. The package-manager bootstrap defect it addressed is already permanently corrected by the exact Corepack and frozen-install boundaries.
+
+## Provider compatibility marker
+
+The tracked file:
+
+```text
 .github/vector-vercel-preflight.trigger
 ```
 
-The lockfile repair workflow was a write-enabled recovery path that could commit to `main` and cancel Actions. The package-manager bootstrap defect it addressed is already permanently corrected by the exact Corepack and frozen-install boundaries.
-
-The provider preflight marker became inert when provider inspection moved to exact-commit manual dispatch. Retaining it would imply a trigger authority that no longer exists.
+is retained only as an inert compatibility marker for the mature Vercel deployment contract. Provider preflight is manual-only through `workflow_dispatch`, and changing the marker performs no automatic dispatch. The budget guard verifies both the marker text and the absence of any push, pull-request or scheduled provider-preflight trigger.
 
 ## Enforcement
 
@@ -69,4 +76,4 @@ The provider preflight marker became inert when provider inspection moved to exa
 node scripts/check-ci-budget-contract.mjs
 ```
 
-The dependency-free contract verifies the two automatic gates, manual specialist proofs, manual provider transactions, absence of retired authority, least-privilege governance permissions and the continuing no-mutation and no-release posture.
+The dependency-free contract verifies the two automatic gates, manual specialist proofs, manual provider transactions, absence of retired write authority, the inert compatibility marker, least-privilege governance permissions and the continuing no-mutation and no-release posture.
