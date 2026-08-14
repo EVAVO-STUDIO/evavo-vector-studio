@@ -1,0 +1,209 @@
+name: Vector Studio source governance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/governance-contract.yml"
+      - ".github/workflows/quality.yml"
+      - ".github/workflows/capabilities-api-contract.yml"
+      - ".github/workflows/print-preflight-contract.yml"
+      - ".github/workflows/readiness-contract.yml"
+      - ".github/workflows/hub-contract.yml"
+      - ".github/workflows/http-worker-contract.yml"
+      - ".github/workflows/source-release-proof.yml"
+      - ".github/workflows/public-deployment-proof.yml"
+      - ".github/workflows/vector-vercel-provisioning-preflight.yml"
+      - ".github/workflows/vector-vercel-project-provisioning.yml"
+      - ".github/workflows/vector-vercel-production-deployment.yml"
+      - ".github/workflows/repair-pnpm-lockfile-once.yml"
+      - ".github/vector-vercel-preflight.trigger"
+      - ".gitignore"
+      - ".nvmrc"
+      - "package.json"
+      - "turbo.json"
+      - "apps/*/package.json"
+      - "packages/*/package.json"
+      - "workers/*/package.json"
+      - "packages/cli/bin/**"
+      - "apps/web/app/api/v1/readiness/**"
+      - "apps/web/app/api/v1/capabilities/route.ts"
+      - "apps/web/lib/readiness.ts"
+      - "apps/web/lib/api-security.ts"
+      - "scripts/check-ci-budget-contract.mjs"
+      - "scripts/check-repository-hygiene.mjs"
+      - "scripts/check-test-build-isolation.mjs"
+      - "scripts/check-readiness-contract.mjs"
+      - "scripts/check-capability-discovery.mjs"
+      - "scripts/check-mcp-contract.mjs"
+      - "scripts/plan-vector-studio-vercel-provisioning.mjs"
+      - "docs/CI-BUDGET.md"
+      - "docs/REPOSITORY-HYGIENE.md"
+      - "docs/TEST-BUILD-ISOLATION.md"
+      - "docs/READINESS.md"
+      - "docs/API.md"
+      - "docs/CAPABILITIES.md"
+      - "docs/PRINT-PREFLIGHT.md"
+      - "README.md"
+  pull_request:
+    paths:
+      - ".github/workflows/governance-contract.yml"
+      - ".github/workflows/quality.yml"
+      - ".github/workflows/capabilities-api-contract.yml"
+      - ".github/workflows/print-preflight-contract.yml"
+      - ".github/workflows/readiness-contract.yml"
+      - ".github/workflows/hub-contract.yml"
+      - ".github/workflows/http-worker-contract.yml"
+      - ".github/workflows/source-release-proof.yml"
+      - ".github/workflows/public-deployment-proof.yml"
+      - ".github/workflows/vector-vercel-provisioning-preflight.yml"
+      - ".github/workflows/vector-vercel-project-provisioning.yml"
+      - ".github/workflows/vector-vercel-production-deployment.yml"
+      - ".github/workflows/repair-pnpm-lockfile-once.yml"
+      - ".github/vector-vercel-preflight.trigger"
+      - ".gitignore"
+      - ".nvmrc"
+      - "package.json"
+      - "turbo.json"
+      - "apps/*/package.json"
+      - "packages/*/package.json"
+      - "workers/*/package.json"
+      - "packages/cli/bin/**"
+      - "apps/web/app/api/v1/readiness/**"
+      - "apps/web/app/api/v1/capabilities/route.ts"
+      - "apps/web/lib/readiness.ts"
+      - "apps/web/lib/api-security.ts"
+      - "scripts/check-ci-budget-contract.mjs"
+      - "scripts/check-repository-hygiene.mjs"
+      - "scripts/check-test-build-isolation.mjs"
+      - "scripts/check-readiness-contract.mjs"
+      - "scripts/check-capability-discovery.mjs"
+      - "scripts/check-mcp-contract.mjs"
+      - "scripts/plan-vector-studio-vercel-provisioning.mjs"
+      - "docs/CI-BUDGET.md"
+      - "docs/REPOSITORY-HYGIENE.md"
+      - "docs/TEST-BUILD-ISOLATION.md"
+      - "docs/READINESS.md"
+      - "docs/API.md"
+      - "docs/CAPABILITIES.md"
+      - "docs/PRINT-PREFLIGHT.md"
+      - "README.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: vector-source-governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  governance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Use the repository Node.js version without package-manager caching
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Verify exact repository runtime
+        id: runtime
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v$(tr -d '\r\n' < .nvmrc)"
+          git diff --exit-code
+
+      - name: Verify CI and provider budget contract
+        id: budget
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        continue-on-error: true
+        run: node scripts/check-ci-budget-contract.mjs
+
+      - name: Verify repository hygiene contract
+        id: hygiene
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        continue-on-error: true
+        run: node scripts/check-repository-hygiene.mjs
+
+      - name: Verify test and build output isolation
+        id: isolation
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        continue-on-error: true
+        run: node scripts/check-test-build-isolation.mjs
+
+      - name: Verify runtime readiness contract
+        id: readiness
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        continue-on-error: true
+        run: node scripts/check-readiness-contract.mjs
+
+      - name: Verify clean tracked and untracked boundary
+        id: clean
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          git diff --check
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Publish source governance statuses
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RUNTIME_OUTCOME: ${{ steps.runtime.outcome }}
+          BUDGET_OUTCOME: ${{ steps.budget.outcome }}
+          HYGIENE_OUTCOME: ${{ steps.hygiene.outcome }}
+          ISOLATION_OUTCOME: ${{ steps.isolation.outcome }}
+          READINESS_OUTCOME: ${{ steps.readiness.outcome }}
+          CLEAN_OUTCOME: ${{ steps.clean.outcome }}
+        with:
+          script: |
+            const targetUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const runtimePassed = process.env.RUNTIME_OUTCOME === "success";
+            const gates = [
+              ["governance/vector-ci-budget", runtimePassed && process.env.BUDGET_OUTCOME === "success", "CI budget"],
+              ["api/vector-repository-hygiene", runtimePassed && process.env.HYGIENE_OUTCOME === "success", "repository hygiene"],
+              ["api/vector-test-build-isolation", runtimePassed && process.env.ISOLATION_OUTCOME === "success", "test build isolation"],
+              ["api/vector-readiness-contract", runtimePassed && process.env.READINESS_OUTCOME === "success", "readiness contract"],
+              ["governance/vector-clean-tree", process.env.CLEAN_OUTCOME === "success", "clean tree"],
+            ];
+            for (const [contextName, passed, label] of gates) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: passed ? "success" : "failure",
+                context: contextName,
+                description: passed ? `${label} passed` : `${label} failed`,
+                target_url: targetUrl,
+              });
+            }
+
+      - name: Enforce source governance result
+        if: always()
+        shell: bash
+        env:
+          RUNTIME_OUTCOME: ${{ steps.runtime.outcome }}
+          BUDGET_OUTCOME: ${{ steps.budget.outcome }}
+          HYGIENE_OUTCOME: ${{ steps.hygiene.outcome }}
+          ISOLATION_OUTCOME: ${{ steps.isolation.outcome }}
+          READINESS_OUTCOME: ${{ steps.readiness.outcome }}
+          CLEAN_OUTCOME: ${{ steps.clean.outcome }}
+        run: |
+          test "$RUNTIME_OUTCOME" = "success"
+          test "$BUDGET_OUTCOME" = "success"
+          test "$HYGIENE_OUTCOME" = "success"
+          test "$ISOLATION_OUTCOME" = "success"
+          test "$READINESS_OUTCOME" = "success"
+          test "$CLEAN_OUTCOME" = "success"
