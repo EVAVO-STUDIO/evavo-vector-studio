@@ -18,11 +18,15 @@ const INSTALL_COMMAND = "cd ../.. && pnpm install --frozen-lockfile";
 const BUILD_COMMAND = "cd ../.. && pnpm exec turbo run build --filter=@evavo/vector-web";
 const PRODUCTION_ORIGIN = "https://vector.evavo.com.au";
 const PRODUCTION_DOMAIN = "vector.evavo.com.au";
+const SETTINGS_CONFIRMATION = "reconcile-evavo-vector-studio-project-settings";
 const APPLY_CONFIRMATION = "provision-evavo-vector-studio";
 const MAX_RESPONSE_BYTES = 1_000_000;
 const MAX_RECEIPT_BYTES = 256 * 1024;
 const REQUEST_TIMEOUT_MS = 30_000;
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
+
+let mutationAttempted = false;
+let mutationPerformed = false;
 
 const PROVIDER_ACCESS_KEYS = Object.freeze([
   "VERCEL_TOKEN",
@@ -133,8 +137,11 @@ function parseArgs(argv) {
     }
     fail("VERCEL_PROVISION_ARGUMENT_INVALID", `Unknown argument: ${argument}`);
   }
-  if (!["plan", "apply"].includes(result.mode)) {
-    fail("VERCEL_PROVISION_MODE_INVALID", "The provisioning mode must be plan or apply.");
+  if (!["plan", "settings", "apply"].includes(result.mode)) {
+    fail(
+      "VERCEL_PROVISION_MODE_INVALID",
+      "The provisioning mode must be plan, settings or apply.",
+    );
   }
   if (!result.selfTest && (!result.commit || !SHA_PATTERN.test(result.commit))) {
     fail("VERCEL_PROVISION_COMMIT_INVALID", "Pass a lowercase 40-character Git commit with --commit.");
@@ -464,6 +471,10 @@ function planFromInspection(inspection, credentials) {
   const gitLink = gitLinkState(inspection.project);
   const domainVerified = inspection.domain?.verified === true;
   const blockers = planBlockers(inspection, credentials);
+  const providerBlockers = blockers.filter(
+    (item) => item.code !== "VERCEL_PROVISION_APPLICATION_AUTHORITIES_INCOMPLETE",
+  );
+  const readyToReconcileSettings = providerBlockers.length === 0;
   return Object.freeze({
     inspectionAvailable: true,
     action: "inspection-complete",
@@ -498,6 +509,7 @@ function planFromInspection(inspection, credentials) {
       reason: "Exact deployment and live proof remain a separate governed transaction.",
     }),
     blockers,
+    readyToReconcileSettings,
     readyToApply: blockers.length === 0,
   });
 }
@@ -522,6 +534,7 @@ async function reconcileProject(client, project) {
   if (Object.values(settings).every(Boolean)) return project;
   const projectId = safeProject(project)?.id;
   if (!projectId) fail("VERCEL_PROVISION_PROJECT_ID_MISSING", "The existing Vercel project has no identifier.");
+  mutationAttempted = true;
   const response = await client.request(
     `/v9/projects/${encodeURIComponent(projectId)}?teamId=${encodeURIComponent(TEAM_ID)}`,
     {
@@ -538,11 +551,13 @@ async function reconcileProject(client, project) {
       },
     },
   );
+  mutationPerformed = true;
   return response.value ?? project;
 }
 
 async function upsertEnvironment(client, projectId, values) {
   const payload = buildEnvironmentPayload(values);
+  mutationAttempted = true;
   const response = await client.request(
     `/v10/projects/${encodeURIComponent(projectId)}/env?upsert=true&teamId=${encodeURIComponent(TEAM_ID)}`,
     {
@@ -551,6 +566,7 @@ async function upsertEnvironment(client, projectId, values) {
       sensitiveResponse: true,
     },
   );
+  mutationPerformed = true;
   const failed = Array.isArray(response.value?.failed) ? response.value.failed : [];
   if (failed.length > 0) {
     fail(
@@ -574,6 +590,7 @@ async function ensureDomain(client, projectId) {
   );
   let created = false;
   if (!response.value) {
+    mutationAttempted = true;
     await client.request(
       `/v10/projects/${encodeURIComponent(projectId)}/domains?teamId=${encodeURIComponent(TEAM_ID)}`,
       {
@@ -581,6 +598,7 @@ async function ensureDomain(client, projectId) {
         body: { name: PRODUCTION_DOMAIN, gitBranch: null },
       },
     );
+    mutationPerformed = true;
     created = true;
     response = await client.request(
       `/v9/projects/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(PRODUCTION_DOMAIN)}?teamId=${encodeURIComponent(TEAM_ID)}`,
@@ -590,11 +608,13 @@ async function ensureDomain(client, projectId) {
   let verificationAccepted = response.value?.verified === true;
   if (!verificationAccepted) {
     verificationAttempted = true;
+    mutationAttempted = true;
     const verification = await client.request(
       `/v9/projects/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(PRODUCTION_DOMAIN)}/verify?teamId=${encodeURIComponent(TEAM_ID)}`,
       { method: "POST", allowFailure: true },
     );
     verificationAccepted = verification.ok && verification.value?.verified === true;
+    if (verification.ok) mutationPerformed = true;
     if (verificationAccepted) {
       response = verification;
     } else {
@@ -689,6 +709,7 @@ async function runSelfTest() {
   const providerPlan = planFromInspection({ project, domain: null }, providerOnlyState);
   assert.equal(providerPlan.inspectionAvailable, true);
   assert.equal(providerPlan.project.identity.passed, true);
+  assert.equal(providerPlan.readyToReconcileSettings, true);
   assert.equal(providerPlan.readyToApply, false);
   assert.equal(
     providerPlan.blockers[0].code,
@@ -708,12 +729,76 @@ async function runSelfTest() {
   assert.equal(payload.length, ENVIRONMENT_SPECS.length);
   assert.equal(payload.every((item) => item.target[0] === "production"), true);
   assert.equal(JSON.stringify(providerPlan).includes(valid.VERCEL_TOKEN), false);
+  assert.equal(
+    parseArgs(["--mode", "settings", "--commit", "1".repeat(40)]).mode,
+    "settings",
+  );
+
+  const mismatchedProject = {
+    ...project,
+    framework: null,
+    nodeVersion: "24.x",
+    rootDirectory: null,
+    installCommand: null,
+    buildCommand: null,
+  };
+  const settingsCalls = [];
+  mutationAttempted = false;
+  mutationPerformed = false;
+  const reconciledProject = await reconcileProject(
+    {
+      async request(pathname, options) {
+        settingsCalls.push({ pathname, options });
+        return Object.freeze({
+          value: Object.freeze({
+            ...mismatchedProject,
+            framework: FRAMEWORK,
+            nodeVersion: NODE_VERSION,
+            rootDirectory: ROOT_DIRECTORY,
+            installCommand: INSTALL_COMMAND,
+            buildCommand: BUILD_COMMAND,
+          }),
+        });
+      },
+    },
+    mismatchedProject,
+  );
+  assert.equal(settingsCalls.length, 1);
+  assert.equal(settingsCalls[0].options.method, "PATCH");
+  assert.equal(settingsCalls[0].options.body.framework, FRAMEWORK);
+  assert.equal(settingsCalls[0].options.body.nodeVersion, NODE_VERSION);
+  assert.equal(settingsCalls[0].options.body.rootDirectory, ROOT_DIRECTORY);
+  assert.equal(reconciledProject.framework, FRAMEWORK);
+  assert.equal(mutationAttempted, true);
+  assert.equal(mutationPerformed, true);
+
+  mutationAttempted = false;
+  mutationPerformed = false;
+  let failedMutation = false;
+  try {
+    await reconcileProject(
+      {
+        async request() {
+          throw new Error("mock-provider-failure");
+        },
+      },
+      mismatchedProject,
+    );
+  } catch {
+    failedMutation = true;
+  }
+  assert.equal(failedMutation, true);
+  assert.equal(mutationAttempted, true);
+  assert.equal(mutationPerformed, false);
+  mutationAttempted = false;
+  mutationPerformed = false;
 
   process.stdout.write(`${JSON.stringify({
     ok: true,
     check: "vector-studio-vercel-provisioner-self-test",
     contractVersion: CONTRACT_VERSION,
     providerOnlyInspectionSupported: true,
+    providerOnlySettingsApplySupported: true,
     applicationAuthoritiesRequiredForApply: true,
     mutationPerformed: false,
     sensitiveValuesRecorded: false,
@@ -727,6 +812,8 @@ async function main() {
     return;
   }
 
+  mutationAttempted = false;
+  mutationPerformed = false;
   const credentials = credentialState();
   if (!credentials.providerAccess.passed) {
     fail(
@@ -750,14 +837,20 @@ async function main() {
       },
     );
   }
-  if (
-    options.mode === "apply" &&
-    String(process.env.VECTOR_VERCEL_APPLY_CONFIRM ?? "").trim() !== APPLY_CONFIRMATION
-  ) {
-    fail(
-      "VERCEL_PROVISION_CONFIRMATION_REQUIRED",
-      `Apply mode requires VECTOR_VERCEL_APPLY_CONFIRM=${APPLY_CONFIRMATION}.`,
-    );
+  if (["settings", "apply"].includes(options.mode)) {
+    const expectedConfirmation =
+      options.mode === "settings" ? SETTINGS_CONFIRMATION : APPLY_CONFIRMATION;
+    const suppliedConfirmation = String(
+      process.env.VECTOR_VERCEL_OPERATION_CONFIRM ??
+        process.env.VECTOR_VERCEL_APPLY_CONFIRM ??
+        "",
+    ).trim();
+    if (suppliedConfirmation !== expectedConfirmation) {
+      fail(
+        "VERCEL_PROVISION_CONFIRMATION_REQUIRED",
+        `${options.mode} mode requires VECTOR_VERCEL_OPERATION_CONFIRM=${expectedConfirmation}.`,
+      );
+    }
   }
 
   const startedAtMs = Date.now();
@@ -770,6 +863,36 @@ async function main() {
     environmentUpserted: false,
     domain: plan.domain,
   });
+
+  if (options.mode === "settings") {
+    if (!plan.readyToReconcileSettings) {
+      const blocker = plan.blockers.find(
+        (item) => item.code !== "VERCEL_PROVISION_APPLICATION_AUTHORITIES_INCOMPLETE",
+      );
+      fail(
+        blocker?.code ?? "VERCEL_PROVISION_SETTINGS_BLOCKED",
+        blocker?.message ?? "Project-settings reconciliation is blocked.",
+      );
+    }
+    await reconcileProject(client, inspection.project);
+    inspection = await inspectProject(client);
+    const reconciled =
+      projectIdentity(inspection.project).passed &&
+      Object.values(projectSettings(inspection.project)).every(Boolean) &&
+      gitLinkState(inspection.project).acceptable;
+    if (!reconciled) {
+      fail(
+        "VERCEL_PROVISION_PROJECT_RECONCILIATION_FAILED",
+        "The project did not retain the governed repository and build settings.",
+      );
+    }
+    result = Object.freeze({
+      projectCreated: false,
+      projectReconciled: true,
+      environmentUpserted: false,
+      domain: plan.domain,
+    });
+  }
 
   if (options.mode === "apply") {
     if (!plan.readyToApply) {
@@ -809,9 +932,11 @@ async function main() {
   const passed =
     options.mode === "plan"
       ? true
-      : result.projectReconciled &&
-        result.environmentUpserted &&
-        result.domain.verified === true;
+      : options.mode === "settings"
+        ? result.projectReconciled
+        : result.projectReconciled &&
+          result.environmentUpserted &&
+          result.domain.verified === true;
   const receipt = Object.freeze({
     version: CONTRACT_VERSION,
     check: "vector-studio-vercel-provisioning",
@@ -827,13 +952,15 @@ async function main() {
     completedAt: new Date(completedAtMs).toISOString(),
     durationMs: completedAtMs - startedAtMs,
     passed,
+    readyToReconcileSettings: plan.readyToReconcileSettings,
     readyToApply: plan.readyToApply,
     credentialReadiness: safeCredentialState(credentials),
     plan,
     blockers: plan.blockers,
     result,
     deploymentPerformed: false,
-    mutationPerformed: options.mode === "apply",
+    mutationAttempted,
+    mutationPerformed,
     sensitiveValuesRecorded: false,
   });
   const output = await writeReceipt(options, receipt, credentials);
@@ -842,6 +969,7 @@ async function main() {
     mode: options.mode,
     output,
     inspectionAvailable: plan.inspectionAvailable,
+    readyToReconcileSettings: receipt.readyToReconcileSettings,
     readyToApply: receipt.readyToApply,
     blockerCodes: receipt.blockers.map((item) => item.code),
     projectCreated: result.projectCreated,
@@ -849,6 +977,7 @@ async function main() {
     environmentUpserted: result.environmentUpserted,
     domainVerified: result.domain.verified === true,
     deploymentPerformed: false,
+    mutationAttempted: receipt.mutationAttempted,
     mutationPerformed: receipt.mutationPerformed,
     sensitiveValuesRecorded: false,
   }, null, 2)}\n`);
@@ -862,6 +991,8 @@ main().catch((error) => {
     message: error instanceof Error ? error.message : String(error),
     details: error instanceof Error && "details" in error ? error.details : undefined,
     deploymentPerformed: false,
+    mutationAttempted,
+    mutationPerformed,
     sensitiveValuesRecorded: false,
   }, null, 2)}\n`);
   process.exit(1);

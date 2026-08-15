@@ -27,6 +27,15 @@ function forbidTokens(relativePath, source, tokens) {
   }
 }
 
+function workflowStep(source, name) {
+  const marker = `      - name: ${name}\n`;
+  const start = source.indexOf(marker);
+  if (start < 0) return null;
+  const tail = source.slice(start + marker.length);
+  const next = tail.indexOf("\n      - name: ");
+  return next < 0 ? tail : tail.slice(0, next);
+}
+
 const files = Object.freeze({
   package: "package.json",
   provisioner: "scripts/provision-vector-studio-vercel.mjs",
@@ -67,7 +76,9 @@ requireTokens(files.provisioner, sources.provisioner, [
   'const ROOT_DIRECTORY = "apps/web"',
   'const NODE_VERSION = "22.x"',
   'const PRODUCTION_DOMAIN = "vector.evavo.com.au"',
+  'const SETTINGS_CONFIRMATION = "reconcile-evavo-vector-studio-project-settings"',
   'const APPLY_CONFIRMATION = "provision-evavo-vector-studio"',
+  '["plan", "settings", "apply"]',
   'const PROVIDER_ACCESS_KEYS = Object.freeze([',
   'const APPLICATION_ENVIRONMENT_KEYS = Object.freeze([',
   'const ALL_SECRET_KEYS = Object.freeze([',
@@ -82,12 +93,14 @@ requireTokens(files.provisioner, sources.provisioner, [
   '"VERCEL_PROVISION_PROVIDER_ACCESS_INVALID"',
   '"VERCEL_PROVISION_APPLICATION_AUTHORITIES_INCOMPLETE"',
   'options.mode === "apply" && !credentials.applicationAuthorities.ready',
-  'String(process.env.VECTOR_VERCEL_APPLY_CONFIRM ?? "").trim()',
+  'process.env.VECTOR_VERCEL_OPERATION_CONFIRM ??',
+  'process.env.VECTOR_VERCEL_APPLY_CONFIRM ??',
   '/v9/projects/${encodeURIComponent(PROJECT_ID)}',
   'function projectIdentity(project)',
   'function planFromInspection(inspection, credentials)',
   'inspectionAvailable: true',
   'action: "inspection-complete"',
+  'readyToReconcileSettings',
   'readyToApply: blockers.length === 0',
   'action: credentials.applicationAuthorities.ready',
   '"blocked-incomplete-authorities"',
@@ -107,7 +120,9 @@ requireTokens(files.provisioner, sources.provisioner, [
   '"VERCEL_PROVISION_PROJECT_GIT_CONFLICT"',
   '"VERCEL_PROVISION_SECRET_LEAK"',
   'providerOnlyInspectionSupported: true',
+  'providerOnlySettingsApplySupported: true',
   'applicationAuthoritiesRequiredForApply: true',
+  'mutationAttempted',
   'deploymentPerformed: false',
   'sensitiveValuesRecorded: false',
 ]);
@@ -182,10 +197,13 @@ requireTokens(files.workflow, sources.workflow, [
   'node scripts/plan-vector-studio-vercel-provisioning.mjs',
   'Enforce exact provider inspection receipt',
   'node scripts/enforce-vercel-provider-inspection-receipt.mjs',
-  'Apply idempotent Vercel project transaction',
+  'Reconcile provider-only Vercel project settings',
+  '--mode settings',
+  'Apply full Vercel production configuration',
   '--mode apply',
-  'VECTOR_VERCEL_APPLY_CONFIRM: ${{ inputs.confirmation }}',
+  'VECTOR_VERCEL_OPERATION_CONFIRM: ${{ inputs.confirmation }}',
   'context: "deploy/vector-studio-vercel-provision-plan"',
+  'context: "deploy/vector-studio-vercel-project-settings"',
   'context: "deploy/vector-studio-vercel-provision-apply"',
   'include-hidden-files: true',
 ]);
@@ -199,6 +217,46 @@ forbidTokens(files.workflow, sources.workflow, [
   'echo $VERCEL_TOKEN',
   'printenv',
 ]);
+
+const settingsStep = workflowStep(
+  sources.workflow,
+  "Reconcile provider-only Vercel project settings",
+);
+const fullApplyStep = workflowStep(
+  sources.workflow,
+  "Apply full Vercel production configuration",
+);
+if (!settingsStep) {
+  errors.push("The provider-only project-settings step is missing.");
+} else {
+  requireTokens(files.workflow, settingsStep, [
+    'VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}',
+    'VECTOR_VERCEL_OPERATION_CONFIRM: ${{ inputs.confirmation }}',
+    '--mode settings',
+  ]);
+  forbidTokens(files.workflow, settingsStep, [
+    'EVAVO_CLIENT_APP_LAUNCH_SECRET',
+    'EVAVO_VECTOR_PRIVATE_SIGNING_SECRET',
+    'UPSTASH_REDIS_REST_URL',
+    'UPSTASH_REDIS_REST_TOKEN',
+    'VECTOR_API_TOKEN',
+    'VECTOR_WORKER_API_TOKEN',
+  ]);
+}
+if (!fullApplyStep) {
+  errors.push("The full production apply step is missing.");
+} else {
+  requireTokens(files.workflow, fullApplyStep, [
+    'VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}',
+    'EVAVO_CLIENT_APP_LAUNCH_SECRET: ${{ secrets.EVAVO_CLIENT_APP_LAUNCH_SECRET }}',
+    'EVAVO_VECTOR_PRIVATE_SIGNING_SECRET: ${{ secrets.EVAVO_VECTOR_PRIVATE_SIGNING_SECRET }}',
+    'UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}',
+    'UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}',
+    'VECTOR_API_TOKEN: ${{ secrets.VECTOR_API_TOKEN }}',
+    'VECTOR_WORKER_API_TOKEN: ${{ secrets.VECTOR_WORKER_API_TOKEN }}',
+    '--mode apply',
+  ]);
+}
 
 requireTokens(files.preflightWorkflow, sources.preflightWorkflow, [
   'Vector Studio Vercel provisioning preflight',
@@ -231,7 +289,9 @@ requireTokens(files.deploymentWorkflow, sources.deploymentWorkflow, [
 ]);
 requireTokens(files.docs, sources.docs, [
   'Provider access requires only `VERCEL_TOKEN`',
-  'Application authorities remain a separate apply gate',
+  'Provider-only project settings',
+  'Application authorities remain a separate full-apply gate',
+  'reconcile-evavo-vector-studio-project-settings',
   'provider inspection can pass while `readyToApply` remains false',
   'exact current `main` commit',
   'API-managed',
@@ -242,6 +302,7 @@ requireTokens(files.docs, sources.docs, [
 ]);
 requireTokens(files.receiptDocs, sources.receiptDocs, [
   'Provider access',
+  'Provider-only settings reconciliation',
   'Application authorities',
   'canonical provider inspection receipt',
   'VERCEL_PROVISION_APPLICATION_AUTHORITIES_INCOMPLETE',
@@ -251,7 +312,7 @@ if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "vector-studio-vercel-project-provisioning",
     ok: false,
-    contractVersion: "1.1",
+    contractVersion: "1.2",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -263,8 +324,9 @@ process.stdout.write(`${JSON.stringify({
   contractVersion: "1.1",
   project: "evavo-vector-studio",
   productionDomain: "vector.evavo.com.au",
-  modes: ["plan", "apply"],
+  modes: ["plan", "settings", "apply"],
   providerOnlyInspectionSupported: true,
+  providerOnlySettingsApplySupported: true,
   applicationAuthoritiesSeparatedFromProviderAccess: true,
   canonicalProviderReceiptEnforced: true,
   deploymentPerformedByProvisioner: false,

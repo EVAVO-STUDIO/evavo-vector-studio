@@ -277,7 +277,7 @@ requireTokens(files.provisioningWorkflow, sources.provisioningWorkflow, [
   'node-version-file: .nvmrc',
   'corepack prepare pnpm@10.14.0 --activate',
   'node scripts/check-lockfile-integrity.mjs',
-  'description: "Apply only: provision-evavo-vector-studio"',
+  'description: "Settings: reconcile-evavo-vector-studio-project-settings; full apply: provision-evavo-vector-studio"',
 ]);
 
 requireTokens(files.deploymentWorkflow, sources.deploymentWorkflow, [

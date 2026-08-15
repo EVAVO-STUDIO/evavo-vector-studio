@@ -65,18 +65,22 @@ The manual workflow:
 .github/workflows/vector-vercel-project-provisioning.yml
 ```
 
-has two explicit modes:
+has three explicit modes:
 
 - `plan` requires only provider access, reads the exact EVAVO Vercel project and domain, writes a bounded canonical receipt without mutation, and reports application-authority gaps separately;
-- `apply` requires provider access plus all six valid, separated application authorities, safely reconciles the project, upserts the production environment, and assigns `vector.evavo.com.au`.
+- `settings` is a provider-only project settings transaction. It reconciles framework, Node.js, root directory, install command, build command and feedback controls without receiving, writing or requiring any application runtime authority;
+- `apply` is the full production-configuration transaction. It requires provider access plus all six valid, separated application authorities, reconciles project settings, upserts the production environment, and assigns `vector.evavo.com.au`.
 
-Both modes require an exact current `main` commit. Apply additionally requires the protected `vector-studio-production` GitHub environment, a complete exact-commit source proof, and the literal confirmation:
+All modes require an exact current `main` commit and the protected `vector-studio-production` GitHub environment. Mutating scopes additionally require a complete exact-commit source proof and their own literal confirmation:
 
 ```text
-provision-evavo-vector-studio
+settings  reconcile-evavo-vector-studio-project-settings
+apply     provision-evavo-vector-studio
 ```
 
-The transaction is idempotent and is pinned to project ID `prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L`. If that project disappears or its identity changes, apply fails closed instead of creating an unreviewed replacement. The project may remain API-managed with no Git integration because exact production deployments are repository-owned transactions. If a Git link is present, it must belong to `EVAVO-STUDIO/evavo-vector-studio`; a conflicting link fails closed. Framework, Node.js 22.x and build settings are reconciled to the committed monorepo contract, environment values are upserted only for production, the four signing/API authorities must remain distinct, and receipts contain only key names and bounded state.
+Application authorities remain a separate full-apply gate. The Provider-only project settings step receives only `VERCEL_TOKEN`, publishes the dedicated `deploy/vector-studio-vercel-project-settings` status, and cannot claim that the production environment, domain, deployment or client release is ready.
+
+Each transaction is idempotent and is pinned to project ID `prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L`. If that project disappears or its identity changes, apply fails closed instead of creating an unreviewed replacement. The project may remain API-managed with no Git integration because exact production deployments are repository-owned transactions. If a Git link is present, it must belong to `EVAVO-STUDIO/evavo-vector-studio`; a conflicting link fails closed. Framework, Node.js 22.x and build settings are reconciled to the committed monorepo contract. Provider-only project settings can therefore be repaired before application secrets exist. Environment values are upserted only by full apply and only for production, the four signing/API authorities must remain distinct, and receipts contain only key names and bounded state. Receipts also distinguish whether mutation was attempted from whether a provider mutation completed, including failed transactions.
 
 This provisioner does not deploy. Exact production deployment, deployment readiness polling, live private-response proof, durable replay proof, and one-time owner/client launch evidence remain separate governed transactions. After attachment, the provisioner calls Vercel’s project-domain verification endpoint. A domain that remains unverified leaves apply incomplete rather than claiming release readiness. Client release remains withheld throughout.
 

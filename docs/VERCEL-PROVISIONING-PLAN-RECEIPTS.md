@@ -47,9 +47,19 @@ blocker: VERCEL_PROVISION_PROVIDER_ACCESS_INVALID
 
 Provider inspection never treats an absent application secret as a reason to hide the actual Vercel project state.
 
+## Provider-only settings reconciliation
+
+The protected provisioning workflow can run `settings` with only `VERCEL_TOKEN` after the exact current `main` source proof passes. This scope reconciles only the pinned project settings and uses the literal confirmation:
+
+```text
+reconcile-evavo-vector-studio-project-settings
+```
+
+It does not receive the six application authorities, does not upsert the production environment, does not attach a domain, and does not deploy. Its receipt reports `readyToReconcileSettings` separately from `readyToApply`, so missing runtime authorities do not prevent framework, Node.js, root-directory and monorepo-command correction.
+
 ## Application authorities
 
-Apply requires these six application authorities in addition to provider access:
+Full apply requires these six application authorities in addition to provider access:
 
 ```text
 EVAVO_CLIENT_APP_LAUNCH_SECRET
@@ -71,7 +81,7 @@ readyToApply: false
 blocker: VERCEL_PROVISION_APPLICATION_AUTHORITIES_INCOMPLETE
 ```
 
-That state means the provider has been inspected successfully, but project mutation and production configuration remain blocked. It is not a production-readiness or client-release claim.
+That state means the provider has been inspected successfully and full apply remains blocked. Provider-only project settings reconciliation may still be authorised separately. It is not a production-readiness or client-release claim.
 
 ## Provider inspection enforcement
 
@@ -123,7 +133,7 @@ if-no-files-found: error
 include-hidden-files: true
 ```
 
-Provider inspection status is independent from apply readiness. Apply remains a separate protected-environment transaction and continues to call the provisioner directly with explicit confirmation and all six valid, separated application authorities.
+Provider inspection status is independent from full-apply readiness. The protected workflow exposes a provider-only `settings` transaction with its own confirmation and commit-status context, while full `apply` continues to call the provisioner with all six valid, separated application authorities. The plan and settings steps receive only `VERCEL_TOKEN`; runtime authorities are injected only into the full-apply step.
 
 ## Executable validation
 

@@ -4,19 +4,20 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Plan without mutation or apply the governed project transaction
+        description: Plan, reconcile provider-only settings, or apply the full production transaction
         required: true
         default: plan
         type: choice
         options:
           - plan
+          - settings
           - apply
       commit:
         description: Exact lowercase 40-character current main commit
         required: true
         type: string
       confirmation:
-        description: "Apply only: provision-evavo-vector-studio"
+        description: "Settings: reconcile-evavo-vector-studio-project-settings; full apply: provision-evavo-vector-studio"
         required: false
         type: string
 
@@ -96,12 +97,6 @@ jobs:
         continue-on-error: true
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          EVAVO_CLIENT_APP_LAUNCH_SECRET: ${{ secrets.EVAVO_CLIENT_APP_LAUNCH_SECRET }}
-          EVAVO_VECTOR_PRIVATE_SIGNING_SECRET: ${{ secrets.EVAVO_VECTOR_PRIVATE_SIGNING_SECRET }}
-          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
-          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
-          VECTOR_API_TOKEN: ${{ secrets.VECTOR_API_TOKEN }}
-          VECTOR_WORKER_API_TOKEN: ${{ secrets.VECTOR_WORKER_API_TOKEN }}
         run: |
           node scripts/plan-vector-studio-vercel-provisioning.mjs \
             --commit "${{ inputs.commit }}" \
@@ -152,8 +147,8 @@ jobs:
           INSPECTION_OUTCOME: ${{ steps.provider_inspection.outcome }}
         run: test "$INSPECTION_OUTCOME" = "success"
 
-  apply:
-    if: ${{ inputs.mode == 'apply' }}
+  mutate:
+    if: ${{ inputs.mode != 'plan' }}
     environment: vector-studio-production
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -177,17 +172,31 @@ jobs:
             });
             core.setOutput("sha", data.commit.sha);
 
-      - name: Confirm exact current main and explicit authority
+      - name: Confirm exact current main and scoped authority
         shell: bash
         env:
           CURRENT_MAIN_SHA: ${{ steps.current_main.outputs.sha }}
+          REQUESTED_MODE: ${{ inputs.mode }}
+          SUPPLIED_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
           if [[ ! "${{ inputs.commit }}" =~ ^[a-f0-9]{40}$ ]]; then
             echo "The provisioning commit must be a lowercase 40-character SHA." >&2
             exit 1
           fi
-          test "${{ inputs.confirmation }}" = "provision-evavo-vector-studio"
+          case "$REQUESTED_MODE" in
+            settings)
+              expected_confirmation="reconcile-evavo-vector-studio-project-settings"
+              ;;
+            apply)
+              expected_confirmation="provision-evavo-vector-studio"
+              ;;
+            *)
+              echo "Unsupported mutating provisioning mode: $REQUESTED_MODE" >&2
+              exit 1
+              ;;
+          esac
+          test "$SUPPLIED_CONFIRMATION" = "$expected_confirmation"
           test "$CURRENT_MAIN_SHA" = "${{ inputs.commit }}"
           test "$(git rev-parse HEAD)" = "$CURRENT_MAIN_SHA"
 
@@ -216,13 +225,20 @@ jobs:
           node scripts/enforce-vercel-provider-inspection-receipt.mjs --self-test
 
       - name: Create exact source proof before mutation
-        run: |
-          node scripts/create-source-proof.mjs \
-            --commit "${{ inputs.commit }}" \
-            --out .ci/vector-source-proof.json
+        run: node scripts/create-source-proof.mjs --commit "${{ inputs.commit }}" --out .ci/vector-source-proof.json
 
-      - name: Apply idempotent Vercel project transaction
-        id: provision
+      - name: Reconcile provider-only Vercel project settings
+        id: settings
+        if: ${{ inputs.mode == 'settings' }}
+        continue-on-error: true
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VECTOR_VERCEL_OPERATION_CONFIRM: ${{ inputs.confirmation }}
+        run: node scripts/provision-vector-studio-vercel.mjs --mode settings --commit "${{ inputs.commit }}" --out .ci/vector-vercel-provision-settings.json
+
+      - name: Apply full Vercel production configuration
+        id: full_apply
+        if: ${{ inputs.mode == 'apply' }}
         continue-on-error: true
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -232,47 +248,67 @@ jobs:
           UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
           VECTOR_API_TOKEN: ${{ secrets.VECTOR_API_TOKEN }}
           VECTOR_WORKER_API_TOKEN: ${{ secrets.VECTOR_WORKER_API_TOKEN }}
-          VECTOR_VERCEL_APPLY_CONFIRM: ${{ inputs.confirmation }}
-        run: |
-          node scripts/provision-vector-studio-vercel.mjs \
-            --mode apply \
-            --commit "${{ inputs.commit }}" \
-            --out .ci/vector-vercel-provision-apply.json
+          VECTOR_VERCEL_OPERATION_CONFIRM: ${{ inputs.confirmation }}
+        run: node scripts/provision-vector-studio-vercel.mjs --mode apply --commit "${{ inputs.commit }}" --out .ci/vector-vercel-provision-apply.json
 
       - name: Preserve bounded source and provisioning receipts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: vector-vercel-provision-apply-${{ inputs.commit }}
+          name: vector-vercel-provision-${{ inputs.mode }}-${{ inputs.commit }}
           path: |
             .ci/vector-source-proof.json
-            .ci/vector-vercel-provision-apply.json
+            .ci/vector-vercel-provision-${{ inputs.mode }}.json
           if-no-files-found: warn
           include-hidden-files: true
           retention-days: 14
 
-      - name: Publish apply status
+      - name: Publish scoped mutation status
         if: always()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          PROVISION_OUTCOME: ${{ steps.provision.outcome }}
+          REQUESTED_MODE: ${{ inputs.mode }}
+          SETTINGS_OUTCOME: ${{ steps.settings.outcome }}
+          APPLY_OUTCOME: ${{ steps.full_apply.outcome }}
         with:
           script: |
-            const passed = process.env.PROVISION_OUTCOME === "success";
+            const mode = process.env.REQUESTED_MODE;
+            const outcome = mode === "settings"
+              ? process.env.SETTINGS_OUTCOME
+              : process.env.APPLY_OUTCOME;
+            const passed = outcome === "success";
+            const status = mode === "settings"
+              ? {
+                  context: "deploy/vector-studio-vercel-project-settings",
+                  passed: "Vercel project settings match the governed source contract",
+                  failed: "Vector Studio Vercel project settings remain unreconciled",
+                }
+              : {
+                  context: "deploy/vector-studio-vercel-provision-apply",
+                  passed: "Vercel project, production environment and domain are verified",
+                  failed: "Vector Studio full Vercel production configuration is incomplete",
+                };
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: "${{ inputs.commit }}",
               state: passed ? "success" : "failure",
-              context: "deploy/vector-studio-vercel-provision-apply",
-              description: passed
-                ? "Vercel project, production environment and domain are verified"
-                : "Vector Studio Vercel project provisioning is incomplete",
+              context: status.context,
+              description: passed ? status.passed : status.failed,
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
-      - name: Enforce apply result
+      - name: Enforce scoped mutation result
         if: always()
+        shell: bash
         env:
-          PROVISION_OUTCOME: ${{ steps.provision.outcome }}
-        run: test "$PROVISION_OUTCOME" = "success"
+          REQUESTED_MODE: ${{ inputs.mode }}
+          SETTINGS_OUTCOME: ${{ steps.settings.outcome }}
+          APPLY_OUTCOME: ${{ steps.full_apply.outcome }}
+        run: |
+          set -euo pipefail
+          case "$REQUESTED_MODE" in
+            settings) test "$SETTINGS_OUTCOME" = "success" ;;
+            apply) test "$APPLY_OUTCOME" = "success" ;;
+            *) exit 1 ;;
+          esac
