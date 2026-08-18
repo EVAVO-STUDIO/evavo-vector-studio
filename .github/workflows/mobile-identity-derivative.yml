@@ -1,0 +1,35 @@
+name: Mobile identity vector derivative contract
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/mobile-identity-derivative.mjs"
+      - "scripts/test-mobile-identity-derivative.mjs"
+      - ".github/workflows/mobile-identity-derivative.yml"
+  pull_request:
+    paths:
+      - "scripts/mobile-identity-derivative.mjs"
+      - "scripts/test-mobile-identity-derivative.mjs"
+      - ".github/workflows/mobile-identity-derivative.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238
+        with:
+          node-version: "22.16.0"
+          package-manager-cache: false
+      - run: node --check scripts/mobile-identity-derivative.mjs
+      - run: node --check scripts/test-mobile-identity-derivative.mjs
+      - run: node scripts/test-mobile-identity-derivative.mjs
+      - run: git diff --check
