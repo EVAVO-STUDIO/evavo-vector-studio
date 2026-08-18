@@ -30,6 +30,9 @@ const TERMINAL_FAILURE_STATES = new Set(["ERROR", "CANCELED", "BLOCKED"]);
 let activeOptions = null;
 let activeStartedAtMs = null;
 let activePlan = null;
+let activeDeploymentCreated = false;
+let activeDeployment = null;
+let activeAliases = Object.freeze([]);
 let activeMutationAttempted = false;
 let activeMutationPerformed = false;
 
@@ -152,6 +155,45 @@ function safeApiCode(value) {
   return code ? code.slice(0, 120) : null;
 }
 
+function safeNonNegativeInteger(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function deploymentQuotaFailureDetails(value, method, pathname, status) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const providerError =
+    value.error && typeof value.error === "object" && !Array.isArray(value.error)
+      ? value.error
+      : null;
+  const code = typeof providerError?.code === "string" ? providerError.code : null;
+  const resource =
+    typeof providerError?.resource === "string" ? providerError.resource : null;
+  if (
+    status !== 402 ||
+    code !== "payment_required" ||
+    resource !== "api-deployments-free-per-day"
+  ) {
+    return null;
+  }
+  const limit =
+    providerError?.limit &&
+    typeof providerError.limit === "object" &&
+    !Array.isArray(providerError.limit)
+      ? providerError.limit
+      : null;
+  const reset = safeNonNegativeInteger(limit?.reset);
+  return Object.freeze({
+    method,
+    path: pathname,
+    status,
+    code,
+    resource,
+    total: safeNonNegativeInteger(limit?.total),
+    remaining: safeNonNegativeInteger(limit?.remaining),
+    resetAt: reset === null ? null : new Date(reset).toISOString(),
+  });
+}
+
 function apiClient(token, fetchImpl = fetch) {
   async function request(pathname, options = {}) {
     const url = new URL(pathname, "https://api.vercel.com");
@@ -202,11 +244,25 @@ function apiClient(token, fetchImpl = fetch) {
       return Object.freeze({ status: response.status, value: null });
     }
     if (!response.ok) {
+      const method = options.method ?? "GET";
+      const quotaFailure = deploymentQuotaFailureDetails(
+        value,
+        method,
+        url.pathname,
+        response.status,
+      );
+      if (quotaFailure) {
+        fail(
+          "VERCEL_DEPLOY_API_QUOTA_EXHAUSTED",
+          "The Vercel API deployment allowance is exhausted; retry only after the recorded reset.",
+          quotaFailure,
+        );
+      }
       fail(
         "VERCEL_DEPLOY_API_FAILED",
         "A Vercel deployment request failed.",
         {
-          method: options.method ?? "GET",
+          method,
           path: url.pathname,
           status: response.status,
           code: safeApiCode(value),
@@ -482,6 +538,8 @@ async function createDeployment(client, projectId, commit) {
           installCommand: INSTALL_COMMAND,
           buildCommand: BUILD_COMMAND,
           nodeVersion: NODE_VERSION,
+          rootDirectory: ROOT_DIRECTORY,
+          sourceFilesOutsideRootDirectory: true,
         },
       },
     },
@@ -600,7 +658,7 @@ async function writeReceipt(options, receipt) {
   return atomicNewFile(target, serialized);
 }
 
-async function writePlanFailureReceipt(options, error) {
+async function writeFailureReceipt(options, error) {
   const failure = safeFailure(error);
   const boundary = deploymentBoundaryBlockers(activePlan);
   const blockers = [
@@ -613,26 +671,30 @@ async function writePlanFailureReceipt(options, error) {
     check: "vector-studio-vercel-deployment",
     repository: REPOSITORY,
     commit: options.commit,
-    mode: "plan",
+    mode: options.mode,
+    expectedProjectId: PROJECT_ID,
     projectId: activePlan?.project?.id ?? null,
     productionDomain: PRODUCTION_DOMAIN,
     startedAt: new Date(activeStartedAtMs ?? completedAtMs).toISOString(),
     completedAt: new Date(completedAtMs).toISOString(),
     durationMs: Math.max(0, completedAtMs - (activeStartedAtMs ?? completedAtMs)),
     passed: false,
-    readyToApply: false,
+    readyToApply:
+      options.mode === "apply" &&
+      Boolean(activePlan?.inspectionAvailable) &&
+      boundary.length === 0,
     plan: activePlan ?? unavailablePlan(),
     blockers: Object.freeze(blockers),
     result: Object.freeze({
-      deploymentCreated: false,
-      deployment: null,
-      aliases: Object.freeze([]),
-      exactCommitProven: false,
-      productionAliasProven: false,
+      deploymentCreated: activeDeploymentCreated,
+      deployment: activeDeployment,
+      aliases: activeAliases,
+      exactCommitProven: activeDeployment?.commit === options.commit,
+      productionAliasProven: activeAliases.includes(PRODUCTION_DOMAIN),
     }),
     diagnosticReceipt: true,
-    mutationAttempted: false,
-    mutationPerformed: false,
+    mutationAttempted: activeMutationAttempted,
+    mutationPerformed: activeMutationPerformed,
     sensitiveValuesRecorded: false,
   });
   return writeReceipt(options, receipt);
@@ -725,12 +787,73 @@ async function runSelfTest() {
   assert.equal(missingBlockers[0].code, "VERCEL_DEPLOY_PROJECT_MISSING");
   assert.equal(unavailablePlan().inspectionAvailable, false);
 
+  let capturedDeploymentRequest = null;
+  const created = await createDeployment(
+    Object.freeze({
+      async request(pathname, options) {
+        capturedDeploymentRequest = Object.freeze({ pathname, options });
+        return Object.freeze({
+          status: 200,
+          value: {
+            id: "dpl_created",
+            url: "created.vercel.app",
+            readyState: "QUEUED",
+            target: "production",
+            gitSource: { sha: "e".repeat(40) },
+          },
+        });
+      },
+    }),
+    PROJECT_ID,
+    "e".repeat(40),
+  );
+  assert.equal(created.id, "dpl_created");
+  assert.equal(capturedDeploymentRequest.options.body.projectSettings.rootDirectory, ROOT_DIRECTORY);
+  assert.equal(
+    capturedDeploymentRequest.options.body.projectSettings.sourceFilesOutsideRootDirectory,
+    true,
+  );
+
+  let quotaFailure = null;
+  try {
+    await apiClient("v".repeat(40), async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "payment_required",
+            message: "Resource is limited",
+            resource: "api-deployments-free-per-day",
+            limit: {
+              total: 100,
+              remaining: 0,
+              reset: 1787100229625,
+            },
+          },
+        }),
+        {
+          status: 402,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    ).request("/v13/deployments", { method: "POST", body: { name: PROJECT_NAME } });
+  } catch (error) {
+    quotaFailure = safeFailure(error);
+  }
+  assert.equal(quotaFailure?.code, "VERCEL_DEPLOY_API_QUOTA_EXHAUSTED");
+  assert.equal(quotaFailure?.details?.resource, "api-deployments-free-per-day");
+  assert.equal(quotaFailure?.details?.total, 100);
+  assert.equal(quotaFailure?.details?.remaining, 0);
+  assert.equal(quotaFailure?.details?.resetAt, "2026-08-19T00:43:49.625Z");
+
   process.stdout.write(`${JSON.stringify({
     ok: true,
     check: "vector-studio-vercel-deployer-self-test",
     contractVersion: CONTRACT_VERSION,
     githubRepositoryVisibility: GITHUB_REPOSITORY_VISIBILITY,
     diagnosticPlanReceipts: true,
+    diagnosticApplyReceipts: true,
+    quotaFailuresClassified: true,
+    deploymentRootDirectoryExplicit: true,
     mutationAttempted: false,
     mutationPerformed: false,
     sensitiveValuesRecorded: false,
@@ -742,6 +865,9 @@ async function main() {
   activeOptions = options;
   activeStartedAtMs = Date.now();
   activePlan = unavailablePlan();
+  activeDeploymentCreated = false;
+  activeDeployment = null;
+  activeAliases = Object.freeze([]);
   activeMutationAttempted = false;
   activeMutationPerformed = false;
 
@@ -777,15 +903,20 @@ async function main() {
   let created = false;
   let deployment = plan.exactCommitDeployment;
   let aliases = deployment?.aliases ?? Object.freeze([]);
+  activeDeployment = deployment;
+  activeAliases = aliases;
 
   if (options.mode === "apply") {
     if (!deployment) {
       activeMutationAttempted = true;
       deployment = await createDeployment(client, plan.project.id, options.commit);
       activeMutationPerformed = true;
+      activeDeploymentCreated = true;
+      activeDeployment = deployment;
       created = true;
     }
     deployment = await waitForReady(client, deployment, options.commit);
+    activeDeployment = deployment;
     if (!deployment.commit) {
       const refreshed = await getDeployment(client, deployment.id);
       deployment = refreshed;
@@ -798,6 +929,7 @@ async function main() {
       );
     }
     aliases = await waitForProductionAlias(client, deployment);
+    activeAliases = aliases;
   }
 
   const completedAtMs = Date.now();
@@ -863,9 +995,9 @@ main().catch(async (error) => {
   const failure = safeFailure(error);
   let diagnosticOutput = null;
   let diagnosticReceiptError = null;
-  if (activeOptions?.mode === "plan" && !activeOptions.selfTest) {
+  if (activeOptions && !activeOptions.selfTest) {
     try {
-      diagnosticOutput = await writePlanFailureReceipt(activeOptions, error);
+      diagnosticOutput = await writeFailureReceipt(activeOptions, error);
     } catch (receiptError) {
       diagnosticReceiptError = safeFailure(receiptError);
     }

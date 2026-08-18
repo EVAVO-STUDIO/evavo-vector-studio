@@ -97,6 +97,15 @@ requireTokens(files.deployer, sources.deployer, [
   'sourceControl: sourceControlState(inspection.project)',
   'monorepoManager: "turbo"',
   'nodeVersion: NODE_VERSION',
+  'rootDirectory: ROOT_DIRECTORY',
+  'sourceFilesOutsideRootDirectory: true',
+  '"VERCEL_DEPLOY_API_QUOTA_EXHAUSTED"',
+  'resource !== "api-deployments-free-per-day"',
+  'resetAt: reset === null ? null : new Date(reset).toISOString()',
+  'async function writeFailureReceipt(options, error)',
+  'diagnosticApplyReceipts: true',
+  'quotaFailuresClassified: true',
+  'deploymentRootDirectoryExplicit: true',
   'deployment.readyState === "READY"',
   'deployment.commit === options.commit',
   'aliases.includes(PRODUCTION_DOMAIN)',
@@ -309,6 +318,10 @@ requireTokens(files.docs, sources.docs, [
   "rejects replay",
   "token body is never uploaded",
   "Client release remains withheld",
+  "VERCEL_DEPLOY_API_QUOTA_EXHAUSTED",
+  "api-deployments-free-per-day",
+  "diagnostic apply receipt",
+  "retry only after",
 ]);
 
 if (errors.length > 0) {
