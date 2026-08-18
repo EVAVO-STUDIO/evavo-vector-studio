@@ -6,11 +6,13 @@ on:
     paths:
       - "scripts/mobile-identity-derivative.mjs"
       - "scripts/test-mobile-identity-derivative.mjs"
+      - "evavo.tasks.json"
       - ".github/workflows/mobile-identity-derivative.yml"
   pull_request:
     paths:
       - "scripts/mobile-identity-derivative.mjs"
       - "scripts/test-mobile-identity-derivative.mjs"
+      - "evavo.tasks.json"
       - ".github/workflows/mobile-identity-derivative.yml"
   workflow_dispatch:
 
@@ -32,4 +34,5 @@ jobs:
       - run: node --check scripts/mobile-identity-derivative.mjs
       - run: node --check scripts/test-mobile-identity-derivative.mjs
       - run: node scripts/test-mobile-identity-derivative.mjs
+      - run: node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('evavo.tasks.json','utf8')); if(m.tasks?.['mobile-identity-derivative']?.entry!=='scripts/test-mobile-identity-derivative.mjs') process.exit(2);"
       - run: git diff --check
