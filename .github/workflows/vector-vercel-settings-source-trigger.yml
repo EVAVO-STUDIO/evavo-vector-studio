@@ -1,0 +1,150 @@
+name: Vector Studio Vercel settings source trigger
+run-name: Vector project settings source trigger @ ${{ github.sha }}
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/vector-vercel-settings-source-trigger.yml'
+      - 'scripts/check-vercel-settings-source-trigger-contract.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/vector-vercel-settings.trigger'
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: vector-studio-vercel-settings-source-trigger-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Use repository Node.js version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Validate settings-only source trigger contract
+        run: node scripts/check-vercel-settings-source-trigger-contract.mjs
+
+  settings:
+    if: ${{ github.event_name == 'push' }}
+    environment: vector-studio-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact pushed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Resolve exact current main
+        id: current_main
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { data } = await github.rest.repos.getBranch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: "main",
+            });
+            core.setOutput("sha", data.commit.sha);
+
+      - name: Confirm exact clean current main
+        shell: bash
+        env:
+          CURRENT_MAIN_SHA: ${{ steps.current_main.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_SHA" = "$CURRENT_MAIN_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Use repository Node.js version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Activate exact pnpm through Corepack
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.14.0 --activate
+          test "$(pnpm --version)" = "10.14.0"
+          git diff --exit-code
+
+      - name: Validate source and provider-settings authority
+        run: |
+          node scripts/check-lockfile-integrity.mjs
+          node scripts/check-vercel-settings-source-trigger-contract.mjs
+          node scripts/check-vector-provider-remediation-contract.mjs
+          node scripts/provision-vector-studio-vercel.mjs --self-test
+          node scripts/create-source-proof.mjs --commit "$GITHUB_SHA" --out .ci/vector-source-proof.json
+
+      - name: Reconcile pinned Vercel project settings only
+        id: settings
+        continue-on-error: true
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VECTOR_VERCEL_OPERATION_CONFIRM: reconcile-evavo-vector-studio-project-settings
+        run: |
+          node scripts/provision-vector-studio-vercel.mjs \
+            --mode settings \
+            --commit "$GITHUB_SHA" \
+            --out .ci/vector-vercel-provision-settings.json
+
+      - name: Preserve bounded source and settings receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vector-vercel-settings-source-trigger-${{ github.sha }}
+          path: |
+            .ci/vector-source-proof.json
+            .ci/vector-vercel-provision-settings.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Publish settings reconciliation status
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SETTINGS_OUTCOME: ${{ steps.settings.outcome }}
+        with:
+          script: |
+            const passed = process.env.SETTINGS_OUTCOME === "success";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? "success" : "failure",
+              context: "deploy/vector-studio-vercel-project-settings-source-trigger",
+              description: passed
+                ? "pinned Vector Studio Vercel project settings reconciled"
+                : "Vector Studio Vercel project settings reconciliation failed",
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Enforce settings-only result
+        if: always()
+        env:
+          SETTINGS_OUTCOME: ${{ steps.settings.outcome }}
+        run: test "$SETTINGS_OUTCOME" = "success"
