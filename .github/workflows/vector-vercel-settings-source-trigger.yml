@@ -2,6 +2,10 @@ name: Vector Studio Vercel settings source trigger
 run-name: Vector project settings source trigger @ ${{ github.sha }}
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/vector-vercel-settings-source-trigger.yml'
+      - 'scripts/check-vercel-settings-source-trigger-contract.mjs'
   push:
     branches: [main]
     paths:
@@ -12,11 +16,31 @@ permissions:
   statuses: write
 
 concurrency:
-  group: vector-studio-vercel-settings-source-trigger
+  group: vector-studio-vercel-settings-source-trigger-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Use repository Node.js version
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Validate settings-only source trigger contract
+        run: node scripts/check-vercel-settings-source-trigger-contract.mjs
+
   settings:
+    if: ${{ github.event_name == 'push' }}
     environment: vector-studio-production
     runs-on: ubuntu-latest
     timeout-minutes: 20
