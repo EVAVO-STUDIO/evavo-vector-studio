@@ -1,0 +1,126 @@
+{
+  "$schema": "./schemas/evavo.repository-capabilities.schema.json",
+  "contractVersion": "evavo_repository_capabilities_v1",
+  "repository": "EVAVO-STUDIO/evavo-vector-studio",
+  "authority": "vector-studio",
+  "summary": "EVAVO's governed editable-vector, raster reconstruction, SVG delivery, print preflight, animated SVG, Lottie/dotLottie, resumable batch and local worker authority. It exposes bounded CLI/MCP/automation production surfaces with create-only outputs and explicit review boundaries; it does not grant creative approval, Git publication or release authority.",
+  "capabilities": [
+    {
+      "id": "vector.source.inspect",
+      "title": "Inspect raster and SVG source safely",
+      "description": "Inspect admitted static raster or SVG inputs for source identity, visible bounds, alpha-aware content, active-content risks, geometry, topology and editability without modifying the source.",
+      "interfaces": ["automation", "cli", "mcp", "testing"],
+      "effects": ["read", "compute", "execute"],
+      "entrypoints": ["pnpm vector:raster:inspect", "pnpm vector:inspect", "vector_inspect_raster", "vector_inspect_svg"],
+      "tags": ["vector", "raster", "svg", "inspection", "alpha", "topology", "editability"],
+      "requires": ["Admitted source path", "Static supported raster or governed SVG", "Configured allowed roots for MCP"]
+    },
+    {
+      "id": "vector.asset.trace",
+      "title": "Trace raster art into governed editable SVG",
+      "description": "Trace one admitted static raster into a new editable, web, motion or print SVG with alpha-aware candidate analysis, stable IDs where required, optional difference evidence and no existing-file overwrite.",
+      "interfaces": ["automation", "cli", "mcp"],
+      "effects": ["read", "compute", "write", "execute"],
+      "entrypoints": ["pnpm vector:trace", "vector_trace_raster"],
+      "tags": ["vector", "trace", "svg", "logo", "icon", "line-art", "illustration", "editable"],
+      "requires": ["Admitted static raster input", "New output path inside allowed root", "Human or governed design review before production approval"]
+    },
+    {
+      "id": "vector.asset.package",
+      "title": "Inspect and package governed SVG delivery assets",
+      "description": "Inspect and conservatively package an existing governed SVG for editable, web, motion or print delivery with stable IDs, responsive root handling, safety rollback evidence and create-only output behavior.",
+      "interfaces": ["automation", "cli", "mcp", "testing"],
+      "effects": ["read", "compute", "write", "execute"],
+      "entrypoints": ["pnpm vector:inspect", "pnpm vector:optimise", "vector_inspect_svg", "vector_optimise_svg"],
+      "tags": ["svg", "delivery", "editable", "web", "motion", "print", "stable-ids"],
+      "requires": ["Existing governed SVG", "Declared delivery profile", "New output path"]
+    },
+    {
+      "id": "vector.print.preflight",
+      "title": "Run bounded SVG print preflight",
+      "description": "Inspect one admitted SVG against governed print-production constraints for commercial, large-format, cut-vinyl or screen-print intent without writing a file or claiming physical-production approval.",
+      "interfaces": ["automation", "cli", "mcp", "testing"],
+      "effects": ["read", "compute", "execute"],
+      "entrypoints": ["pnpm vector:print:preflight", "vector_preflight_svg_print"],
+      "tags": ["svg", "print", "preflight", "line-weight", "physical-production", "review"],
+      "requires": ["Admitted SVG", "Declared print intent", "Separate physical proof and production approval"]
+    },
+    {
+      "id": "vector.motion.author",
+      "title": "Validate and author governed animated SVG",
+      "description": "Validate an EVAVO motion plan and apply it to governed SVG targets using script-free CSS keyframes, stable target IDs and reduced-motion fallback with optional evidence output.",
+      "interfaces": ["automation", "cli", "mcp", "testing"],
+      "effects": ["read", "compute", "write", "execute"],
+      "entrypoints": ["pnpm vector:motion:validate", "pnpm vector:animate-svg", "vector_validate_motion_plan", "vector_animate_svg", "vector_inspect_animated_svg"],
+      "tags": ["svg", "motion", "animation", "reduced-motion", "stable-ids", "evidence"],
+      "requires": ["Governed static SVG", "Validated motion plan", "New output path", "Separate creative motion review"]
+    },
+    {
+      "id": "vector.lottie.export",
+      "title": "Export governed Lottie and dotLottie animation",
+      "description": "Export the supported path-based SVG/motion subset to deterministic Lottie JSON and package or inspect deterministic dotLottie archives without returning generated bodies or archive bytes to model context.",
+      "interfaces": ["automation", "cli", "mcp", "testing"],
+      "effects": ["read", "compute", "write", "execute"],
+      "entrypoints": ["pnpm vector:lottie:export", "pnpm vector:lottie:inspect", "pnpm vector:dotlottie:package", "pnpm vector:dotlottie:inspect"],
+      "tags": ["lottie", "dotlottie", "animation", "archive", "deterministic", "motion"],
+      "requires": ["Governed supported SVG/motion source", "New output path", "Player/render compatibility review"]
+    },
+    {
+      "id": "vector.batch.run",
+      "title": "Run resumable bounded vector production batches",
+      "description": "Run or inspect bounded batch-v1 manifests through persistent local state, immutable input revisions, receipt-verified output reuse and create-only transactions. Batches resume when invoked again and are not a hosted background queue.",
+      "interfaces": ["automation", "cli", "mcp"],
+      "effects": ["read", "compute", "write", "execute"],
+      "entrypoints": ["pnpm vector:batch:run", "pnpm vector:batch:inspect", "pnpm vector:batch:capabilities", "vector_run_batch", "vector_inspect_batch"],
+      "tags": ["batch", "resumable", "receipts", "automation", "vector-production"],
+      "requires": ["Valid batch-v1 manifest", "Canonical allowed roots", "At most configured batch item ceiling"]
+    },
+    {
+      "id": "vector.worker.execute",
+      "title": "Execute governed local vector worker jobs",
+      "description": "Import immutable objects, submit/inspect/cancel jobs and execute supported vector operations through the local worker or HTTP-coordinated worker with leases, retries, cancellation and output receipts. Managed distributed execution is not claimed.",
+      "interfaces": ["automation", "cli"],
+      "effects": ["read", "compute", "network", "write", "execute"],
+      "entrypoints": ["pnpm worker:submit", "pnpm worker:inspect", "pnpm worker:run-once", "pnpm worker:run", "pnpm http-worker:run-once", "pnpm http-worker:run"],
+      "tags": ["worker", "jobs", "leases", "receipts", "local-execution", "http-worker"],
+      "requires": ["Configured persistent job/object store", "Worker authentication for HTTP mode", "Supported operation", "No implicit Git or release authority"]
+    },
+    {
+      "id": "vector.mcp.serve",
+      "title": "Serve bounded Vector Studio MCP tools",
+      "description": "Serve the Vector Studio MCP 1.6 contract for capability discovery, input policy, raster/SVG inspection, tracing, packaging, print, motion, Lottie/dotLottie and durable batch operations beneath configured allowed roots.",
+      "interfaces": ["mcp"],
+      "effects": ["read", "compute", "write", "execute"],
+      "entrypoints": ["pnpm vector:mcp", "evavo-vector-mcp", "vector_capabilities"],
+      "tags": ["mcp", "capability-discovery", "bounded-paths", "create-only", "automation"],
+      "requires": ["Built @evavo/vector-mcp package", "Configured MCP allowed roots", "Separate provider/production authority where relevant"]
+    },
+    {
+      "id": "vector.validation.execute",
+      "title": "Run complete Vector Studio validation",
+      "description": "Run repository contract, capability discovery, hygiene, API, MCP, motion, Lottie, batch, worker, lint, type, test and build checks without granting output approval or publication authority.",
+      "interfaces": ["automation", "cli", "testing"],
+      "effects": ["read", "compute", "write", "execute"],
+      "entrypoints": ["pnpm check", "pnpm capabilities-api:check", "pnpm mcp:check", "pnpm motion:check", "pnpm batch:check", "pnpm worker:check"],
+      "tags": ["validation", "contracts", "testing", "build", "quality"],
+      "requires": ["Node.js 22.16.x", "pnpm 10 or newer", "Installed locked dependency graph"]
+    }
+  ],
+  "brain": {
+    "consult": true,
+    "sanityCheck": true,
+    "topics": [
+      "raster-to-vector reconstruction",
+      "SVG safety, geometry, topology and editability",
+      "delivery profiles and stable IDs",
+      "print preflight",
+      "animated SVG and reduced motion",
+      "Lottie and dotLottie",
+      "resumable vector batches",
+      "local and HTTP worker execution",
+      "MCP capability routing",
+      "creative review and production approval boundaries"
+    ]
+  },
+  "reviewedAt": "2026-08-23T14:47:00+10:00"
+}
