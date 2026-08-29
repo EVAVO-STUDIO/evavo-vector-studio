@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0.0",
+  "capability": "product-icon-refinement",
+  "input": ["approved raster concept", "concept rationale", "platform list", "mask requirements"],
+  "operations": [
+    "trace only intentional masses; never automatic high-node image trace",
+    "optically balance negative space and stroke/mass weight",
+    "simplify a separate small-size silhouette",
+    "fit Android foreground to the 66/108 safe square",
+    "create a single-colour Android monochrome companion",
+    "preserve a full-bleed opaque Apple master",
+    "export regular and maskable web PNGs"
+  ],
+  "forbidden": [
+    "text-to-SVG as final art",
+    "embedded fonts or text elements",
+    "external image references in production SVG",
+    "unbounded filters",
+    "one asset reused blindly for every platform",
+    "silent change to EVAVO wordmark geometry"
+  ],
+  "outputs": ["editable source", "optimised SVG where useful", "platform PNG family", "geometry metrics", "review contact sheet"]
+}
