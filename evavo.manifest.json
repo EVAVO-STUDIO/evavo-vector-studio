@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "evavo.repo-manifest.v1",
+  "identity": {
+    "key": "evavo-vector-studio",
+    "name": "EVAVO Vector Studio",
+    "owner": "EVAVO-STUDIO",
+    "category": "vector-production-foundation",
+    "status": "active"
+  },
+  "runtime": {
+    "language": "typescript",
+    "localFirst": true,
+    "requiresPaidHostedControlPlane": false
+  },
+  "summary": "Canonical governed raster-to-vector reconstruction, editable SVG, SVG motion, Lottie/dotLottie and resumable vector production foundation.",
+  "defaultBranch": "main",
+  "providerPosture": {
+    "observedRepositoryVisibility": "public",
+    "trackedSourceMustRemainPublicSafe": true,
+    "visibilityIntentReviewRequired": true
+  },
+  "authority": {
+    "readOnly": [
+      "inspect-raster-source",
+      "measure-vector-equivalence",
+      "inspect-svg-safety-and-topology",
+      "inspect-motion-package",
+      "inspect-job-state"
+    ],
+    "reversible": [
+      "create-vector-candidate",
+      "create-svg-motion-candidate",
+      "create-lottie-or-dotlottie-candidate",
+      "run-resumable-local-vector-job"
+    ],
+    "consequential": [
+      "approve-exact-professional-vector-delivery"
+    ],
+    "neverImplicit": [
+      "treat-auto-trace-as-finished",
+      "auto-approve-machine-completion",
+      "claim-hosted-or-distributed-execution-before-worker-proof",
+      "replace-brandcraft-strategy-or-brand-master-authority"
+    ]
+  },
+  "integrations": [
+    "brandcraft-studio",
+    "evavo-art-studio",
+    "presentation-studio",
+    "super-admin-ai-agent"
+  ],
+  "responsibilityBoundary": {
+    "owns": ["raster-to-vector-reconstruction","editable-svg-delivery","svg-motion","lottie-and-dotlottie-packaging"],
+    "delegatesBrandStrategyAndMasterApprovalTo": "EVAVO-STUDIO/brandcraft-studio"
+  },
+  "reviewedAt": "2026-09-05"
+}
