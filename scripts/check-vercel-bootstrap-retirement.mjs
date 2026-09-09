@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -12,6 +13,35 @@ function read(relativePath) {
   }
   return fs.readFileSync(absolute, "utf8").replace(/^\uFEFF/u, "");
 }
+
+function deploymentPolicyClosedAtRest(value) {
+  if (value === false) {
+    return Object.freeze({ closed: true, mode: "boolean-disabled" });
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return Object.freeze({ closed: false, mode: "invalid" });
+  }
+
+  const entries = Object.entries(value);
+  const allBranchesDisabled =
+    entries.length > 0 && entries.every(([, enabled]) => enabled === false);
+  const canonicalBranchDisabled = value.main === false;
+  const wildcardDisabled = value["*"] === false || value["**/*"] === false;
+
+  return Object.freeze({
+    closed: allBranchesDisabled && canonicalBranchDisabled && wildcardDisabled,
+    mode: "branch-map",
+  });
+}
+
+const booleanPolicyFixture = deploymentPolicyClosedAtRest(false);
+const branchMapFixture = deploymentPolicyClosedAtRest({ "*": false, main: false });
+const openMainFixture = deploymentPolicyClosedAtRest({ "*": false, main: true });
+const missingWildcardFixture = deploymentPolicyClosedAtRest({ main: false });
+assert.equal(booleanPolicyFixture.closed, true);
+assert.equal(branchMapFixture.closed, true);
+assert.equal(openMainFixture.closed, false);
+assert.equal(missingWildcardFixture.closed, false);
 
 const packageSource = read("package.json");
 const productionWorkflow = read(
@@ -88,8 +118,13 @@ try {
 } catch {
   errors.push("apps/web/vercel.json must remain valid JSON.");
 }
-if (appVercel?.git?.deploymentEnabled !== false) {
-  errors.push("Vector Studio Git deployment creation must remain closed at rest.");
+const deploymentPolicy = deploymentPolicyClosedAtRest(
+  appVercel?.git?.deploymentEnabled,
+);
+if (!deploymentPolicy.closed) {
+  errors.push(
+    "Vector Studio Git deployment creation must remain closed at rest for main and wildcard refs.",
+  );
 }
 
 let packageJson = null;
@@ -118,7 +153,7 @@ if (errors.length > 0) {
       {
         check: "vector-studio-vercel-bootstrap-retirement",
         ok: false,
-        contractVersion: "1.0",
+        contractVersion: "1.1",
         errors,
       },
       null,
@@ -133,11 +168,14 @@ process.stdout.write(
     {
       check: "vector-studio-vercel-bootstrap-retirement",
       ok: true,
-      contractVersion: "1.0",
+      contractVersion: "1.1",
       historicalBootstrapDeploymentSupported: false,
       exactSourceArchiveIsDeploymentAuthority: false,
       exactCommitApiDeploymentRequired: true,
       gitDeploymentCreationEnabled: false,
+      gitDeploymentPolicyMode: deploymentPolicy.mode,
+      canonicalMainDeploymentDisabled: true,
+      wildcardDeploymentDisabled: true,
       providerMutationPerformed: false,
       networkRequestPerformed: false,
     },
