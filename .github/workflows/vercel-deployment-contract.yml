@@ -22,6 +22,7 @@ on:
       - "scripts/check-vercel-project-provisioning-contract.mjs"
       - "scripts/check-vercel-provisioning-plan-receipt-contract.mjs"
       - "scripts/check-vercel-deployment-plan-receipt-contract.mjs"
+      - "scripts/check-vercel-bootstrap-retirement.mjs"
       - "scripts/check-vercel-production-deployment-contract.mjs"
       - "scripts/check-private-response-contract.mjs"
       - "scripts/provision-vector-studio-vercel.mjs"
@@ -61,6 +62,7 @@ on:
       - "scripts/check-vercel-project-provisioning-contract.mjs"
       - "scripts/check-vercel-provisioning-plan-receipt-contract.mjs"
       - "scripts/check-vercel-deployment-plan-receipt-contract.mjs"
+      - "scripts/check-vercel-bootstrap-retirement.mjs"
       - "scripts/check-vercel-production-deployment-contract.mjs"
       - "scripts/check-private-response-contract.mjs"
       - "scripts/provision-vector-studio-vercel.mjs"
@@ -126,6 +128,9 @@ jobs:
 
       - name: Verify diagnostic provisioning-plan receipt contract
         run: node scripts/check-vercel-provisioning-plan-receipt-contract.mjs
+
+      - name: Verify manual bootstrap retirement contract
+        run: node scripts/check-vercel-bootstrap-retirement.mjs
 
       - name: Verify exact production deployment contract
         run: node scripts/check-vercel-production-deployment-contract.mjs
