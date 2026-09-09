@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/vector-vercel-settings-source-trigger.yml'
       - 'scripts/check-vercel-settings-source-trigger-contract.mjs'
+      - 'scripts/check-vector-vercel-provider-access.mjs'
       - 'scripts/run-vector-vercel-settings-reconciliation.mjs'
       - 'scripts/provision-vector-studio-vercel.mjs'
   push:
@@ -40,6 +41,9 @@ jobs:
 
       - name: Validate settings-only source trigger contract
         run: node scripts/check-vercel-settings-source-trigger-contract.mjs
+
+      - name: Validate provider-access gate
+        run: node scripts/check-vector-vercel-provider-access.mjs --self-test
 
       - name: Validate bounded settings reconciliation wrapper
         run: node scripts/run-vector-vercel-settings-reconciliation.mjs --self-test
@@ -96,17 +100,32 @@ jobs:
           test "$(pnpm --version)" = "10.14.0"
           git diff --exit-code
 
-      - name: Validate source and provider-settings authority
+      - name: Validate source contracts without provider mutation
         run: |
           node scripts/check-lockfile-integrity.mjs
           node scripts/check-vercel-settings-source-trigger-contract.mjs
           node scripts/check-vector-provider-remediation-contract.mjs
           node scripts/provision-vector-studio-vercel.mjs --self-test
+          node scripts/check-vector-vercel-provider-access.mjs --self-test
           node scripts/run-vector-vercel-settings-reconciliation.mjs --self-test
-          node scripts/create-source-proof.mjs --commit "$GITHUB_SHA" --out .ci/vector-source-proof.json
+
+      - name: Verify provider access before expensive source proof
+        id: provider_access
+        continue-on-error: true
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          node scripts/check-vector-vercel-provider-access.mjs \
+            --out .ci/vector-vercel-provider-access.json
+
+      - name: Create exact source proof
+        id: source_proof
+        if: ${{ steps.provider_access.outcome == 'success' }}
+        run: node scripts/create-source-proof.mjs --commit "$GITHUB_SHA" --out .ci/vector-source-proof.json
 
       - name: Reconcile pinned Vercel project settings only
         id: settings
+        if: ${{ steps.provider_access.outcome == 'success' && steps.source_proof.outcome == 'success' }}
         continue-on-error: true
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -116,12 +135,13 @@ jobs:
             --commit "$GITHUB_SHA" \
             --out .ci/vector-vercel-provision-settings.json
 
-      - name: Preserve bounded source and settings receipts
+      - name: Preserve bounded provider and source receipts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vector-vercel-settings-source-trigger-${{ github.sha }}
           path: |
+            .ci/vector-vercel-provider-access.json
             .ci/vector-source-proof.json
             .ci/vector-vercel-provision-settings.json
           if-no-files-found: error
@@ -132,12 +152,21 @@ jobs:
         if: always()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
+          PROVIDER_ACCESS_OUTCOME: ${{ steps.provider_access.outcome }}
+          SOURCE_PROOF_OUTCOME: ${{ steps.source_proof.outcome }}
           SETTINGS_OUTCOME: ${{ steps.settings.outcome }}
         with:
           script: |
             const fs = require("node:fs");
-            const passed = process.env.SETTINGS_OUTCOME === "success";
+            const providerReady = process.env.PROVIDER_ACCESS_OUTCOME === "success";
+            const sourceReady = process.env.SOURCE_PROOF_OUTCOME === "success";
+            const settingsReady = process.env.SETTINGS_OUTCOME === "success";
+            const passed = providerReady && sourceReady && settingsReady;
+            let providerAccess = null;
             let receipt = null;
+            try {
+              providerAccess = JSON.parse(fs.readFileSync(".ci/vector-vercel-provider-access.json", "utf8"));
+            } catch {}
             try {
               receipt = JSON.parse(fs.readFileSync(".ci/vector-vercel-provision-settings.json", "utf8"));
             } catch {}
@@ -148,7 +177,14 @@ jobs:
             const providerStatus = Number.isInteger(receipt?.provider?.status)
               ? receipt.provider.status
               : null;
-            const failureDescription = `settings failed: ${errorCode}${providerStatus ? ` HTTP ${providerStatus}` : ""}`.slice(0, 140);
+            const accessErrors = Array.isArray(providerAccess?.errors)
+              ? providerAccess.errors.filter((item) => typeof item === "string").slice(0, 3)
+              : [];
+            const failureDescription = !providerReady
+              ? `provider access blocked: VERCEL_TOKEN ${accessErrors.join(",") || "invalid"}`
+              : !sourceReady
+                ? "exact Vector Studio source proof failed"
+                : `settings failed: ${errorCode}${providerStatus ? ` HTTP ${providerStatus}` : ""}`;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -157,12 +193,17 @@ jobs:
               context: "deploy/vector-studio-vercel-project-settings-source-trigger",
               description: passed
                 ? "pinned Vector Studio Vercel project settings reconciled"
-                : failureDescription,
+                : failureDescription.slice(0, 140),
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
       - name: Enforce settings-only result
         if: always()
         env:
+          PROVIDER_ACCESS_OUTCOME: ${{ steps.provider_access.outcome }}
+          SOURCE_PROOF_OUTCOME: ${{ steps.source_proof.outcome }}
           SETTINGS_OUTCOME: ${{ steps.settings.outcome }}
-        run: test "$SETTINGS_OUTCOME" = "success"
+        run: |
+          test "$PROVIDER_ACCESS_OUTCOME" = "success"
+          test "$SOURCE_PROOF_OUTCOME" = "success"
+          test "$SETTINGS_OUTCOME" = "success"
