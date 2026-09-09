@@ -9,14 +9,20 @@ const wrapperPath = new URL(
   "./run-vector-vercel-settings-reconciliation.mjs",
   import.meta.url,
 );
+const providerAccessPath = new URL(
+  "./check-vector-vercel-provider-access.mjs",
+  import.meta.url,
+);
 const workflow = await readFile(workflowPath, "utf8");
 const wrapper = await readFile(wrapperPath, "utf8");
+const providerAccess = await readFile(providerAccessPath, "utf8");
 
 const required = [
   "name: Vector Studio Vercel settings source trigger",
   "push:",
   "branches: [main]",
   "'.github/vector-vercel-settings.trigger'",
+  "'scripts/check-vector-vercel-provider-access.mjs'",
   "'scripts/run-vector-vercel-settings-reconciliation.mjs'",
   "environment: vector-studio-production",
   "runs-on: ubuntu-latest",
@@ -25,20 +31,35 @@ const required = [
   "VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}",
   "VECTOR_VERCEL_OPERATION_CONFIRM: reconcile-evavo-vector-studio-project-settings",
   "node scripts/provision-vector-studio-vercel.mjs --self-test",
+  "node scripts/check-vector-vercel-provider-access.mjs --self-test",
   "node scripts/run-vector-vercel-settings-reconciliation.mjs --self-test",
+  "id: provider_access",
+  "--out .ci/vector-vercel-provider-access.json",
+  "id: source_proof",
+  "if: ${{ steps.provider_access.outcome == 'success' }}",
   "node scripts/create-source-proof.mjs --commit \"$GITHUB_SHA\"",
+  "steps.provider_access.outcome == 'success' && steps.source_proof.outcome == 'success'",
   "node scripts/run-vector-vercel-settings-reconciliation.mjs \\",
   "--commit \"$GITHUB_SHA\"",
   "--out .ci/vector-vercel-provision-settings.json",
+  ".ci/vector-vercel-provider-access.json",
+  "provider access blocked: VERCEL_TOKEN",
   "if-no-files-found: error",
-  "fs.readFileSync(\".ci/vector-vercel-provision-settings.json\", \"utf8\")",
-  "settings failed: ${errorCode}",
   "deploy/vector-studio-vercel-project-settings-source-trigger",
 ];
 
 for (const marker of required) {
   assert.ok(workflow.includes(marker), `settings source trigger missing marker: ${marker}`);
 }
+
+assert.ok(
+  workflow.indexOf("id: provider_access") < workflow.indexOf("id: source_proof"),
+  "provider access must be checked before the expensive source proof",
+);
+assert.ok(
+  workflow.indexOf("id: source_proof") < workflow.indexOf("id: settings"),
+  "source proof must complete before provider settings mutation",
+);
 
 for (const forbidden of [
   "EVAVO_CLIENT_APP_LAUNCH_SECRET",
@@ -65,6 +86,30 @@ assert.match(workflow, /git diff --exit-code/u);
 assert.match(workflow, /git status --porcelain=v1 --untracked-files=all/u);
 
 for (const marker of [
+  'const PROVIDER_KEY = "VERCEL_TOKEN"',
+  "below-minimum-length",
+  "contains-whitespace",
+  "networkRequestPerformed: false",
+  "providerMutationPerformed: false",
+  "rawCredentialRecorded: false",
+  "sensitiveValuesRecorded: false",
+  'flag: "wx"',
+  "--self-test",
+]) {
+  assert.ok(providerAccess.includes(marker), `provider-access gate missing marker: ${marker}`);
+}
+for (const forbidden of [
+  "console.log(process.env",
+  "JSON.stringify(process.env",
+  "rawCredentialRecorded: true",
+  "sensitiveValuesRecorded: true",
+  "fetch(",
+  "spawnSync(",
+]) {
+  assert.ok(!providerAccess.includes(forbidden), `provider-access gate contains forbidden behavior: ${forbidden}`);
+}
+
+for (const marker of [
   'const CHILD_SCRIPT = "scripts/provision-vector-studio-vercel.mjs"',
   "MAX_CHILD_OUTPUT_BYTES",
   "MAX_RECEIPT_BYTES",
@@ -76,13 +121,11 @@ for (const marker of [
   "rawProviderResponseRecorded: false",
   "rawStderrRecorded: false",
   "sensitiveValuesRecorded: false",
-  "writeFileSync(target, serialized, { encoding: \"utf8\", flag: \"wx\", mode: 0o600 })",
   "diagnosticReceiptOnFailure: true",
   "providerMutationPerformed: false",
 ]) {
   assert.ok(wrapper.includes(marker), `settings reconciliation wrapper missing marker: ${marker}`);
 }
-
 for (const forbidden of [
   "console.log(process.env",
   "JSON.stringify(process.env",
@@ -100,8 +143,10 @@ process.stdout.write(
   `${JSON.stringify({
     ok: true,
     kind: "vector-vercel-settings-source-trigger-contract",
-    contractVersion: "1.1",
+    contractVersion: "1.2",
     providerMutationScope: "pinned-project-settings-only",
+    providerAccessCheckedBeforeSourceProof: true,
+    expensiveSourceProofSkippedWhenProviderAccessMissing: true,
     boundedFailureReceiptRequired: true,
     rawProviderResponseRecorded: false,
     rawStderrRecorded: false,
