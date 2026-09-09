@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/vector-vercel-settings-source-trigger.yml'
       - 'scripts/check-vercel-settings-source-trigger-contract.mjs'
+      - 'scripts/run-vector-vercel-settings-reconciliation.mjs'
+      - 'scripts/provision-vector-studio-vercel.mjs'
   push:
     branches: [main]
     paths:
@@ -38,6 +40,9 @@ jobs:
 
       - name: Validate settings-only source trigger contract
         run: node scripts/check-vercel-settings-source-trigger-contract.mjs
+
+      - name: Validate bounded settings reconciliation wrapper
+        run: node scripts/run-vector-vercel-settings-reconciliation.mjs --self-test
 
   settings:
     if: ${{ github.event_name == 'push' }}
@@ -97,6 +102,7 @@ jobs:
           node scripts/check-vercel-settings-source-trigger-contract.mjs
           node scripts/check-vector-provider-remediation-contract.mjs
           node scripts/provision-vector-studio-vercel.mjs --self-test
+          node scripts/run-vector-vercel-settings-reconciliation.mjs --self-test
           node scripts/create-source-proof.mjs --commit "$GITHUB_SHA" --out .ci/vector-source-proof.json
 
       - name: Reconcile pinned Vercel project settings only
@@ -106,8 +112,7 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VECTOR_VERCEL_OPERATION_CONFIRM: reconcile-evavo-vector-studio-project-settings
         run: |
-          node scripts/provision-vector-studio-vercel.mjs \
-            --mode settings \
+          node scripts/run-vector-vercel-settings-reconciliation.mjs \
             --commit "$GITHUB_SHA" \
             --out .ci/vector-vercel-provision-settings.json
 
@@ -119,7 +124,7 @@ jobs:
           path: |
             .ci/vector-source-proof.json
             .ci/vector-vercel-provision-settings.json
-          if-no-files-found: warn
+          if-no-files-found: error
           include-hidden-files: true
           retention-days: 14
 
@@ -130,7 +135,20 @@ jobs:
           SETTINGS_OUTCOME: ${{ steps.settings.outcome }}
         with:
           script: |
+            const fs = require("node:fs");
             const passed = process.env.SETTINGS_OUTCOME === "success";
+            let receipt = null;
+            try {
+              receipt = JSON.parse(fs.readFileSync(".ci/vector-vercel-provision-settings.json", "utf8"));
+            } catch {}
+            const rawCode = typeof receipt?.error === "string" ? receipt.error : "VERCEL_SETTINGS_RECONCILIATION_FAILED";
+            const errorCode = /^[A-Z0-9_:-]{1,120}$/.test(rawCode)
+              ? rawCode
+              : "VERCEL_SETTINGS_RECONCILIATION_FAILED";
+            const providerStatus = Number.isInteger(receipt?.provider?.status)
+              ? receipt.provider.status
+              : null;
+            const failureDescription = `settings failed: ${errorCode}${providerStatus ? ` HTTP ${providerStatus}` : ""}`.slice(0, 140);
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -139,7 +157,7 @@ jobs:
               context: "deploy/vector-studio-vercel-project-settings-source-trigger",
               description: passed
                 ? "pinned Vector Studio Vercel project settings reconciled"
-                : "Vector Studio Vercel project settings reconciliation failed",
+                : failureDescription,
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
