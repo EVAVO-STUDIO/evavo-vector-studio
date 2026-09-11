@@ -26,6 +26,18 @@ async function readJson(relativePath) {
   }
 }
 
+async function requireAbsent(relativePath) {
+  checkedFiles.add(relativePath);
+  try {
+    await fs.access(path.join(root, relativePath));
+    errors.push(`Retired local-worker workflow must remain absent: ${relativePath}.`);
+  } catch (error) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+      errors.push(`Could not verify absence of ${relativePath} (${error instanceof Error ? error.message : String(error)}).`);
+    }
+  }
+}
+
 function requireTokens(relativePath, source, tokens) {
   for (const token of tokens) {
     if (!source.includes(token)) errors.push(`${relativePath} is missing local-worker token: ${token}`);
@@ -54,13 +66,13 @@ const files = {
   architecture: "docs/ARCHITECTURE.md",
   readme: "README.md",
   environment: ".env.example",
-  workflow: ".github/workflows/quality.yml",
 };
 const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
 );
 const rootPackage = await readJson(files.rootPackage);
 const localPackage = await readJson(files.package);
+await requireAbsent(".github/workflows/quality.yml");
 
 if (localPackage?.version !== rootPackage?.version) {
   errors.push(`Local worker version ${String(localPackage?.version)} does not match root ${String(rootPackage?.version)}.`);
@@ -202,30 +214,16 @@ requireTokens(files.docs, sources.docs, [
   "hostedBackgroundQueue: false",
   "remoteExecutionAvailable: false",
 ]);
-requireTokens(files.hostedDocs, sources.hostedDocs, [
-  "local worker",
-]);
-requireTokens(files.architecture, sources.architecture, [
-  "Local worker",
-]);
-requireTokens(files.readme, sources.readme, [
-  "Local worker",
-  "worker:run",
-]);
-requireTokens(files.environment, sources.environment, [
-  "VECTOR_OBJECT_STORE_PATH",
-  "VECTOR_WORKER_ID",
-]);
-requireTokens(files.workflow, sources.workflow, [
-  "Verify local worker process contract",
-  "node scripts/check-local-worker-contract.mjs",
-]);
+requireTokens(files.hostedDocs, sources.hostedDocs, ["local worker"]);
+requireTokens(files.architecture, sources.architecture, ["Local worker"]);
+requireTokens(files.readme, sources.readme, ["Local worker", "worker:run"]);
+requireTokens(files.environment, sources.environment, ["VECTOR_OBJECT_STORE_PATH", "VECTOR_WORKER_ID"]);
 
 if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-studio-local-worker-contract",
     ok: false,
-    localWorkerContractVersion: "1.0",
+    localWorkerContractVersion: "2.0",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -234,18 +232,10 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-local-worker-contract",
   ok: true,
-  localWorkerContractVersion: "1.0",
-  commands: [
-    "capabilities",
-    "import",
-    "submit",
-    "inspect",
-    "list",
-    "cancel",
-    "reclaim",
-    "run-once",
-    "run",
-  ],
+  localWorkerContractVersion: "2.0",
+  providerFreeValidation: true,
+  retiredQualityWorkflowAbsent: true,
+  commands: ["capabilities", "import", "submit", "inspect", "list", "cancel", "reclaim", "run-once", "run"],
   remoteExecutionAvailable: false,
   hostedBackgroundQueue: false,
   generatedBodiesInConsole: false,
