@@ -6,8 +6,9 @@ const root = process.cwd();
 const files = Object.freeze({
   manifest: "ops/provider/vector-studio-vercel-project-v1.json",
   verifier: "scripts/verify-vector-studio-vercel-project-v1.mjs",
+  exactMain: "scripts/check-exact-current-main.mjs",
   documentation: "docs/VERCEL-PROJECT-STATE-V1.md",
-  workflow: ".github/workflows/vector-studio-vercel-project-v1.yml",
+  retiredWorkflow: ".github/workflows/vector-studio-vercel-project-v1.yml",
 });
 
 function read(relativePath) {
@@ -16,23 +17,24 @@ function read(relativePath) {
   return fs.readFileSync(absolute, "utf8").replace(/^\uFEFF/, "");
 }
 
+function requireAbsent(relativePath) {
+  assert.ok(!fs.existsSync(path.join(root, relativePath)), `Retired Vercel project workflow must remain absent: ${relativePath}`);
+}
+
 function requireTokens(label, source, tokens) {
-  for (const token of tokens) {
-    assert.ok(source.includes(token), `${label} is missing: ${token}`);
-  }
+  for (const token of tokens) assert.ok(source.includes(token), `${label} is missing: ${token}`);
 }
 
 function forbidTokens(label, source, tokens) {
-  for (const token of tokens) {
-    assert.ok(!source.includes(token), `${label} contains prohibited token: ${token}`);
-  }
+  for (const token of tokens) assert.ok(!source.includes(token), `${label} contains prohibited token: ${token}`);
 }
 
 const manifestSource = read(files.manifest);
 const verifier = read(files.verifier);
+const exactMain = read(files.exactMain);
 const documentation = read(files.documentation);
-const workflow = read(files.workflow);
 const manifest = JSON.parse(manifestSource);
+requireAbsent(files.retiredWorkflow);
 
 assert.equal(manifest.contractVersion, "1.0");
 assert.equal(manifest.provider, "vercel");
@@ -72,15 +74,20 @@ requireTokens("Vercel project verifier", verifier, [
   'providerState',
   'production-deployed',
 ]);
-forbidTokens("Vercel project verifier", verifier, [
-  'method: "POST"',
-  'method: "PUT"',
-  'method: "PATCH"',
-  'method: "DELETE"',
-  "console.log(token)",
-  "console.error(token)",
-  "writeFileSync",
+forbidTokens("Vercel project verifier", verifier, ['method: "POST"', 'method: "PUT"', 'method: "PATCH"', 'method: "DELETE"', "console.log(token)", "console.error(token)", "writeFileSync"]);
+
+requireTokens("exact-current-main admission", exactMain, [
+  'const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio"',
+  'const EXPECTED_BRANCH = "main"',
+  'git", ["ls-remote", "--heads", "origin", "refs/heads/main"]',
+  'VECTOR_MAIN_REMOTE_MISMATCH',
+  'VECTOR_MAIN_REPOSITORY_DIRTY',
+  'mutationAttempted: false',
+  'mutationPerformed: false',
+  'repositoryPublicationAuthority: false',
+  'flag: "wx"',
 ]);
+forbidTokens("exact-current-main admission", exactMain, ["git fetch", "git reset", "git checkout", "git switch", "git push", "contents: write"]);
 
 requireTokens("Vercel project documentation", documentation, [
   "prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L",
@@ -99,22 +106,4 @@ requireTokens("Vercel project documentation", documentation, [
   "provider runtime proof",
 ]);
 
-requireTokens("Vercel project workflow", workflow, [
-  "Vector Studio Vercel project v1",
-  "contents: read",
-  "statuses: write",
-  "node scripts/check-vector-studio-vercel-project-v1.mjs",
-  "node scripts/verify-vector-studio-vercel-project-v1.mjs --self-test",
-  "provider/vector-project-v1",
-  "Confirm exact current main",
-  "Confirm validated head remains current main",
-]);
-forbidTokens("Vercel project workflow", workflow, [
-  "contents: write",
-  "VERCEL_TOKEN:",
-  "git push",
-  "vercel deploy",
-  "vercel --prod",
-]);
-
-console.log("Vector Studio Vercel project v1 source contract passed.");
+console.log("Vector Studio Vercel project v1 provider-free source contract passed.");
