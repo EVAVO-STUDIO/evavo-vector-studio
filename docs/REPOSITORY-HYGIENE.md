@@ -20,11 +20,13 @@ The four package binaries point to checked-in `.mjs` launch shims. The shims exi
 
 ## Turbo test outputs
 
-Compiled tests depend on same-package `build` and dependency `^build` tasks. Tests consume immutable `dist` output but declare no cache output of their own, preventing misleading “no output files found” warnings.
+Compiled tests depend on same-package `build` and dependency `^build` tasks. Tests consume immutable `dist` output but declare no cache output of their own, preventing misleading cache-output warnings.
 
-## Retired one-time publishers
+## Retired hosted publishers and workflows
 
-One-time source migration workflows and their trigger markers are removed after their reviewed source is incorporated. Keeping those write-enabled publishers would create duplicate push-time jobs, stale setup paths and unnecessary repository mutation authority. The hygiene contract therefore fails if a retired `one-time-*.yml` workflow or its paired trigger marker returns. The permanent quality, readiness, Hub and deployment-contract workflows remain the supported evidence paths.
+One-time source migration workflows and their trigger markers remain retired after reviewed source is incorporated. The former readiness/release/capability/hub/print wrappers are also not correctness authority. Repository-local contracts and exact provider/runtime receipts are the supported evidence paths.
+
+The hygiene contract therefore fails if retired one-time publishers return, if generated state becomes tracked, or if the retired readiness workflow is restored. The remaining Vercel workflows are migration debt only until their provider-effect contracts are transferred; their existence does not grant validation or publication authority.
 
 ## Enforcement
 
@@ -32,4 +34,4 @@ One-time source migration workflows and their trigger markers are removed after 
 pnpm hygiene:check
 ```
 
-The dependency-free guard checks the ignore policy, tracked-file boundary, temporary publisher removal, retired one-time publisher removal, permanent readiness workflow, CLI bin map and shims, Turbo test semantics, and the focused readiness workflow gates. It records no secret values and performs no mutation.
+The dependency-free guard checks the ignore policy, tracked-file boundary, retired publisher removal, retired readiness workflow absence, CLI bin map and shims, and Turbo test semantics. It records no secret values and performs no mutation.
