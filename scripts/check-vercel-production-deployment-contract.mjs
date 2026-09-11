@@ -15,343 +15,161 @@ async function read(relativePath) {
     return "";
   }
 }
-
+async function readJson(relativePath) {
+  const source = await read(relativePath);
+  if (!source) return null;
+  try { return JSON.parse(source); } catch (error) {
+    errors.push(`Invalid JSON: ${relativePath} (${error instanceof Error ? error.message : String(error)})`);
+    return null;
+  }
+}
+async function requireAbsent(relativePath) {
+  checkedFiles.add(relativePath);
+  try {
+    await fs.stat(path.join(root, relativePath));
+    errors.push(`Retired production workflow must remain absent: ${relativePath}.`);
+  } catch (error) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+      errors.push(`Unable to verify retired path ${relativePath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
 function requireTokens(relativePath, source, tokens) {
-  for (const token of tokens) {
-    if (!source.includes(token)) errors.push(`${relativePath} is missing exact-deployment token: ${token}`);
-  }
+  for (const token of tokens) if (!source.includes(token)) errors.push(`${relativePath} is missing exact-deployment token: ${token}`);
 }
-
 function forbidTokens(relativePath, source, tokens) {
-  for (const token of tokens) {
-    if (source.includes(token)) errors.push(`${relativePath} contains prohibited exact-deployment token: ${token}`);
-  }
+  for (const token of tokens) if (source.includes(token)) errors.push(`${relativePath} contains prohibited exact-deployment token: ${token}`);
 }
 
-const files = {
+const files = Object.freeze({
   package: "package.json",
   deployer: "scripts/deploy-vector-studio-vercel.mjs",
+  orchestrator: "scripts/run-vector-vercel-production-local.mjs",
+  exactMain: "scripts/check-exact-current-main.mjs",
+  sourceProof: "scripts/create-source-proof.mjs",
+  privateProof: "scripts/verify-live-private-response.mjs",
+  liveProof: "scripts/verify-live-deployment.mjs",
   launchToken: "scripts/create-vector-live-launch-token.mjs",
   liveCapabilities: "scripts/verify-live-capability-discovery.mjs",
-  workflow: ".github/workflows/vector-vercel-production-deployment.yml",
-  provisioningWorkflow: ".github/workflows/vector-vercel-project-provisioning.yml",
-  deploymentWorkflow: ".github/workflows/vercel-deployment-contract.yml",
-  docs: "docs/VERCEL-DEPLOYMENT.md",
-};
+});
+const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])));
+const packageJson = await readJson(files.package);
 
-const sources = Object.fromEntries(
-  await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
-);
+await requireAbsent(".github/workflows/vector-vercel-production-deployment.yml");
+await requireAbsent(".github/workflows/vector-vercel-project-provisioning.yml");
+await requireAbsent(".github/workflows/vector-vercel-provisioning-preflight.yml");
 
-let packageJson = null;
-try {
-  packageJson = JSON.parse(sources.package || "{}");
-} catch (error) {
-  errors.push(`Invalid JSON: ${files.package} (${error instanceof Error ? error.message : String(error)})`);
-}
-
-if (
-  packageJson?.scripts?.["vercel-deploy:check"] !==
-  "node scripts/check-vercel-production-deployment-contract.mjs"
-) {
-  errors.push("package.json must expose vercel-deploy:check.");
-}
-if (!String(packageJson?.scripts?.check ?? "").includes("pnpm vercel-deploy:check")) {
-  errors.push("package.json check must include vercel-deploy:check.");
-}
+if (packageJson?.scripts?.["vercel-deploy:check"] !== "node scripts/check-vercel-production-deployment-contract.mjs") errors.push("package.json must expose vercel-deploy:check.");
+if (!String(packageJson?.scripts?.check ?? "").includes("pnpm vercel-deploy:check")) errors.push("package.json check must include vercel-deploy:check.");
 
 requireTokens(files.deployer, sources.deployer, [
   'const CONTRACT_VERSION = "1.0"',
-  'const TEAM_ID = "team_ckKLAnG3MGJK0mMpIVpjbogl"',
   'const PROJECT_ID = "prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L"',
-  'const PROJECT_NAME = "evavo-vector-studio"',
   'const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio"',
   'const GITHUB_REPOSITORY_VISIBILITY = "public"',
   'const PRODUCTION_DOMAIN = "vector.evavo.com.au"',
-  'const NODE_VERSION = "22.x"',
   'const APPLY_CONFIRMATION = "deploy-evavo-vector-studio"',
   'const DEPLOYMENT_TIMEOUT_MS = 20 * 60 * 1000',
-  'const TERMINAL_FAILURE_STATES = new Set(["ERROR", "CANCELED", "BLOCKED"])',
-  '"--self-test"',
-  '"--mode"',
   '"plan"',
   '"apply"',
   'String(process.env.VECTOR_VERCEL_DEPLOY_CONFIRM ?? "").trim()',
-  '/v9/projects/${encodeURIComponent(PROJECT_ID)}',
-  '/v7/deployments?projectId=${encodeURIComponent(projectId)}',
-  '/v13/deployments?forceNew=1&skipAutoDetectionConfirmation=1',
-  '/v13/deployments/${encodeURIComponent(deploymentId)}?withGitRepoInfo=true',
-  '/v2/deployments/${encodeURIComponent(deploymentId)}/aliases',
   'type: "github-limited"',
-  'org: REPOSITORY_ORG',
-  'repo: REPOSITORY_NAME',
   'ref: "main"',
   'sha: commit',
   'target: "production"',
-  'githubCommitSha: commit',
-  'ciGitRepoVisibility: GITHUB_REPOSITORY_VISIBILITY',
-  'function sourceControlState(project)',
-  'mode: "api-managed"',
-  'mode: acceptable ? "git-linked" : "conflict"',
-  'safe.nodeVersion !== NODE_VERSION',
-  'return sourceControlState(project).acceptable',
-  'sourceControl: sourceControlState(inspection.project)',
-  'monorepoManager: "turbo"',
-  'nodeVersion: NODE_VERSION',
-  'rootDirectory: ROOT_DIRECTORY',
-  'sourceFilesOutsideRootDirectory: true',
   '"VERCEL_DEPLOY_API_QUOTA_EXHAUSTED"',
-  'resource !== "api-deployments-free-per-day"',
-  'resetAt: reset === null ? null : new Date(reset).toISOString()',
-  'async function writeFailureReceipt(options, error)',
-  'diagnosticApplyReceipts: true',
-  'quotaFailuresClassified: true',
-  'deploymentRootDirectoryExplicit: true',
   'deployment.readyState === "READY"',
   'deployment.commit === options.commit',
   'aliases.includes(PRODUCTION_DOMAIN)',
-  'assert.equal(GITHUB_REPOSITORY_VISIBILITY, "public")',
-  'githubRepositoryVisibility: GITHUB_REPOSITORY_VISIBILITY',
-  '"VERCEL_DEPLOY_COMMIT_MISMATCH"',
   '"VERCEL_DEPLOY_COMMIT_UNPROVEN"',
-  '"VERCEL_DEPLOY_ALIAS_TIMEOUT"',
   '"VERCEL_DEPLOY_SECRET_LEAK"',
-  'writeFile(temporary, source, { encoding: "utf8", flag: "wx" })',
   'sensitiveValuesRecorded: false',
 ]);
+forbidTokens(files.deployer, sources.deployer, ['target: "preview"', 'ref: "develop"', 'method: "DELETE"', 'console.log(process.env', 'JSON.stringify(process.env']);
 
-forbidTokens(files.deployer, sources.deployer, [
-  'ciGitRepoVisibility: "public"',
-  'type: "vercel"',
-  'withLatestCommit: true',
-  'target: "preview"',
-  'ref: "develop"',
-  'method: "DELETE"',
-  'console.log(process.env',
-  'JSON.stringify(process.env',
-  'authorization: token',
+requireTokens(files.exactMain, sources.exactMain, [
+  'git", ["ls-remote", "--heads", "origin", "refs/heads/main"]',
+  'VECTOR_MAIN_REMOTE_MISMATCH',
+  'VECTOR_MAIN_REPOSITORY_DIRTY',
+  'mutationAttempted: false',
+  'repositoryPublicationAuthority: false',
 ]);
-
+forbidTokens(files.exactMain, sources.exactMain, ["git fetch", "git reset", "git checkout", "git switch", "git push"]);
+requireTokens(files.sourceProof, sources.sourceProof, [
+  'runChecked("pnpm", ["install", "--frozen-lockfile"]',
+  'runChecked("pnpm", ["check"]',
+  'runChecked("pnpm", ["--filter", "@evavo/vector-web", "build"]',
+  'assertCleanRepository()',
+  'sensitiveValuesRecorded: false',
+]);
+requireTokens(files.privateProof, sources.privateProof, ['CANONICAL_ORIGIN = "https://vector.evavo.com.au"', 'redirect: "manual"', 'cache: "no-store"', 'x-vector-private-response-contract']);
+requireTokens(files.liveProof, sources.liveProof, [
+  'CANONICAL_ORIGIN = "https://vector.evavo.com.au"',
+  'LAUNCH_TOKEN_ENV = "VECTOR_DEPLOYMENT_PROOF_LAUNCH_TOKEN"',
+  'SOURCE_PROOF_ENV = "VECTOR_DEPLOYMENT_SOURCE_PROOF"',
+  '--require-launch',
+  'replayLocation === "/access?reason=used"',
+  'sensitiveValuesRecorded: false',
+]);
 requireTokens(files.launchToken, sources.launchToken, [
-  'const CONTRACT_VERSION = "1.0"',
   'const PROFILE_NAMES = Object.freeze(["owner", "client"])',
   '"EVAVO_CLIENT_APP_LAUNCH_SECRET"',
   '"EVAVO_VECTOR_PRIVATE_SIGNING_SECRET"',
   'randomBytes(24).toString("base64url")',
-  'await import("../packages/hub-auth/dist/index.js")',
-  'hubAuth.assertVectorHubSecretsSeparated(launchSecret, privateSecret)',
-  'hubAuth.createVectorHubLaunchFixtureToken({',
-  'hubAuth.verifyVectorHubLaunchToken({',
-  'profileClaims("owner"',
-  'profileClaims("client"',
-  'writeFile(absolute, source, { encoding: "utf8", flag: "wx", mode })',
   'tokenBodyRecorded: false',
   'sensitiveValuesRecorded: false',
-  '"VECTOR_LIVE_LAUNCH_SECRET_LEAK"',
+  'mode = 0o600',
 ]);
-
-forbidTokens(files.launchToken, sources.launchToken, [
-  'process.stdout.write(token)',
-  'console.log(token)',
-  'tokenBodyRecorded: true',
-  'sensitiveValuesRecorded: true',
-  'mode = 0o644',
-]);
-
+forbidTokens(files.launchToken, sources.launchToken, ['process.stdout.write(token)', 'console.log(token)', 'tokenBodyRecorded: true', 'mode = 0o644']);
 requireTokens(files.liveCapabilities, sources.liveCapabilities, [
-  'const CONTRACT_VERSION = "1.0"',
-  'const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio"',
   'const PRODUCTION_ORIGIN = "https://vector.evavo.com.au"',
-  'const CAPABILITIES_PATH = "/api/v1/capabilities"',
   'const SOURCE_PROOF_ENV = "VECTOR_DEPLOYMENT_SOURCE_PROOF"',
-  'const MAX_RESPONSE_BYTES = 512 * 1024',
-  '"--self-test"',
-  '"--commit"',
-  'redirect: "error"',
-  'cache: "no-store"',
-  'response.status !== 200',
-  'headers.get("x-vector-private-response-contract") === "1.0"',
-  'document.service?.name === "evavo-vector-studio"',
-  'document.service?.capabilitiesContractVersion === "1.0"',
-  'document.interfaces?.mcp?.contractVersion === "1.5"',
-  'document.interfaces?.mcp?.toolCount === 15',
-  'document.automation?.durableBatch?.maximumLocalItems === 1_000',
-  'document.automation?.durableBatch?.maximumMcpItems === 100',
-  'document.deploymentBoundaries?.providerQueueDelivery === false',
   'document.deploymentBoundaries?.managedRemoteExecution === false',
   'document.deploymentBoundaries?.distributedAutoscaling === false',
   'document.approval?.state === "human-review-required"',
-  'proof?.commit !== commit',
-  'writeFile(temporary, source, { encoding: "utf8", flag: "wx", mode: 0o600 })',
   'responseBodyRecorded: false',
   'sensitiveValuesRecorded: false',
 ]);
 
-forbidTokens(files.liveCapabilities, sources.liveCapabilities, [
-  'responseBodyRecorded: true',
-  'sensitiveValuesRecorded: true',
-  'redirect: "follow"',
-  'cache: "force-cache"',
-  'process.stdout.write(text)',
-  'authorization: `Bearer',
-  'managedRemoteExecution === true',
-  'productionAutoApprovalAvailable === true',
-]);
-
-requireTokens(files.workflow, sources.workflow, [
-  "Vector Studio exact production deployment",
-  "workflow_dispatch:",
-  "mode:",
-  "- plan",
-  "- apply",
-  'description: "Apply only: deploy-evavo-vector-studio"',
-  "persist-credentials: false",
-  'github.rest.repos.getBranch',
-  'branch: "main"',
-  'test "$CURRENT_MAIN_SHA" = "${{ inputs.commit }}"',
-  "environment: vector-studio-production",
-  'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
-  'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
-  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
-  'actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3',
-  'node-version-file: .nvmrc',
-  'corepack prepare pnpm@10.14.0 --activate',
-  'node scripts/check-lockfile-integrity.mjs',
-  "Verify provisioned project, production environment and domain without mutation",
-  "node scripts/provision-vector-studio-vercel.mjs",
-  "Create exact source proof before deployment",
-  "node scripts/create-source-proof.mjs",
-  "Create or reuse exact production deployment and prove readiness",
-  "node scripts/deploy-vector-studio-vercel.mjs",
-  "--mode plan",
-  "--mode apply",
-  'VECTOR_VERCEL_DEPLOY_CONFIRM: ${{ inputs.confirmation }}',
-  'VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}',
-  'EVAVO_CLIENT_APP_LAUNCH_SECRET: ${{ secrets.EVAVO_CLIENT_APP_LAUNCH_SECRET }}',
-  'EVAVO_VECTOR_PRIVATE_SIGNING_SECRET: ${{ secrets.EVAVO_VECTOR_PRIVATE_SIGNING_SECRET }}',
-  'UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}',
-  'UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}',
-  'VECTOR_API_TOKEN: ${{ secrets.VECTOR_API_TOKEN }}',
-  'VECTOR_WORKER_API_TOKEN: ${{ secrets.VECTOR_WORKER_API_TOKEN }}',
-  "node scripts/verify-live-private-response.mjs",
-  "node scripts/verify-live-deployment.mjs",
-  "Verify live capability discovery and deployment non-claims",
-  "node scripts/verify-live-capability-discovery.mjs",
-  'VECTOR_DEPLOYMENT_SOURCE_PROOF: .ci/vector-source-proof.json',
-  '.ci/vector-live-capability-discovery.json',
-  'if: ${{ steps.capabilities.outcome == \'success\' }}',
-  "Verify one-time owner signed launch and replay rejection",
-  "Verify one-time client signed launch and replay rejection",
-  "node scripts/create-vector-live-launch-token.mjs",
-  "--profile owner",
-  "--profile client",
-  'echo "::add-mask::$token"',
-  'VECTOR_DEPLOYMENT_PROOF_LAUNCH_TOKEN="$token"',
-  "--require-launch",
-  "trap 'rm -f \"$token_file\"' EXIT",
-  ".ci/vector-owner-live-launch-token.json",
-  ".ci/vector-owner-live-launch-proof.json",
-  ".ci/vector-client-live-launch-token.json",
-  ".ci/vector-client-live-launch-proof.json",
-  'CAPABILITIES_OUTCOME: ${{ steps.capabilities.outcome }}',
-  'OWNER_LAUNCH_OUTCOME: ${{ steps.owner_launch.outcome }}',
-  'CLIENT_LAUNCH_OUTCOME: ${{ steps.client_launch.outcome }}',
-  'context: "deploy/vector-studio-production-plan"',
-  'context: "deploy/vector-studio-production-exact"',
-  "live capabilities and owner/client launch proofs passed",
-  "include-hidden-files: true",
-]);
-
-forbidTokens(files.workflow, sources.workflow, [
-  "\n  push:",
-  "\n  pull_request:",
-  "contents: write",
-  "git fetch --no-tags origin main",
-  "pnpm/action-setup@",
-  "vercel --prod",
-  "vercel deploy",
-  "withLatestCommit",
-  "echo $VERCEL_TOKEN",
-  "printenv",
-  "path: .ci/vector-owner-live-launch.token",
-  "path: .ci/vector-client-live-launch.token",
-]);
-
-requireTokens(files.provisioningWorkflow, sources.provisioningWorkflow, [
-  "Vector Studio Vercel project provisioning",
-  "environment: vector-studio-production",
-  'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
-  'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
-  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
-  'actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3',
-  'node-version-file: .nvmrc',
-  'corepack prepare pnpm@10.14.0 --activate',
-  'node scripts/check-lockfile-integrity.mjs',
-  'description: "Settings: reconcile-evavo-vector-studio-project-settings; full apply: provision-evavo-vector-studio"',
-]);
-
-requireTokens(files.deploymentWorkflow, sources.deploymentWorkflow, [
-  '"scripts/check-vercel-production-deployment-contract.mjs"',
+requireTokens(files.orchestrator, sources.orchestrator, [
+  'const DEPLOY_CONFIRMATION = "deploy-evavo-vector-studio"',
+  '"scripts/check-exact-current-main.mjs"',
+  '"scripts/check-vector-vercel-provider-access.mjs"',
+  '"scripts/create-source-proof.mjs"',
+  '"scripts/run-vector-vercel-provisioning-local.mjs"',
   '"scripts/deploy-vector-studio-vercel.mjs"',
-  '"scripts/create-vector-live-launch-token.mjs"',
+  'VECTOR_VERCEL_DEPLOY_CONFIRM: DEPLOY_CONFIRMATION',
+  '"scripts/verify-live-private-response.mjs"',
+  '"scripts/verify-live-deployment.mjs"',
   '"scripts/verify-live-capability-discovery.mjs"',
-  '".github/workflows/vector-vercel-production-deployment.yml"',
-  "node scripts/check-vercel-production-deployment-contract.mjs",
-  "node scripts/deploy-vector-studio-vercel.mjs --self-test",
-  "node scripts/create-vector-live-launch-token.mjs --self-test",
-  "node scripts/verify-live-capability-discovery.mjs --self-test",
+  'runLaunchProof("owner"',
+  'runLaunchProof("client"',
+  'destroyToken(tokenPath)',
+  'launchTokenBodiesRetained: false',
+  'automaticClientPromotion: false',
+  'repositoryPublicationAuthority: false',
+  'githubActionsAuthority: false',
+  'sensitiveValuesRecorded: false',
 ]);
-
-requireTokens(files.docs, sources.docs, [
-  "vector-vercel-production-deployment.yml",
-  "deploy-evavo-vector-studio",
-  "exact current `main` commit",
-  "READY",
-  "production alias",
-  "live private-response",
-  "live capability discovery",
-  "/api/v1/capabilities",
-  "source-proof bound",
-  "deployment non-claims",
-  "response body is not retained",
-  "one-time owner signed launch",
-  "one-time client signed launch",
-  "rejects replay",
-  "token body is never uploaded",
-  "Client release remains withheld",
-  "VERCEL_DEPLOY_API_QUOTA_EXHAUSTED",
-  "api-deployments-free-per-day",
-  "diagnostic apply receipt",
-  "retry only after",
-]);
+forbidTokens(files.orchestrator, sources.orchestrator, ['actions/', 'contents: write', 'git push', 'vercel --prod', 'vercel deploy']);
 
 if (errors.length > 0) {
-  process.stderr.write(`${JSON.stringify({
-    check: "vector-studio-vercel-production-deployment",
-    ok: false,
-    contractVersion: "1.0",
-    errors,
-  }, null, 2)}\n`);
+  process.stderr.write(`${JSON.stringify({ check: "vector-studio-vercel-production-deployment", ok: false, contractVersion: "2.0", errors }, null, 2)}\n`);
   process.exit(1);
 }
-
 process.stdout.write(`${JSON.stringify({
   check: "vector-studio-vercel-production-deployment",
   ok: true,
-  contractVersion: "1.0",
-  project: "evavo-vector-studio",
-  productionDomain: "vector.evavo.com.au",
-  exactCommitRequired: true,
-  productionAliasRequired: true,
-  truthfulGitHubSourceMetadata: true,
-  livePublicProofRequired: true,
+  contractVersion: "2.0",
+  providerFreeExecution: true,
+  retiredProductionWorkflowRequiredAbsent: true,
+  exactCurrentMainRequiredBeforeAndAfterProviderEffects: true,
+  sourceProofRequired: true,
+  livePrivateResponseRequired: true,
   liveCapabilityDiscoveryRequired: true,
-  capabilityResponseBodyRetained: false,
-  deploymentNonClaimsVerified: true,
-  ownerLaunchProofRequired: true,
-  clientLaunchProofRequired: true,
-  replayRejectionRequired: true,
+  ownerAndClientReplayProofRequired: true,
   tokenBodiesRetained: false,
-  clientReleaseEligible: false,
+  automaticClientPromotion: false,
+  repositoryPublicationAuthority: "development.repository.publish",
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);
