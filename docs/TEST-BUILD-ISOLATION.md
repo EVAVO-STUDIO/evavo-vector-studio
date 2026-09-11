@@ -20,10 +20,10 @@ The dependency-free contract is:
 pnpm test-build-isolation:check
 ```
 
-The focused readiness workflow runs this contract before frozen installation, then repeats the complete governed build boundary after installation.
+The repository-local readiness and full `pnpm check` paths execute this contract before dependency-backed validation. No GitHub workflow is required to prove the isolation boundary.
 
 ## Cache declaration
 
 The Turbo test task uses an empty test-output declaration. Tests consume the same package's completed `dist` tree but do not claim a separate `coverage/**` product that the current test commands never create. This removes misleading cache-output warnings.
 
-A future test compiler that writes to shared `dist`, a test command that deletes build output, or a false retained-output declaration fails before dependency-backed execution.
+A future test compiler that writes to shared `dist`, a test command that deletes build output, a false retained-output declaration, or restoration of the retired readiness workflow fails the provider-free contract.
