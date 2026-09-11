@@ -15,6 +15,29 @@ async function read(relativePath) {
   }
 }
 
+async function readJson(relativePath) {
+  const source = await read(relativePath);
+  if (!source) return null;
+  try {
+    return JSON.parse(source);
+  } catch (error) {
+    errors.push(`Invalid JSON: ${relativePath} (${error instanceof Error ? error.message : String(error)})`);
+    return null;
+  }
+}
+
+async function requireAbsent(relativePath) {
+  checkedFiles.add(relativePath);
+  try {
+    await fs.stat(path.join(root, relativePath));
+    errors.push(`Retired Vercel workflow must remain absent: ${relativePath}.`);
+  } catch (error) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+      errors.push(`Unable to verify retired path ${relativePath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
 function requireTokens(relativePath, source, tokens) {
   for (const token of tokens) {
     if (!source.includes(token)) errors.push(`${relativePath} is missing Vercel provisioning token: ${token}`);
@@ -27,40 +50,26 @@ function forbidTokens(relativePath, source, tokens) {
   }
 }
 
-function workflowStep(source, name) {
-  const marker = `      - name: ${name}\n`;
-  const start = source.indexOf(marker);
-  if (start < 0) return null;
-  const tail = source.slice(start + marker.length);
-  const next = tail.indexOf("\n      - name: ");
-  return next < 0 ? tail : tail.slice(0, next);
-}
-
 const files = Object.freeze({
   package: "package.json",
   provisioner: "scripts/provision-vector-studio-vercel.mjs",
   planWrapper: "scripts/plan-vector-studio-vercel-provisioning.mjs",
   providerEnforcer: "scripts/enforce-vercel-provider-inspection-receipt.mjs",
-  workflow: ".github/workflows/vector-vercel-project-provisioning.yml",
-  preflightWorkflow: ".github/workflows/vector-vercel-provisioning-preflight.yml",
-  deploymentWorkflow: ".github/workflows/vercel-deployment-contract.yml",
+  localOrchestrator: "scripts/run-vector-vercel-provisioning-local.mjs",
+  settingsOrchestrator: "scripts/run-vector-vercel-settings-source.mjs",
+  exactMain: "scripts/check-exact-current-main.mjs",
   docs: "docs/VERCEL-DEPLOYMENT.md",
   receiptDocs: "docs/VERCEL-PROVISIONING-PLAN-RECEIPTS.md",
 });
 const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
 );
+const packageJson = await readJson(files.package);
 
-let packageJson = null;
-try {
-  packageJson = JSON.parse(sources.package || "{}");
-} catch (error) {
-  errors.push(`Invalid JSON: ${files.package} (${error instanceof Error ? error.message : String(error)})`);
-}
-if (
-  packageJson?.scripts?.["vercel-provision:check"] !==
-  "node scripts/check-vercel-project-provisioning-contract.mjs"
-) {
+await requireAbsent(".github/workflows/vector-vercel-project-provisioning.yml");
+await requireAbsent(".github/workflows/vector-vercel-provisioning-preflight.yml");
+
+if (packageJson?.scripts?.["vercel-provision:check"] !== "node scripts/check-vercel-project-provisioning-contract.mjs") {
   errors.push("package.json must expose vercel-provision:check.");
 }
 if (!String(packageJson?.scripts?.check ?? "").includes("pnpm vercel-provision:check")) {
@@ -94,35 +103,15 @@ requireTokens(files.provisioner, sources.provisioner, [
   '"VERCEL_PROVISION_APPLICATION_AUTHORITIES_INCOMPLETE"',
   'options.mode === "apply" && !credentials.applicationAuthorities.ready',
   'process.env.VECTOR_VERCEL_OPERATION_CONFIRM ??',
-  'process.env.VECTOR_VERCEL_APPLY_CONFIRM ??',
-  '/v9/projects/${encodeURIComponent(PROJECT_ID)}',
-  'function projectIdentity(project)',
-  'function planFromInspection(inspection, credentials)',
-  'inspectionAvailable: true',
-  'action: "inspection-complete"',
   'readyToReconcileSettings',
   'readyToApply: blockers.length === 0',
-  'action: credentials.applicationAuthorities.ready',
-  '"blocked-incomplete-authorities"',
   'sourceControlMode: gitLink.mode',
   'link.type === "github"',
-  'linkState.present && !linkState.matched',
-  '/v9/projects/${encodeURIComponent(projectId)}?teamId=${encodeURIComponent(TEAM_ID)}',
-  '/v10/projects/${encodeURIComponent(projectId)}/env?upsert=true',
-  '/v10/projects/${encodeURIComponent(projectId)}/domains',
-  '/verify?teamId=${encodeURIComponent(TEAM_ID)}',
-  'nodeVersion: NODE_VERSION',
-  'previewDeploymentsDisabled: true',
-  'enablePreviewFeedback: false',
-  'enableProductionFeedback: false',
   'target: Object.freeze(["production"])',
   'createHash("sha256").update(value)',
-  '"VERCEL_PROVISION_PROJECT_GIT_CONFLICT"',
-  '"VERCEL_PROVISION_SECRET_LEAK"',
   'providerOnlyInspectionSupported: true',
   'providerOnlySettingsApplySupported: true',
   'applicationAuthoritiesRequiredForApply: true',
-  'mutationAttempted',
   'deploymentPerformed: false',
   'sensitiveValuesRecorded: false',
 ]);
@@ -132,31 +121,21 @@ forbidTokens(files.provisioner, sources.provisioner, [
   "deploymentPerformed: true",
   'target: Object.freeze(["preview"])',
   "VERCEL_TOKEN: process.env.VERCEL_TOKEN",
-  '/v10/projects?teamId=${encodeURIComponent(TEAM_ID)}',
-  "gitRepository: {",
 ]);
 
 requireTokens(files.planWrapper, sources.planWrapper, [
   'const CHILD_SCRIPT = "scripts/provision-vector-studio-vercel.mjs"',
-  'const PROVIDER_ACCESS_KEYS = Object.freeze([',
-  'const APPLICATION_ENVIRONMENT_KEYS = Object.freeze([',
-  'const ALL_SECRET_KEYS = Object.freeze([',
-  'const AUTHORITY_KEYS = Object.freeze([',
   'function credentialReadiness(environment = process.env)',
-  'code: "VERCEL_PROVISION_PROVIDER_ACCESS_INVALID"',
   'inspectionAvailable: false',
-  'action: "inspection-unavailable"',
   'providerOnlyInspectionSupported: true',
   'diagnosticReceiptOnProviderFailure: true',
   'canonicalReceiptProduced: true',
   'spawnSync(',
-  'CHILD_SCRIPT',
   '"--mode"',
   '"plan"',
   'mutationAttempted: false',
 ]);
 forbidTokens(files.planWrapper, sources.planWrapper, [
-  'VECTOR_VERCEL_APPLY_CONFIRM',
   'method: "POST"',
   'method: "PATCH"',
   'fetch(',
@@ -167,8 +146,6 @@ forbidTokens(files.planWrapper, sources.planWrapper, [
 requireTokens(files.providerEnforcer, sources.providerEnforcer, [
   'const ENFORCER_CHECK = "vector-studio-vercel-provider-inspection-receipt"',
   'const PROJECT_ID = "prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L"',
-  '"--receipt"',
-  '"--commit"',
   'plan.inspectionAvailable !== true',
   'project.identity?.passed !== true',
   'project.gitLink?.acceptable !== true',
@@ -185,108 +162,53 @@ forbidTokens(files.providerEnforcer, sources.providerEnforcer, [
   'method: "DELETE"',
 ]);
 
-requireTokens(files.workflow, sources.workflow, [
-  'Vector Studio Vercel project provisioning',
-  'workflow_dispatch:',
-  'environment: vector-studio-production',
-  'Resolve exact current main',
-  'test "$(git rev-parse HEAD)" = "$CURRENT_MAIN_SHA"',
-  'Verify provisioner, wrapper and provider-receipt self-tests',
-  'node scripts/enforce-vercel-provider-inspection-receipt.mjs --self-test',
-  'Create bounded no-mutation plan',
-  'node scripts/plan-vector-studio-vercel-provisioning.mjs',
-  'Enforce exact provider inspection receipt',
-  'node scripts/enforce-vercel-provider-inspection-receipt.mjs',
-  'Reconcile provider-only Vercel project settings',
-  '--mode settings',
-  'Apply full Vercel production configuration',
-  '--mode apply',
-  'VECTOR_VERCEL_OPERATION_CONFIRM: ${{ inputs.confirmation }}',
-  'context: "deploy/vector-studio-vercel-provision-plan"',
-  'context: "deploy/vector-studio-vercel-project-settings"',
-  'context: "deploy/vector-studio-vercel-provision-apply"',
-  'include-hidden-files: true',
+requireTokens(files.exactMain, sources.exactMain, [
+  'const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio"',
+  'const EXPECTED_BRANCH = "main"',
+  'git", ["ls-remote", "--heads", "origin", "refs/heads/main"]',
+  'VECTOR_MAIN_REMOTE_MISMATCH',
+  'VECTOR_MAIN_REPOSITORY_DIRTY',
+  'mutationAttempted: false',
+  'mutationPerformed: false',
+  'repositoryPublicationAuthority: false',
 ]);
-forbidTokens(files.workflow, sources.workflow, [
-  '\n  push:',
-  '\n  pull_request:',
-  'contents: write',
-  'git fetch --no-tags origin main',
-  'vercel --prod',
-  'vercel deploy',
-  'echo $VERCEL_TOKEN',
-  'printenv',
+forbidTokens(files.exactMain, sources.exactMain, ["git fetch", "git reset", "git checkout", "git switch", "git push"]);
+
+requireTokens(files.settingsOrchestrator, sources.settingsOrchestrator, [
+  'const SETTINGS_CONFIRMATION = "reconcile-evavo-vector-studio-project-settings"',
+  'VECTOR_VERCEL_OPERATION_CONFIRM: SETTINGS_CONFIRMATION',
+  '"scripts/check-vector-vercel-provider-access.mjs"',
+  '"scripts/create-source-proof.mjs"',
+  '"scripts/run-vector-vercel-settings-reconciliation.mjs"',
+  'githubActionsAuthority: false',
+  'productionDeploymentAuthority: false',
 ]);
 
-const settingsStep = workflowStep(
-  sources.workflow,
-  "Reconcile provider-only Vercel project settings",
-);
-const fullApplyStep = workflowStep(
-  sources.workflow,
-  "Apply full Vercel production configuration",
-);
-if (!settingsStep) {
-  errors.push("The provider-only project-settings step is missing.");
-} else {
-  requireTokens(files.workflow, settingsStep, [
-    'VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}',
-    'VECTOR_VERCEL_OPERATION_CONFIRM: ${{ inputs.confirmation }}',
-    '--mode settings',
-  ]);
-  forbidTokens(files.workflow, settingsStep, [
-    'EVAVO_CLIENT_APP_LAUNCH_SECRET',
-    'EVAVO_VECTOR_PRIVATE_SIGNING_SECRET',
-    'UPSTASH_REDIS_REST_URL',
-    'UPSTASH_REDIS_REST_TOKEN',
-    'VECTOR_API_TOKEN',
-    'VECTOR_WORKER_API_TOKEN',
-  ]);
-}
-if (!fullApplyStep) {
-  errors.push("The full production apply step is missing.");
-} else {
-  requireTokens(files.workflow, fullApplyStep, [
-    'VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}',
-    'EVAVO_CLIENT_APP_LAUNCH_SECRET: ${{ secrets.EVAVO_CLIENT_APP_LAUNCH_SECRET }}',
-    'EVAVO_VECTOR_PRIVATE_SIGNING_SECRET: ${{ secrets.EVAVO_VECTOR_PRIVATE_SIGNING_SECRET }}',
-    'UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}',
-    'UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}',
-    'VECTOR_API_TOKEN: ${{ secrets.VECTOR_API_TOKEN }}',
-    'VECTOR_WORKER_API_TOKEN: ${{ secrets.VECTOR_WORKER_API_TOKEN }}',
-    '--mode apply',
-  ]);
-}
-
-requireTokens(files.preflightWorkflow, sources.preflightWorkflow, [
-  'Vector Studio Vercel provisioning preflight',
-  'Check out exact current main',
-  'node-version-file: .nvmrc',
-  'corepack prepare pnpm@10.14.0 --activate',
-  'Create bounded no-mutation provider plan',
-  'node scripts/plan-vector-studio-vercel-provisioning.mjs',
-  'Enforce bounded provider inspection receipt',
-  'node scripts/enforce-vercel-provider-inspection-receipt.mjs',
-  'read-only Vector provider inspection passed',
-  'context: "deploy/vector-studio-vercel-preflight"',
-]);
-forbidTokens(files.preflightWorkflow, sources.preflightWorkflow, [
-  "node <<'NODE'",
-  'fetch(`https://api.vercel.com',
-  'method: "POST"',
-  'method: "PATCH"',
-  'method: "DELETE"',
-  'contents: write',
-  'vercel deploy',
-  'vercel --prod',
-]);
-
-requireTokens(files.deploymentWorkflow, sources.deploymentWorkflow, [
+requireTokens(files.localOrchestrator, sources.localOrchestrator, [
+  'const APPLY_CONFIRMATION = "provision-evavo-vector-studio"',
+  '["plan", "settings", "apply"]',
+  '"scripts/run-vector-vercel-settings-source.mjs"',
+  '"scripts/check-exact-current-main.mjs"',
+  '"scripts/check-vector-vercel-provider-access.mjs"',
+  '"scripts/plan-vector-studio-vercel-provisioning.mjs"',
   '"scripts/enforce-vercel-provider-inspection-receipt.mjs"',
-  'node scripts/enforce-vercel-provider-inspection-receipt.mjs --self-test',
-  'node scripts/check-vercel-project-provisioning-contract.mjs',
-  'node scripts/check-vercel-provisioning-plan-receipt-contract.mjs',
+  '"scripts/create-source-proof.mjs"',
+  '"scripts/provision-vector-studio-vercel.mjs"',
+  'VECTOR_VERCEL_OPERATION_CONFIRM: APPLY_CONFIRMATION',
+  'providerFreeExecution: true',
+  'deploymentPerformed: false',
+  'repositoryPublicationAuthority: false',
+  'githubActionsAuthority: false',
+  'sensitiveValuesRecorded: false',
 ]);
+forbidTokens(files.localOrchestrator, sources.localOrchestrator, [
+  'actions/',
+  'contents: write',
+  'git push',
+  'vercel --prod',
+  'vercel deploy',
+]);
+
 requireTokens(files.docs, sources.docs, [
   'Provider access requires only `VERCEL_TOKEN`',
   'Provider-only project settings',
@@ -296,7 +218,6 @@ requireTokens(files.docs, sources.docs, [
   'exact current `main` commit',
   'API-managed',
   'Node.js 22.x',
-  'domain verification endpoint',
   'does not deploy',
   'Client release remains withheld',
 ]);
@@ -312,7 +233,7 @@ if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "vector-studio-vercel-project-provisioning",
     ok: false,
-    contractVersion: "1.2",
+    contractVersion: "2.0",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -321,10 +242,13 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "vector-studio-vercel-project-provisioning",
   ok: true,
-  contractVersion: "1.1",
+  contractVersion: "2.0",
   project: "evavo-vector-studio",
   productionDomain: "vector.evavo.com.au",
   modes: ["plan", "settings", "apply"],
+  providerFreeExecution: true,
+  retiredProvisioningWorkflowsRequiredAbsent: true,
+  exactCurrentMainRequired: true,
   providerOnlyInspectionSupported: true,
   providerOnlySettingsApplySupported: true,
   applicationAuthoritiesSeparatedFromProviderAccess: true,
