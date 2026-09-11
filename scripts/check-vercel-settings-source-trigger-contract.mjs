@@ -23,6 +23,7 @@ try {
 
 for (const marker of [
   'const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio"',
+  'const SETTINGS_CONFIRMATION = "reconcile-evavo-vector-studio-project-settings"',
   'const SHA_PATTERN = /^[a-f0-9]{40}$/u',
   'commandOutput("git", ["branch", "--show-current"])',
   'commandOutput("git", ["rev-parse", "HEAD"])',
@@ -31,7 +32,8 @@ for (const marker of [
   '["scripts/check-vector-vercel-provider-access.mjs", "--out", providerReceipt]',
   '["scripts/create-source-proof.mjs", "--commit", options.commit, "--out", sourceProof]',
   '["scripts/run-vector-vercel-settings-reconciliation.mjs", "--commit", options.commit, "--out", settingsReceipt]',
-  'order: ["exact-main", "provider-access", "source-proof", "settings-reconciliation"]',
+  'VECTOR_VERCEL_OPERATION_CONFIRM: SETTINGS_CONFIRMATION',
+  'explicitSettingsConfirmationBoundLocally: true',
   'applicationSecretAuthority: false',
   'productionDeploymentAuthority: false',
   'repositoryPublicationAuthority: false',
@@ -51,6 +53,10 @@ assert.ok(
   orchestrator.indexOf('"scripts/create-source-proof.mjs"') <
     orchestrator.indexOf('"scripts/run-vector-vercel-settings-reconciliation.mjs"'),
   "source proof must complete before provider settings mutation",
+);
+assert.ok(
+  (orchestrator.match(/assertExactMain\(options\.commit\)/gu) ?? []).length >= 3,
+  "settings source orchestrator must prove exact current main before source proof, after source proof, and after settings",
 );
 
 for (const forbidden of [
@@ -117,10 +123,11 @@ for (const marker of [
 process.stdout.write(`${JSON.stringify({
   ok: true,
   kind: "vector-vercel-settings-source-contract",
-  contractVersion: "2.0",
+  contractVersion: "2.1",
   providerFreeExecution: true,
   retiredWorkflowAbsent: true,
-  order: ["exact-main", "provider-access", "source-proof", "settings-reconciliation"],
+  exactCurrentMainRechecks: 3,
+  explicitSettingsConfirmationBoundLocally: true,
   providerMutationScope: "pinned-project-settings-only",
   applicationSecretAuthority: false,
   productionDeploymentAuthority: false,
