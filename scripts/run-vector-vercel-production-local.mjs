@@ -32,15 +32,9 @@ function parseArgs(argv) {
     if (argument === "--commit") options.commit = value.trim().toLowerCase();
     if (argument === "--evidence-root") options.evidenceRoot = value;
   }
-  if (!["plan", "apply"].includes(options.mode)) {
-    fail("VECTOR_PRODUCTION_LOCAL_MODE_INVALID", "--mode must be plan or apply.");
-  }
-  if (!options.commit || !SHA_PATTERN.test(options.commit)) {
-    fail("VECTOR_PRODUCTION_LOCAL_COMMIT_INVALID", "Pass the exact lowercase 40-character commit with --commit.");
-  }
-  if (!options.evidenceRoot) {
-    fail("VECTOR_PRODUCTION_LOCAL_EVIDENCE_REQUIRED", "Pass --evidence-root for create-only release evidence.");
-  }
+  if (!["plan", "apply"].includes(options.mode)) fail("VECTOR_PRODUCTION_LOCAL_MODE_INVALID", "--mode must be plan or apply.");
+  if (!options.commit || !SHA_PATTERN.test(options.commit)) fail("VECTOR_PRODUCTION_LOCAL_COMMIT_INVALID", "Pass the exact lowercase 40-character commit with --commit.");
+  if (!options.evidenceRoot) fail("VECTOR_PRODUCTION_LOCAL_EVIDENCE_REQUIRED", "Pass --evidence-root for create-only release evidence.");
   return options;
 }
 
@@ -67,28 +61,19 @@ function runNode(args, label, env = process.env) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (result.error || result.status !== 0) {
-    fail("VECTOR_PRODUCTION_LOCAL_STEP_FAILED", `${label} failed.`, {
-      status: result.status,
-      durationMs: Date.now() - started,
-    });
+    fail("VECTOR_PRODUCTION_LOCAL_STEP_FAILED", `${label} failed.`, { status: result.status, durationMs: Date.now() - started });
   }
   return Object.freeze({ label, status: "passed", durationMs: Date.now() - started });
 }
 
 function tokenValue(tokenPath) {
   const token = readFileSync(tokenPath, "utf8").trim();
-  if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u.test(token)) {
-    fail("VECTOR_PRODUCTION_LOCAL_TOKEN_INVALID", "Generated live launch token did not match the bounded token shape.");
-  }
+  if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u.test(token)) fail("VECTOR_PRODUCTION_LOCAL_TOKEN_INVALID", "Generated live launch token did not match the bounded token shape.");
   return token;
 }
 
 function destroyToken(tokenPath) {
-  try {
-    rmSync(tokenPath, { force: true });
-  } catch {
-    // The live proof will already have failed if the token was unavailable.
-  }
+  try { rmSync(tokenPath, { force: true }); } catch { /* best-effort after proof */ }
 }
 
 function runLaunchProof(profile, options, evidenceRoot, sourceProof, steps) {
@@ -110,10 +95,7 @@ function runLaunchProof(profile, options, evidenceRoot, sourceProof, steps) {
       "--source-proof", sourceProof,
       "--require-launch",
       "--out", liveReceipt,
-    ], `${profile} live launch and replay proof`, {
-      ...process.env,
-      [LAUNCH_TOKEN_ENV]: token,
-    }));
+    ], `${profile} live launch and replay proof`, { ...process.env, [LAUNCH_TOKEN_ENV]: token }));
   } finally {
     destroyToken(tokenPath);
   }
@@ -134,82 +116,29 @@ function main() {
     exactMainAfterDeployment: path.join(evidenceRoot, "exact-main-after-deployment.json"),
   };
 
-  steps.push(runNode([
-    "scripts/check-exact-current-main.mjs",
-    "--commit", options.commit,
-    "--out", evidence.exactMainBefore,
-  ], "exact current main before source proof"));
-  steps.push(runNode([
-    "scripts/check-vector-vercel-provider-access.mjs",
-    "--out", evidence.providerAccess,
-  ], "Vercel provider access admission"));
-  steps.push(runNode([
-    "scripts/create-source-proof.mjs",
-    "--commit", options.commit,
-    "--out", evidence.sourceProof,
-  ], "complete source proof"));
-  steps.push(runNode([
-    "scripts/check-exact-current-main.mjs",
-    "--commit", options.commit,
-    "--out", evidence.exactMainAfterSource,
-  ], "exact current main after source proof"));
-  steps.push(runNode([
-    "scripts/run-vector-vercel-provisioning-local.mjs",
-    "--mode", "plan",
-    "--commit", options.commit,
-    "--evidence-root", evidence.providerPlanRoot,
-  ], "read-only provider provisioning plan"));
+  steps.push(runNode(["scripts/check-exact-current-main.mjs", "--commit", options.commit, "--out", evidence.exactMainBefore], "exact current main before source proof"));
+  steps.push(runNode(["scripts/check-vector-vercel-provider-access.mjs", "--out", evidence.providerAccess], "Vercel provider access admission"));
+  steps.push(runNode(["scripts/create-source-proof.mjs", "--commit", options.commit, "--out", evidence.sourceProof], "complete source proof"));
+  steps.push(runNode(["scripts/check-exact-current-main.mjs", "--commit", options.commit, "--out", evidence.exactMainAfterSource], "exact current main after source proof"));
+  steps.push(runNode(["scripts/run-vector-vercel-provisioning-local.mjs", "--mode", "plan", "--commit", options.commit, "--evidence-root", evidence.providerPlanRoot], "read-only provider provisioning plan"));
 
-  const deploymentEnvironment = options.mode === "apply"
-    ? { ...process.env, VECTOR_VERCEL_DEPLOY_CONFIRM: DEPLOY_CONFIRMATION }
-    : process.env;
-  steps.push(runNode([
-    "scripts/deploy-vector-studio-vercel.mjs",
-    "--mode", options.mode,
-    "--commit", options.commit,
-    "--out", evidence.deployment,
-  ], `Vercel production deployment ${options.mode}`, deploymentEnvironment));
-  steps.push(runNode([
-    "scripts/check-exact-current-main.mjs",
-    "--commit", options.commit,
-    "--out", evidence.exactMainAfterDeployment,
-  ], "exact current main after deployment provider step"));
+  const deploymentEnvironment = options.mode === "apply" ? { ...process.env, VECTOR_VERCEL_DEPLOY_CONFIRM: DEPLOY_CONFIRMATION } : process.env;
+  steps.push(runNode(["scripts/deploy-vector-studio-vercel.mjs", "--mode", options.mode, "--commit", options.commit, "--out", evidence.deployment], `Vercel production deployment ${options.mode}`, deploymentEnvironment));
+  steps.push(runNode(["scripts/check-exact-current-main.mjs", "--commit", options.commit, "--out", evidence.exactMainAfterDeployment], "exact current main after deployment provider step"));
 
   let live = null;
   if (options.mode === "apply") {
     evidence.privateResponse = path.join(evidenceRoot, "live-private-response.json");
     evidence.liveDeployment = path.join(evidenceRoot, "live-deployment.json");
-    evidence.capabilities = path.join(evidenceRoot, "live-capabilities.json");
+    evidence.capabilities = path.join(evidenceRoot, "live-capabilities-current.json");
     evidence.exactMainAfterLive = path.join(evidenceRoot, "exact-main-after-live.json");
-
-    const liveEnvironment = {
-      ...process.env,
-      [SOURCE_PROOF_ENV]: evidence.sourceProof,
-    };
-    steps.push(runNode([
-      "scripts/verify-live-private-response.mjs",
-      "--commit", options.commit,
-      "--out", evidence.privateResponse,
-    ], "live private-response proof", liveEnvironment));
-    steps.push(runNode([
-      "scripts/verify-live-deployment.mjs",
-      "--commit", options.commit,
-      "--source-proof", evidence.sourceProof,
-      "--out", evidence.liveDeployment,
-    ], "live deployment proof", liveEnvironment));
-    steps.push(runNode([
-      "scripts/verify-live-capability-discovery.mjs",
-      "--commit", options.commit,
-      "--out", evidence.capabilities,
-    ], "live capability discovery proof", liveEnvironment));
-
+    const liveEnvironment = { ...process.env, [SOURCE_PROOF_ENV]: evidence.sourceProof };
+    steps.push(runNode(["scripts/verify-live-private-response.mjs", "--commit", options.commit, "--out", evidence.privateResponse], "live private-response proof", liveEnvironment));
+    steps.push(runNode(["scripts/verify-live-deployment.mjs", "--commit", options.commit, "--source-proof", evidence.sourceProof, "--out", evidence.liveDeployment], "live deployment proof", liveEnvironment));
+    steps.push(runNode(["scripts/verify-live-capability-discovery-current.mjs", "--commit", options.commit, "--source-proof", evidence.sourceProof, "--out", evidence.capabilities], "current live capability discovery proof", liveEnvironment));
     const owner = runLaunchProof("owner", options, evidenceRoot, evidence.sourceProof, steps);
     const client = runLaunchProof("client", options, evidenceRoot, evidence.sourceProof, steps);
-    steps.push(runNode([
-      "scripts/check-exact-current-main.mjs",
-      "--commit", options.commit,
-      "--out", evidence.exactMainAfterLive,
-    ], "exact current main after live proofs"));
+    steps.push(runNode(["scripts/check-exact-current-main.mjs", "--commit", options.commit, "--out", evidence.exactMainAfterLive], "exact current main after live proofs"));
     live = Object.freeze({ owner, client });
   }
 
@@ -239,17 +168,7 @@ function main() {
   }, null, 2)}\n`);
 }
 
-try {
-  main();
-} catch (error) {
-  process.stderr.write(`${JSON.stringify({
-    ok: false,
-    error: error instanceof Error && "code" in error ? error.code : "VECTOR_PRODUCTION_LOCAL_FAILED",
-    message: error instanceof Error ? error.message : String(error),
-    details: error instanceof Error && "details" in error ? error.details : undefined,
-    repositoryPublicationAuthority: false,
-    launchTokenBodiesRetained: false,
-    sensitiveValuesRecorded: false,
-  }, null, 2)}\n`);
+try { main(); } catch (error) {
+  process.stderr.write(`${JSON.stringify({ ok: false, error: error instanceof Error && "code" in error ? error.code : "VECTOR_PRODUCTION_LOCAL_FAILED", message: error instanceof Error ? error.message : String(error), details: error instanceof Error && "details" in error ? error.details : undefined, repositoryPublicationAuthority: false, launchTokenBodiesRetained: false, sensitiveValuesRecorded: false }, null, 2)}\n`);
   process.exit(1);
 }
