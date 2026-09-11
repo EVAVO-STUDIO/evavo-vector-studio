@@ -6,21 +6,15 @@ Vector Studio exposes a public non-sensitive runtime posture document at:
 GET /api/v1/readiness
 ```
 
-The endpoint is designed for the EVAVO Hub, deployment workflows and operators. It reports whether the deployed runtime has the minimum production configuration needed for the private interactive workspace and whether the optional durable automation plane is configured.
+The endpoint is designed for the EVAVO Hub, operators and explicit deployment tooling. It reports whether the deployed runtime has the minimum production configuration needed for the private interactive workspace and whether the optional durable automation plane is configured.
 
 It never returns secret values, credential digests, filesystem paths, workspace identity, generated assets, job records or object keys.
 
 ## Interactive readiness
 
-`interactive.ready` is true only when all of these checks pass:
+`interactive.ready` is true only when the service is the canonical Vercel production runtime, `VECTOR_PUBLIC_ORIGIN` equals `https://vector.evavo.com.au`, the hub/session/API/worker authorities meet the governed minimum shape and remain distinct, and replay mode is `upstash` with a valid HTTPS endpoint and bounded token shape.
 
-- the service is running as the canonical Vercel production runtime;
-- `VECTOR_PUBLIC_ORIGIN` equals `https://vector.evavo.com.au`;
-- the hub launch, private-session, API and worker authorities meet the governed minimum shape;
-- those four authorities are distinct;
-- replay mode is `upstash` with a valid HTTPS endpoint and bounded token shape.
-
-A successful configuration projection is not a live launch proof. It does not verify DNS, the deployed Git SHA, first-use token redemption, replay rejection or authenticated workspace rendering.
+A successful configuration projection is not live launch proof. It does not verify DNS, deployed Git SHA, first-use token redemption, replay rejection or authenticated workspace rendering.
 
 ## Automation readiness
 
@@ -51,12 +45,12 @@ centralHumanPromotionRequired: true
 sensitiveValuesIncluded: false
 ```
 
-Only the governed live release proof and central Hub review can promote Vector Studio. Runtime configuration alone cannot change the client allowlist or create an external Hub launch action.
+Only governed live release proof plus central human review can promote Vector Studio. Runtime configuration alone cannot change the client allowlist or create an external Hub launch action.
 
-## Focused validation
+## Provider-free validation
 
-The permanent `Vector Studio runtime readiness` workflow validates the exact repository toolchain, repository hygiene, test/build isolation, lockfile stream, readiness contract, frozen dependency graph, workspace packages, Vector web typecheck, production build and a clean tracked/untracked boundary. Each gate publishes a stable commit status.
+`pnpm readiness:check`, `pnpm hygiene:check`, `pnpm test-build-isolation:check`, the lockfile checks, workspace typecheck/build and the full `pnpm check` chain are repository-local authority. The retired `.github/workflows/readiness-contract.yml` wrapper must remain absent.
 
-Readiness validation is read-only. It cannot provision Vercel, mutate domains, add credentials, promote the client allowlist or generate a signed launch.
+Readiness validation is read-only. It cannot provision Vercel, mutate domains, add credentials, promote the client allowlist or generate a signed launch. Vercel provider effects require their own explicit governed commands and receipts; workflow success does not grant that authority.
 
 Related source contracts: [`REPOSITORY-HYGIENE.md`](REPOSITORY-HYGIENE.md) and [`TEST-BUILD-ISOLATION.md`](TEST-BUILD-ISOLATION.md).
