@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0",
+  "repository": "EVAVO-STUDIO/evavo-vector-studio",
+  "state": "migration-pending",
+  "canonicalBranch": "main",
+  "canonicalValidationAuthority": "repository-local-contracts",
+  "repositoryPublicationAuthority": "development.repository.publish",
+  "githubActionsRoutineAuthority": false,
+  "githubWorkflowPublicationAuthority": false,
+  "workflowSuccessGrantsRuntimeProof": false,
+  "workflowSuccessGrantsDeploymentApproval": false,
+  "newWorkflowFilesAllowed": false,
+  "monotonicDeletionRequired": true,
+  "allowedMigrationDebt": [
+    "quality.yml",
+    "vector-studio-vercel-project-v1.yml",
+    "vector-vercel-production-deployment.yml",
+    "vector-vercel-project-provisioning.yml",
+    "vector-vercel-provisioning-preflight.yml",
+    "vector-vercel-settings-source-trigger.yml",
+    "vercel-deployment-contract.yml"
+  ],
+  "replacementAuthorities": {
+    "readiness": "scripts/run-readiness-local.mjs",
+    "sourceProof": "scripts/create-source-proof.mjs",
+    "providerPlanning": "scripts/plan-vector-studio-vercel-provisioning.mjs",
+    "providerSettings": "scripts/run-vector-vercel-settings-reconciliation.mjs",
+    "providerProvisioning": "scripts/provision-vector-studio-vercel.mjs",
+    "productionDeployment": "scripts/deploy-vector-studio-vercel.mjs",
+    "livePrivateProof": "scripts/verify-live-deployment.mjs",
+    "liveCapabilityProof": "scripts/verify-live-capability-discovery.mjs"
+  },
+  "exitCriteria": [
+    "readiness, hygiene and test/build isolation no longer require workflow topology",
+    "Vercel provider planning/settings/provisioning/deployment contracts validate local orchestrators and receipts instead of YAML",
+    "exact current main is rechecked outside GitHub Actions before provider mutation",
+    "provider and live evidence remain bounded, create-only and secret-redacted",
+    "all seven remaining workflow files are deleted and .github/workflows is absent"
+  ]
+}
