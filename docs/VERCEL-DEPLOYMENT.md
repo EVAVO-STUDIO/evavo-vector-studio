@@ -1,44 +1,43 @@
 # EVAVO Vector Studio Vercel deployment
 
-Vector Studio is designed to run as a protected standalone Next.js application at `vector.evavo.com.au`. Source readiness and a passing local build do not prove that a Vercel project, production domain, private signing authorities, replay store, or browser launch flow are operational.
+Vector Studio is a protected standalone Next.js application intended for `https://vector.evavo.com.au`. Source readiness, a passing local build, Vercel project existence and a READY deployment are separate facts. None of them alone grants client release.
 
-## Live platform audit
+GitHub Actions is not Vector Studio validation, deployment, release or publication authority. The canonical control plane is repository-local code plus bounded provider/runtime receipts. Development Studio remains repository publication authority. Vercel is an explicit deployment-effect provider only.
 
-The connected EVAVO Vercel team was inspected again on 6 August 2026.
+## Governed project identity
 
 ```text
-Team                    EVAVO's projects
-Project                 evavo-vector-studio
+Repository              EVAVO-STUDIO/evavo-vector-studio
 Project ID              prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L
-Minimum state           project-created
-Framework               not yet configured
-Root directory          not yet configured
-Node.js                  24.x provider default; expected 22.x
-Production domain       not attached
-Production deployments  0
-Client release          withheld
+Project name            evavo-vector-studio
+Root directory          apps/web
+Framework               Next.js
+Node.js                  22.x
+Install command         cd ../.. && pnpm install --frozen-lockfile
+Build command           cd ../.. && pnpm exec turbo run build --filter=@evavo/vector-web
+Production domain       vector.evavo.com.au
+Canonical origin        https://vector.evavo.com.au
 ```
 
-The standalone Vercel project now exists, but project existence is not deployment readiness. The next governed transaction must reconcile the framework, exact Node.js version, monorepo commands, production environment and domain before a separate exact-commit deployment is attempted.
+The project may be **API-managed** with no Git integration. If a Git link exists, it must point to the governed EVAVO repository. Automatic Git deployment creation remains disabled at rest; exact production deployments are explicit repository-owned provider transactions.
 
-## Provisioning provider preflight
+## Exact current main
 
-The read-only workflow:
+Every mutating provider transaction is bound to the **exact current `main` commit**. The local control plane verifies:
 
-```text
-.github/workflows/vector-vercel-provisioning-preflight.yml
-```
+- branch is `main`;
+- local HEAD equals the requested 40-character SHA;
+- tracked and untracked source is clean;
+- `origin/main`, read directly from the remote, still equals that SHA before consequential provider effects;
+- source remains unchanged after the bounded transaction.
 
-runs the canonical provisioning plan and independently enforces its bounded provider-inspection receipt. It does not create a project, write environment variables, assign a domain, deploy code, or retain provider response bodies.
+The exact-main checker is read-only. It never fetches into the working tree, resets, checks out, rebases, pushes or publishes.
 
-Provider access requires only `VERCEL_TOKEN`. With that single credential the plan can inspect:
+## Provider access and application authorities
 
-- the exact pinned Vercel project identity;
-- framework, Node.js, root-directory, install-command and build-command state;
-- API-managed or exact matching GitHub source-control mode;
-- production-domain attachment and verification state.
+Provider access requires only `VERCEL_TOKEN`.
 
-Application authorities remain a separate apply gate:
+Application authorities remain a separate full-apply gate:
 
 ```text
 EVAVO_CLIENT_APP_LAUNCH_SECRET
@@ -49,180 +48,142 @@ VECTOR_API_TOKEN
 VECTOR_WORKER_API_TOKEN
 ```
 
-The preflight records only missing or invalid key names and bounded booleans. A provider inspection can pass while `readyToApply` remains false. In that state the receipt retains `VERCEL_PROVISION_APPLICATION_AUTHORITIES_INCOMPLETE`, project settings that still require reconciliation, and an unverified or absent domain without misreporting the provider inspection as unavailable.
+The four signing/API authorities must remain distinct. Provider inspection can pass while `readyToApply` remains false when application authorities are absent or invalid. Receipts record missing/invalid **key names only**, never secret values.
 
-The earlier preflight against commit `3b6f3604c9abfcfaebb6d2507f5d709b128c7e8b` found all seven values absent, including provider access, so provider inspection was unavailable. That run performed no Vercel mutation and recorded no sensitive values. Reusing one secret for multiple signing or API authorities remains prohibited.
+## Read-only provider planning
 
-The provider preflight is manual-only through `workflow_dispatch`. It requires the exact current `main` SHA and the protected `vector-studio-production` environment. It has no automatic push, pull-request or scheduled trigger.
+Use the local provisioning planner and canonical receipt enforcer. It reads the pinned project/domain, framework, Node version, root directory, install/build settings and source-control posture without mutation.
 
-The tracked `.github/vector-vercel-preflight.trigger` file is retained only as an inert compatibility marker. Updating it performs no automatic dispatch. This keeps ordinary source validation in the permanent quality and deployment-contract workflows while avoiding a known-failing provider job when credentials are intentionally unavailable. The production boundary remains fail-closed, but it no longer spends GitHub Actions minutes on unrelated source commits.
-
-## Governed project provisioning
-
-The manual workflow:
-
-```text
-.github/workflows/vector-vercel-project-provisioning.yml
+```powershell
+node scripts/run-vector-vercel-provisioning-local.mjs `
+  --mode plan `
+  --commit <exact-main-sha> `
+  --evidence-root C:\Evidence\Vector\provision-plan
 ```
 
-has three explicit modes:
+The underlying `plan-vector-studio-vercel-provisioning.mjs` and `enforce-vercel-provider-inspection-receipt.mjs` retain bounded responses, provider-only credential admission and secret-free evidence. Read-only planning **does not deploy**.
 
-- `plan` requires only provider access, reads the exact EVAVO Vercel project and domain, writes a bounded canonical receipt without mutation, and reports application-authority gaps separately;
-- `settings` is a provider-only project settings transaction. It reconciles framework, Node.js, root directory, install command, build command and feedback controls without receiving, writing or requiring any application runtime authority;
-- `apply` is the full production-configuration transaction. It requires provider access plus all six valid, separated application authorities, reconciles project settings, upserts the production environment, and assigns `vector.evavo.com.au`.
+## Provider-only project settings
 
-All modes require an exact current `main` commit and the protected `vector-studio-production` GitHub environment. Mutating scopes additionally require a complete exact-commit source proof and their own literal confirmation:
+Framework, Node.js, root directory, install/build commands and feedback controls can be reconciled without application runtime secrets. The settings transaction uses only `VERCEL_TOKEN`, a full exact-source proof and the internal confirmation:
 
 ```text
-settings  reconcile-evavo-vector-studio-project-settings
-apply     provision-evavo-vector-studio
+reconcile-evavo-vector-studio-project-settings
 ```
 
-Application authorities remain a separate full-apply gate. The Provider-only project settings step receives only `VERCEL_TOKEN`, publishes the dedicated `deploy/vector-studio-vercel-project-settings` status, and cannot claim that the production environment, domain, deployment or client release is ready.
+Canonical local entrypoint:
 
-Each transaction is idempotent and is pinned to project ID `prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L`. If that project disappears or its identity changes, apply fails closed instead of creating an unreviewed replacement. The project may remain API-managed with no Git integration because exact production deployments are repository-owned transactions. If a Git link is present, it must belong to `EVAVO-STUDIO/evavo-vector-studio`; a conflicting link fails closed. Framework, Node.js 22.x and build settings are reconciled to the committed monorepo contract. Provider-only project settings can therefore be repaired before application secrets exist. Environment values are upserted only by full apply and only for production, the four signing/API authorities must remain distinct, and receipts contain only key names and bounded state. Receipts also distinguish whether mutation was attempted from whether a provider mutation completed, including failed transactions.
-
-This provisioner does not deploy. Exact production deployment, deployment readiness polling, live private-response proof, durable replay proof, and one-time owner/client launch evidence remain separate governed transactions. After attachment, the provisioner calls Vercel’s project-domain verification endpoint. A domain that remains unverified leaves apply incomplete rather than claiming release readiness. Client release remains withheld throughout.
-
-## Governed exact production deployment
-
-The separate manual workflow:
-
-```text
-.github/workflows/vector-vercel-production-deployment.yml
+```powershell
+node scripts/run-vector-vercel-settings-source.mjs `
+  --commit <exact-main-sha> `
+  --evidence-root C:\Evidence\Vector\settings
 ```
 
-also has `plan` and `apply` modes. Both require an exact current `main` commit and refuse to use a moved branch head. Apply additionally requires the protected `vector-studio-production` environment and the literal confirmation:
+The orchestrator enforces the order:
 
 ```text
-deploy-evavo-vector-studio
+exact-main
+provider-access
+source-proof
+settings-reconciliation
+exact-main recheck
 ```
 
-Before deployment, the workflow performs a no-mutation project plan with all seven separated credentials and creates a complete exact-source proof. The deployer accepts the pinned project in API-managed mode or with an exact matching GitHub link, rejects conflicting source-control links, and requires Node.js 22.x plus the governed monorepo settings. Every deployment request explicitly repeats `rootDirectory: apps/web` and `sourceFilesOutsideRootDirectory: true`; it does not rely on framework auto-detection or an earlier provider mutation to recover the monorepo boundary. It then creates or reuses only a production deployment associated with the requested 40-character Git SHA. Deployment metadata records the repository’s current public source visibility truthfully; the deployed application remains private through its signed-launch and app-session boundary. It polls bounded Vercel state until the deployment is `READY`, fails closed on `ERROR`, `CANCELED` or `BLOCKED`, proves the exact commit again from deployment metadata, and requires `vector.evavo.com.au` as the production alias.
+It has no application-secret authority and no production deployment authority.
 
-After the alias is proven, the workflow runs the live private-response verifier and the public runtime verifier against the canonical HTTPS origin. It preserves bounded source, deployment, header and runtime receipts without storing secret values. A READY deployment alone is not release evidence if the commit, production alias, response headers or public capabilities are unproven.
+## Full production configuration
 
-If Vercel rejects deployment creation because the daily API deployment allowance is exhausted, the deployer emits the stable blocker `VERCEL_DEPLOY_API_QUOTA_EXHAUSTED`. Its diagnostic apply receipt records only the provider code, the `api-deployments-free-per-day` resource, bounded allowance counts, and the UTC reset timestamp. It records `mutationAttempted: true` and `mutationPerformed: false`, and operators must retry only after the recorded reset rather than spend repeated provider requests. The raw provider response and token are never retained.
+Full Vercel provisioning is a separate local transaction. It requires provider access plus all valid separated application authorities, reconciles the pinned project, upserts the production environment and attaches/verifies `vector.evavo.com.au`.
 
-The workflow then performs live capability discovery at:
-
-```text
-GET /api/v1/capabilities
+```powershell
+node scripts/run-vector-vercel-provisioning-local.mjs `
+  --mode apply `
+  --commit <exact-main-sha> `
+  --evidence-root C:\Evidence\Vector\provision-apply
 ```
 
-That proof is source-proof bound to the exact frozen-installed, fully checked and production-built commit. It requires the deployed service version and capability contract, MCP version and tool count, delivery profiles, durable batch ceilings, worker operations, private response headers, and human-review approval boundary to match the checked source.
+The underlying provisioner uses the governed confirmation `provision-evavo-vector-studio`. It is idempotent against the pinned project and fails closed on project identity/source-control conflicts. Its receipts distinguish `mutationAttempted` from `mutationPerformed`, never contain provider response bodies or credentials, and always retain `deploymentPerformed: false`. Provisioning configures the runtime; it **does not deploy** the application.
 
-The live proof also verifies deployment non-claims. The deployed document must continue to report provider queue delivery, managed remote execution, distributed autoscaling and production auto-approval as unavailable. A stale host cannot gain promotion by overstating infrastructure that has not been deployed.
+## Exact production deployment
 
-Only bounded headers, response byte count, SHA-256 and a compact capability summary enter the receipt. The response body is not retained, generated asset bodies are never requested, and no signing or API authority is supplied to the public discovery request.
+Production deployment is the final provider effect and is now orchestrated locally:
 
-The same apply transaction then creates a fresh one-time owner signed launch and a separate one-time client signed launch using the shared `evavo-client-app-launch-v1` receiver contract. Each token is masked before use, stored only in a mode-0600 temporary file, removed by a shell trap, accepted once by `/launch`, rejected on replay, and used to render both protected workspaces. Only token SHA-256 and bounded claim identifiers are retained; the token body is never uploaded.
-
-These two profiles prove the deployed Vector Studio receiver, durable replay boundary and app-private session exchange. They do not by themselves prove that the central `next-website` owner and client UI issued the token from a real authenticated hub session. That final cross-application issuance and assignment proof remains separate. Client release remains withheld until it passes with the exact deployed commit.
-
-## Project settings
-
-The governed project is reconciled to:
-
-```text
-Repository          EVAVO-STUDIO/evavo-vector-studio
-Project ID          prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L
-Project name        evavo-vector-studio
-Root directory      apps/web
-Framework           Next.js
-Install command     cd ../.. && pnpm install --frozen-lockfile
-Build command       cd ../.. && pnpm exec turbo run build --filter=@evavo/vector-web
-Production domain   vector.evavo.com.au
-Node.js              22.x or a separately verified newer supported version
+```powershell
+node scripts/run-vector-vercel-production.mjs `
+  --mode plan `
+  --commit <exact-main-sha> `
+  --evidence-root C:\Evidence\Vector\production-plan
 ```
 
-The committed `apps/web/vercel.json` carries the root-workspace install and filtered build contract. `pnpm-lock.yaml` is mandatory; a deployment must not replace the frozen install with an opportunistic dependency resolution.
+Apply only after the exact reviewed source and required authorities are ready:
 
-## Synchronous transfer boundary
+```powershell
+node scripts/run-vector-vercel-production.mjs `
+  --mode apply `
+  --commit <exact-main-sha> `
+  --evidence-root C:\Evidence\Vector\production-apply
+```
 
-Vercel Functions enforce a 4.5 MB request and response body limit. Vector Studio keeps deliberate safety headroom:
+The evidence root must be outside the repository and must not already exist. The apply lane performs, in order:
+
+1. exact-current-main proof;
+2. complete source proof (`pnpm install --frozen-lockfile`, full `pnpm check`, production web build, clean source recheck);
+3. bounded provider inspection and canonical receipt enforcement;
+4. exact production deployment plan;
+5. full pinned-project/environment/domain reconciliation;
+6. another exact-main recheck;
+7. exact-SHA Vercel production deployment and READY/alias/commit proof;
+8. live private-response proof;
+9. source-bound public deployment proof;
+10. source-bound live capability discovery;
+11. fresh one-time owner launch and replay-rejection proof;
+12. separate fresh one-time client launch and replay-rejection proof;
+13. final exact-main recheck and create-only bounded receipt.
+
+The deployer uses the literal internal confirmation `deploy-evavo-vector-studio`, targets only production, uses the pinned Vercel project and records exact Git SHA/source metadata. It fails closed on `ERROR`, `CANCELED` or `BLOCKED` deployment state and requires the canonical production alias.
+
+If the free Vercel API deployment allowance is exhausted, the deployer reports `VERCEL_DEPLOY_API_QUOTA_EXHAUSTED`, bounded allowance/reset metadata and `mutationAttempted: true` / `mutationPerformed: false`. Operators should retry after the recorded reset rather than burn repeated provider calls.
+
+## One-time owner and client launch evidence
+
+The release lane creates owner and client launch tokens separately with `create-vector-live-launch-token.mjs`. Each token is written only to a mode-0600 temporary evidence file, read into memory for the live verifier, never placed in command arguments, and deleted immediately after proof execution.
+
+The final evidence retains only token/replay digests and bounded claim identifiers. Raw token bodies, cookies, signing secrets, API tokens and provider tokens must never appear in receipts, stdout summaries, command arguments, source control or URLs.
+
+A successful owner/client receiver proof still does not prove the central `next-website` UI issued the launch from a real authenticated Hub session. That cross-application issuance/assignment proof remains separate.
+
+## Runtime and transport boundaries
+
+Vercel Functions enforce a 4.5 MB request/response body ceiling. Vector Studio intentionally keeps headroom:
 
 ```text
-Provider body ceiling                 4,500,000 bytes
-Maximum synchronous request           4,000,000 bytes
-Maximum browser multipart source      3,250,000 bytes
-Maximum synchronous response          4,000,000 bytes
+Provider body ceiling                  4,500,000 bytes
+Maximum synchronous request            4,000,000 bytes
+Maximum browser multipart source       3,250,000 bytes
+Maximum synchronous response           4,000,000 bytes
 Maximum base64 binary before wrapper   2,750,000 bytes
 ```
 
-The raster engine itself still accepts sources up to 25 MiB in local CLI, MCP, batch, and self-hosted worker execution. The smaller hosted number is a transport limit, not a reduction in engine capability.
+The local engine still accepts larger sources through CLI, MCP, durable local batches and the self-hosted HTTP worker. Provider-direct private storage remains unavailable until separately implemented and verified; the service must continue to report that non-claim truthfully.
 
-Synchronous hosted routes reject requests or responses that cannot fit safely. They return a stable non-retryable `413` response with the effective limits and recommended transports rather than allowing the platform to truncate or replace the response.
-
-## Large-object workflow
-
-Larger source files and output packages currently use:
-
-- the local `evavo-vector` CLI;
-- the local stdio MCP server;
-- durable local batches;
-- the self-hosted HTTP worker and its verified object-transfer protocol.
-
-Provider-direct private storage is the intended browser route for larger objects, but it is not yet configured. Until that implementation is authenticated, workspace-scoped, immutable, receipt-backed, and independently smoke-tested, browser uploads remain inside the synchronous Vercel boundary.
-
-## Required production environment
-
-```dotenv
-VECTOR_PUBLIC_ORIGIN=https://vector.evavo.com.au
-EVAVO_CLIENT_APP_LAUNCH_SECRET=<dedicated hub handoff secret>
-EVAVO_VECTOR_PRIVATE_SIGNING_SECRET=<different Vector Studio session secret>
-VECTOR_HUB_REPLAY_MODE=upstash
-UPSTASH_REDIS_REST_URL=https://<database>.upstash.io
-UPSTASH_REDIS_REST_TOKEN=<server-only token>
-VECTOR_API_TOKEN=<server-only machine API token>
-VECTOR_WORKER_API_TOKEN=<separate worker-control token>
-```
-
-The two signing authorities must be distinct. Durable replay must use an atomic `SET ... EX ... NX` implementation. Worker and API tokens do not substitute for either browser signing authority.
-
-## Verification
-
-Source verification:
+## Source verification
 
 ```powershell
 pnpm vercel:check
 pnpm vercel-provision:check
+pnpm vercel-settings-source:check
+pnpm vercel-provision-plan:check
+pnpm vercel-plan:check
+pnpm vercel-bootstrap-retirement:check
 pnpm vercel-deploy:check
-pnpm hub:check
+pnpm readiness:check
 pnpm check
-pnpm --filter @evavo/vector-web build
 ```
 
-The dedicated Vercel workflow additionally proves:
-
-```text
-frozen workspace install
-Vercel deployment contract
-Vercel project provisioning contract and self-test
-exact production deployment contract and self-test
-live owner/client token generator self-test
-live capability discovery verifier self-test
-private-response security contract
-web TypeScript validation
-Turbo dependency build and web production build
-```
+These checks validate repository-local code and receipts. They do not require workflow/job/status topology.
 
 ## Promotion evidence
 
-Client release remains withheld until all of these are recorded against an exact reviewed commit:
+**Client release remains withheld** until all governed source/provider/live evidence is bound to the same reviewed commit, including exact project/root/toolchain, HTTPS domain, source proof, application authority separation, durable replay, capability non-claims, owner/client launch evidence, transport ceilings and human review.
 
-1. the `evavo-vector-studio` Vercel project exists;
-2. `apps/web` is the verified project root;
-3. frozen install, full checks, and production build pass;
-4. `vector.evavo.com.au` is assigned and HTTPS verified;
-5. `/api/v1/capabilities` is source-proof bound and reports the governed capability and deployment non-claims;
-6. required production environment variables are configured without secret reuse;
-7. durable replay succeeds once and rejects replay;
-8. central hub-issued owner and client signed launches each pass exactly once;
-9. wrong-host, wrong-app, expiry, and provider-failure tests fail closed;
-10. hosted trace and motion requests remain inside transfer and duration limits;
-11. larger objects use a verified private transport rather than function bodies;
-12. no credential, local path, discovery response body, or generated body appears in hub responses;
-13. human review remains required for every generated production asset.
-
-Only after that evidence exists should the central registry move from `federated-candidate` to `federated` and include `vector-studio` in the client release allowlist.
+Only after that evidence exists should the central registry move Vector Studio from `federated-candidate` to `federated` and include it in a client release allowlist. Workflow success, deployment state, provider configuration or runtime readiness alone cannot perform that promotion.
