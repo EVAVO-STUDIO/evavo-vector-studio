@@ -3,7 +3,7 @@
   "contractVersion": "evavo_repository_capabilities_v1",
   "repository": "EVAVO-STUDIO/evavo-vector-studio",
   "authority": "vector-studio",
-  "summary": "EVAVO's governed editable-vector, raster reconstruction, SVG delivery, print preflight, animated SVG, Lottie/dotLottie, resumable batch and local worker authority. It exposes bounded CLI/MCP/automation production surfaces with create-only outputs and explicit review boundaries; it does not grant creative approval, Git publication or release authority.",
+  "summary": "EVAVO's governed editable-vector, raster reconstruction, SVG delivery, print preflight, animated SVG, Lottie/dotLottie, resumable batch, local worker and bounded Vector runtime/provider authority. It exposes create-only local production and exact-main Vercel evidence surfaces while keeping creative approval, repository publication and client release promotion outside Vector Studio authority.",
   "capabilities": [
     {
       "id": "vector.source.inspect",
@@ -96,14 +96,34 @@
       "requires": ["Built @evavo/vector-mcp package", "Configured MCP allowed roots", "Separate provider/production authority where relevant"]
     },
     {
+      "id": "vector.provider.configure",
+      "title": "Plan and reconcile the pinned Vector Vercel project",
+      "description": "Inspect, reconcile provider-only settings or apply the full pinned Vercel project/environment/domain configuration through exact-current-main, source-proof, separated-authority and create-only receipt contracts. Provisioning configures runtime infrastructure and never counts as source publication, production deployment or client promotion.",
+      "interfaces": ["automation", "cli", "testing"],
+      "effects": ["read", "compute", "network", "write", "execute"],
+      "entrypoints": ["node scripts/run-vector-vercel-provisioning-local.mjs", "node scripts/run-vector-vercel-settings-source.mjs", "pnpm vercel-provision:check", "pnpm vercel-settings-source:check"],
+      "tags": ["vercel", "provider", "provisioning", "exact-main", "receipts", "authority-separation"],
+      "requires": ["Exact clean current main", "VERCEL_TOKEN for provider access", "All separated application runtime authorities for full apply", "Explicit bounded operation confirmation"]
+    },
+    {
+      "id": "vector.production.prove",
+      "title": "Deploy and prove exact Vector production runtime",
+      "description": "Plan or explicitly apply an exact-commit production deployment to the pinned Vercel project, then on apply require source-bound private-response and current capability evidence plus separate one-time owner/client launch and replay-rejection proofs. Deployment and machine proof do not grant creative approval, client release promotion or repository publication authority.",
+      "interfaces": ["automation", "cli", "testing"],
+      "effects": ["read", "compute", "network", "write", "execute"],
+      "entrypoints": ["node scripts/run-vector-vercel-production-local.mjs", "pnpm vercel-deploy:check", "node scripts/verify-live-capability-discovery-current.mjs", "node scripts/verify-live-deployment.mjs"],
+      "tags": ["vercel", "deployment", "runtime-proof", "exact-main", "signed-launch", "replay", "capabilities"],
+      "requires": ["Exact clean current main", "Complete source proof", "Provisioned pinned Vercel project", "Explicit deployment confirmation for apply", "Separate human release approval"]
+    },
+    {
       "id": "vector.validation.execute",
       "title": "Run complete Vector Studio validation",
-      "description": "Run repository contract, capability discovery, hygiene, API, MCP, motion, Lottie, batch, worker, lint, type, test and build checks without granting output approval or publication authority.",
+      "description": "Run repository contract, capability discovery, hygiene, Vercel boundary, API, MCP, motion, Lottie, batch, worker, lint, type, test and build checks without granting output approval or publication authority.",
       "interfaces": ["automation", "cli", "testing"],
       "effects": ["read", "compute", "write", "execute"],
-      "entrypoints": ["pnpm check", "pnpm capabilities-api:check", "pnpm mcp:check", "pnpm motion:check", "pnpm batch:check", "pnpm worker:check"],
-      "tags": ["validation", "contracts", "testing", "build", "quality"],
-      "requires": ["Node.js 22.16.x", "pnpm 10 or newer", "Installed locked dependency graph"]
+      "entrypoints": ["pnpm check", "pnpm capabilities-api:check", "pnpm vercel:check", "pnpm mcp:check", "pnpm motion:check", "pnpm batch:check", "pnpm worker:check"],
+      "tags": ["validation", "contracts", "testing", "build", "quality", "provider-free"],
+      "requires": ["Node.js 22.16.x", "pnpm 10.14.0", "Installed locked dependency graph"]
     }
   ],
   "brain": {
@@ -119,8 +139,10 @@
       "resumable vector batches",
       "local and HTTP worker execution",
       "MCP capability routing",
-      "creative review and production approval boundaries"
+      "Vercel provider planning, settings, provisioning and exact deployment evidence",
+      "current live capability discovery and signed owner/client launch proof",
+      "creative review, publication and client-release approval boundaries"
     ]
   },
-  "reviewedAt": "2026-08-23T14:47:00+10:00"
+  "reviewedAt": "2026-09-12T00:20:00+10:00"
 }
