@@ -5,8 +5,9 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-const CONTRACT_VERSION = "1.0";
+const CONTRACT_VERSION = "1.1";
 const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio";
+const SETTINGS_CONFIRMATION = "reconcile-evavo-vector-studio-project-settings";
 const SHA_PATTERN = /^[a-f0-9]{40}$/u;
 const MAX_CHILD_OUTPUT_BYTES = 1_000_000;
 
@@ -75,10 +76,10 @@ function assertExactMain(commit) {
   return Object.freeze({ branch, head, remoteMain: remote });
 }
 
-function runNode(args, label) {
+function runNode(args, label, env = process.env) {
   const result = spawnSync(process.execPath, args, {
     cwd: process.cwd(),
-    env: process.env,
+    env,
     encoding: "utf8",
     maxBuffer: MAX_CHILD_OUTPUT_BYTES,
     windowsHide: true,
@@ -97,11 +98,13 @@ function runSelfTest() {
   assert.match("a".repeat(40), SHA_PATTERN);
   assert.doesNotMatch("A".repeat(40), SHA_PATTERN);
   assert.equal(REPOSITORY, "EVAVO-STUDIO/evavo-vector-studio");
+  assert.equal(SETTINGS_CONFIRMATION, "reconcile-evavo-vector-studio-project-settings");
   process.stdout.write(`${JSON.stringify({
     ok: true,
     check: "vector-vercel-settings-source-self-test",
     contractVersion: CONTRACT_VERSION,
-    order: ["exact-main", "provider-access", "source-proof", "settings-reconciliation"],
+    order: ["exact-main", "provider-access", "source-proof", "exact-main-recheck", "settings-reconciliation", "exact-main-recheck"],
+    explicitSettingsConfirmationBoundLocally: true,
     applicationSecretAuthority: false,
     productionDeploymentAuthority: false,
     repositoryPublicationAuthority: false,
@@ -128,7 +131,15 @@ function main() {
     runNode(["scripts/create-source-proof.mjs", "--commit", options.commit, "--out", sourceProof], "exact source proof"),
   ];
   const exactMainAfterSource = assertExactMain(options.commit);
-  steps.push(runNode(["scripts/run-vector-vercel-settings-reconciliation.mjs", "--commit", options.commit, "--out", settingsReceipt], "settings-only reconciliation"));
+  const settingsEnvironment = {
+    ...process.env,
+    VECTOR_VERCEL_OPERATION_CONFIRM: SETTINGS_CONFIRMATION,
+  };
+  steps.push(runNode(
+    ["scripts/run-vector-vercel-settings-reconciliation.mjs", "--commit", options.commit, "--out", settingsReceipt],
+    "settings-only reconciliation",
+    settingsEnvironment,
+  ));
   const exactMainAfterSettings = assertExactMain(options.commit);
 
   process.stdout.write(`${JSON.stringify({
@@ -137,15 +148,12 @@ function main() {
     contractVersion: CONTRACT_VERSION,
     repository: REPOSITORY,
     commit: options.commit,
-    order: ["exact-main", "provider-access", "source-proof", "settings-reconciliation"],
-    evidence: {
-      providerReceipt,
-      sourceProof,
-      settingsReceipt,
-    },
+    order: ["exact-main", "provider-access", "source-proof", "exact-main-recheck", "settings-reconciliation", "exact-main-recheck"],
+    evidence: { providerReceipt, sourceProof, settingsReceipt },
     exactMainBefore,
     exactMainAfterSource,
     exactMainAfterSettings,
+    explicitSettingsConfirmationBoundLocally: true,
     applicationSecretAuthority: false,
     productionDeploymentAuthority: false,
     repositoryPublicationAuthority: false,
