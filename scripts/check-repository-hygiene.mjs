@@ -29,6 +29,18 @@ async function readJson(relativePath) {
   }
 }
 
+async function requireAbsent(relativePath) {
+  checkedFiles.add(relativePath);
+  try {
+    await fs.stat(path.join(root, relativePath));
+    errors.push(`Retired repository-hygiene path must remain absent: ${relativePath}.`);
+  } catch (error) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+      errors.push(`Unable to verify retired path ${relativePath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
 function requireTokens(relativePath, source, tokens) {
   for (const token of tokens) {
     if (!source.includes(token)) errors.push(`${relativePath} is missing repository-hygiene token: ${token}`);
@@ -40,15 +52,14 @@ const files = Object.freeze({
   package: "package.json",
   cliPackage: "packages/cli/package.json",
   turbo: "turbo.json",
-  readinessWorkflow: ".github/workflows/readiness-contract.yml",
   documentation: "docs/REPOSITORY-HYGIENE.md",
 });
-const sources = Object.fromEntries(
-  await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
-);
+const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])));
 const packageJson = await readJson(files.package);
 const cliPackage = await readJson(files.cliPackage);
 const turboJson = await readJson(files.turbo);
+
+await requireAbsent(".github/workflows/readiness-contract.yml");
 
 if (sources.gitignore.startsWith("\uFEFF")) errors.push(".gitignore must not contain a UTF-8 BOM.");
 const ignoreLines = new Set(sources.gitignore.replace(/^\uFEFF/, "").split(/\r?\n/).map((line) => line.trim()));
@@ -56,12 +67,8 @@ for (const required of [".turbo/", ".ci/", ".vercel/", "*.tsbuildinfo", "next-en
   if (!ignoreLines.has(required)) errors.push(`.gitignore must include exact generated-state rule ${required}.`);
 }
 
-if (packageJson?.scripts?.["hygiene:check"] !== "node scripts/check-repository-hygiene.mjs") {
-  errors.push("package.json must expose hygiene:check.");
-}
-if (!String(packageJson?.scripts?.check ?? "").includes("pnpm hygiene:check")) {
-  errors.push("package.json check must include hygiene:check before dependency-backed validation.");
-}
+if (packageJson?.scripts?.["hygiene:check"] !== "node scripts/check-repository-hygiene.mjs") errors.push("package.json must expose hygiene:check.");
+if (!String(packageJson?.scripts?.check ?? "").includes("pnpm hygiene:check")) errors.push("package.json check must include hygiene:check before dependency-backed validation.");
 
 const expectedBins = Object.freeze({
   "evavo-vector": "./bin/evavo-vector.mjs",
@@ -69,9 +76,7 @@ const expectedBins = Object.freeze({
   "evavo-dotlottie": "./bin/evavo-dotlottie.mjs",
   "evavo-vector-batch": "./bin/evavo-vector-batch.mjs",
 });
-if (JSON.stringify(cliPackage?.bin ?? null) !== JSON.stringify(expectedBins)) {
-  errors.push(`packages/cli/package.json bin map must equal ${JSON.stringify(expectedBins)}.`);
-}
+if (JSON.stringify(cliPackage?.bin ?? null) !== JSON.stringify(expectedBins)) errors.push(`packages/cli/package.json bin map must equal ${JSON.stringify(expectedBins)}.`);
 const shimTargets = Object.freeze({
   "packages/cli/bin/evavo-vector.mjs": "../dist/index.js",
   "packages/cli/bin/evavo-vector-print.mjs": "../dist/print-cli.js",
@@ -85,34 +90,22 @@ for (const [relativePath, target] of Object.entries(shimTargets)) {
 }
 
 const testTask = turboJson?.tasks?.test;
-if (JSON.stringify(testTask?.dependsOn ?? null) !== JSON.stringify(["build", "^build"])) {
-  errors.push('turbo.json test.dependsOn must equal ["build", "^build"].');
-}
-if (!Array.isArray(testTask?.outputs) || testTask.outputs.length !== 0) {
-  errors.push("turbo.json test.outputs must be an empty array because tests produce no retained cache output.");
-}
+if (JSON.stringify(testTask?.dependsOn ?? null) !== JSON.stringify(["build", "^build"])) errors.push('turbo.json test.dependsOn must equal ["build", "^build"].');
+if (!Array.isArray(testTask?.outputs) || testTask.outputs.length !== 0) errors.push("turbo.json test.outputs must be an empty array because tests produce no retained cache output.");
 
-requireTokens(files.readinessWorkflow, sources.readinessWorkflow, [
-  "Verify repository hygiene contract",
-  "node scripts/check-repository-hygiene.mjs",
-  "api/vector-repository-hygiene",
-  "Verify clean tracked and untracked boundary",
-]);
 requireTokens(files.documentation, sources.documentation, [
   "# Repository hygiene",
   ".turbo/",
   "next-env.d.ts",
   "checked-in `.mjs` launch shims",
   "pnpm hygiene:check",
+  "retired readiness workflow absence",
+  "GitHub workflow",
 ]);
 
 let tracked = [];
 try {
-  const { stdout } = await execFileAsync("git", ["ls-files", "-z"], {
-    cwd: root,
-    encoding: null,
-    maxBuffer: 16 * 1024 * 1024,
-  });
+  const { stdout } = await execFileAsync("git", ["ls-files", "-z"], { cwd: root, encoding: null, maxBuffer: 16 * 1024 * 1024 });
   tracked = stdout.toString("utf8").split("\0").filter(Boolean);
 } catch (error) {
   errors.push(`Unable to inspect tracked repository paths (${error instanceof Error ? error.message : String(error)}).`);
@@ -142,38 +135,25 @@ const retiredPublicationPaths = new Set([
   ".github/workflows/one-time-release-proof-integration.yml",
   ".github/workflows/one-time-release-source-reconcile.yml",
 ]);
-const generatedTracked = tracked.filter((relativePath) =>
-  relativePath.startsWith(".turbo/") ||
-  relativePath.startsWith(".ci/") ||
-  relativePath.startsWith(".vercel/") ||
-  relativePath.endsWith(".tsbuildinfo") ||
-  relativePath === "next-env.d.ts" ||
-  relativePath.endsWith("/next-env.d.ts")
-);
+const generatedTracked = tracked.filter((relativePath) => relativePath.startsWith(".turbo/") || relativePath.startsWith(".ci/") || relativePath.startsWith(".vercel/") || relativePath.endsWith(".tsbuildinfo") || relativePath === "next-env.d.ts" || relativePath.endsWith("/next-env.d.ts"));
 for (const relativePath of generatedTracked) errors.push(`Generated repository state must not be tracked: ${relativePath}.`);
 for (const relativePath of tracked) {
   if (temporaryPaths.has(relativePath)) errors.push(`Superseded reviewed-publisher material must be absent: ${relativePath}.`);
-  if (retiredPublicationPaths.has(relativePath)) {
-    errors.push(`Retired one-time publication authority must be absent: ${relativePath}.`);
-  }
+  if (retiredPublicationPaths.has(relativePath)) errors.push(`Retired one-time publication authority must be absent: ${relativePath}.`);
 }
 
 if (errors.length > 0) {
-  process.stderr.write(`${JSON.stringify({
-    check: "evavo-vector-studio-repository-hygiene",
-    ok: false,
-    contractVersion: "1.0",
-    errors,
-  }, null, 2)}\n`);
+  process.stderr.write(`${JSON.stringify({ check: "evavo-vector-studio-repository-hygiene", ok: false, contractVersion: "2.0", errors }, null, 2)}\n`);
   process.exit(1);
 }
 
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-studio-repository-hygiene",
   ok: true,
-  contractVersion: "1.0",
+  contractVersion: "2.0",
   generatedStateIgnored: true,
   generatedStateTracked: false,
+  retiredReadinessWorkflowAbsent: true,
   checkedInCliLaunchShims: Object.keys(shimTargets),
   turboTestOutputsRetained: false,
   temporaryPublisherAbsent: true,
