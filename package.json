@@ -6,18 +6,22 @@
   "license": "MIT",
   "packageManager": "pnpm@10.14.0",
   "scripts": {
-    "contract:check": "node scripts/check-release-contract.mjs",
+    "contract:check": "node scripts/check-runtime-version.mjs && node scripts/check-release-contract.mjs",
     "release-proof:check": "node scripts/check-release-proof-contract.mjs",
     "release:source-proof": "node scripts/create-source-proof.mjs",
     "release:live-proof": "node scripts/verify-live-deployment.mjs",
     "capabilities-api:check": "node scripts/check-capability-discovery.mjs",
+    "hygiene:check": "node scripts/check-repository-hygiene.mjs",
     "print-api:check": "node scripts/check-print-preflight-api-contract.mjs",
     "hub:check": "node scripts/check-hub-integration-contract.mjs",
     "private-response:check": "node scripts/check-private-response-contract.mjs",
     "vercel:check": "node scripts/check-vercel-deployment-contract.mjs",
     "vercel-provision:check": "node scripts/check-vercel-project-provisioning-contract.mjs",
-    "vercel-provision-plan:check": "node scripts/check-vercel-provisioning-plan-receipt-contract.mjs",
+    "vercel-settings-source:check": "node scripts/check-vercel-settings-source-trigger-contract.mjs && node scripts/check-vector-vercel-provider-access.mjs --self-test && node scripts/run-vector-vercel-settings-reconciliation.mjs --self-test",
+    "vercel-provision-plan:check": "node scripts/check-vercel-provisioning-plan-receipt-contract.mjs && pnpm vercel-remediation-projection:check",
+    "vercel-remediation-projection:check": "node scripts/project-vector-provider-remediation-receipt.mjs --self-test",
     "vercel-plan:check": "node scripts/check-vercel-deployment-plan-receipt-contract.mjs",
+    "vercel-bootstrap-retirement:check": "node scripts/check-vercel-bootstrap-retirement.mjs",
     "vercel-deploy:check": "node scripts/check-vercel-production-deployment-contract.mjs",
     "topology:check": "node scripts/check-topology-contract.mjs",
     "browser-evidence:check": "node scripts/check-browser-evidence-contract.mjs",
@@ -46,7 +50,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "check": "pnpm contract:check && pnpm release-proof:check && pnpm capabilities-api:check && pnpm print-api:check && pnpm hub:check && pnpm private-response:check && pnpm vercel:check && pnpm vercel-provision:check && pnpm vercel-provision-plan:check && pnpm vercel-plan:check && pnpm vercel-deploy:check && pnpm topology:check && pnpm browser-evidence:check && pnpm mcp:check && pnpm motion:check && pnpm motion-api:check && pnpm motion-workspace:check && pnpm native-runtime:check && pnpm lottie:check && pnpm lottie-api:check && pnpm lottie-workspace:check && pnpm dotlottie:check && pnpm dotlottie-api:check && pnpm dotlottie-workspace:check && pnpm batch:check && pnpm hosted-jobs:check && pnpm worker:check && pnpm local-worker:check && pnpm worker-api:check && pnpm worker-client:check && pnpm http-worker:check && pnpm object-transfer-api:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm contract:check && pnpm release-proof:check && pnpm capabilities-api:check && pnpm hygiene:check && pnpm test-build-isolation:check && pnpm readiness:check && pnpm print-api:check && pnpm hub:check && pnpm private-response:check && pnpm vercel:check && pnpm vercel-provision:check && pnpm vercel-settings-source:check && pnpm vercel-provision-plan:check && pnpm vercel-plan:check && pnpm vercel-bootstrap-retirement:check && pnpm vercel-deploy:check && pnpm topology:check && pnpm browser-evidence:check && pnpm mcp:check && pnpm motion:check && pnpm motion-api:check && pnpm motion-workspace:check && pnpm native-runtime:check && pnpm lottie:check && pnpm lottie-api:check && pnpm lottie-workspace:check && pnpm dotlottie:check && pnpm dotlottie-api:check && pnpm dotlottie-workspace:check && pnpm batch:check && pnpm hosted-jobs:check && pnpm worker:check && pnpm local-worker:check && pnpm worker-api:check && pnpm worker-client:check && pnpm http-worker:check && pnpm object-transfer-api:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "vector:build": "turbo run build --filter=@evavo/vector-cli",
     "vector:inspect": "pnpm vector:build && node packages/cli/dist/index.js inspect",
     "vector:optimise": "pnpm vector:build && node packages/cli/dist/index.js optimise",
@@ -82,14 +86,16 @@
     "http-worker:build": "turbo run build --filter=@evavo/http-worker",
     "http-worker:capabilities": "pnpm http-worker:build && node workers/http-worker/dist/index.js capabilities",
     "http-worker:run-once": "pnpm http-worker:build && node workers/http-worker/dist/index.js run-once",
-    "http-worker:run": "pnpm http-worker:build && node workers/http-worker/dist/index.js run"
+    "http-worker:run": "pnpm http-worker:build && node workers/http-worker/dist/index.js run",
+    "readiness:check": "node scripts/check-readiness-contract.mjs",
+    "test-build-isolation:check": "node scripts/check-test-build-isolation.mjs"
   },
   "devDependencies": {
     "turbo": "^2.5.6",
     "typescript": "^5.9.2"
   },
   "engines": {
-    "node": ">=22.0.0",
+    "node": "22.16.x",
     "pnpm": ">=10.0.0"
   }
 }

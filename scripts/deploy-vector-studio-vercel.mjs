@@ -4,14 +4,16 @@ import path from "node:path";
 
 const CONTRACT_VERSION = "1.0";
 const TEAM_ID = "team_ckKLAnG3MGJK0mMpIVpjbogl";
+const PROJECT_ID = "prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L";
 const PROJECT_NAME = "evavo-vector-studio";
 const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio";
 const REPOSITORY_ORG = "EVAVO-STUDIO";
 const REPOSITORY_NAME = "evavo-vector-studio";
-const GITHUB_REPOSITORY_VISIBILITY = "private";
+const GITHUB_REPOSITORY_VISIBILITY = "public";
 const PRODUCTION_DOMAIN = "vector.evavo.com.au";
 const ROOT_DIRECTORY = "apps/web";
 const FRAMEWORK = "nextjs";
+const NODE_VERSION = "22.x";
 const INSTALL_COMMAND = "cd ../.. && pnpm install --frozen-lockfile";
 const BUILD_COMMAND = "cd ../.. && pnpm exec turbo run build --filter=@evavo/vector-web";
 const APPLY_CONFIRMATION = "deploy-evavo-vector-studio";
@@ -28,6 +30,9 @@ const TERMINAL_FAILURE_STATES = new Set(["ERROR", "CANCELED", "BLOCKED"]);
 let activeOptions = null;
 let activeStartedAtMs = null;
 let activePlan = null;
+let activeDeploymentCreated = false;
+let activeDeployment = null;
+let activeAliases = Object.freeze([]);
 let activeMutationAttempted = false;
 let activeMutationPerformed = false;
 
@@ -150,6 +155,45 @@ function safeApiCode(value) {
   return code ? code.slice(0, 120) : null;
 }
 
+function safeNonNegativeInteger(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function deploymentQuotaFailureDetails(value, method, pathname, status) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const providerError =
+    value.error && typeof value.error === "object" && !Array.isArray(value.error)
+      ? value.error
+      : null;
+  const code = typeof providerError?.code === "string" ? providerError.code : null;
+  const resource =
+    typeof providerError?.resource === "string" ? providerError.resource : null;
+  if (
+    status !== 402 ||
+    code !== "payment_required" ||
+    resource !== "api-deployments-free-per-day"
+  ) {
+    return null;
+  }
+  const limit =
+    providerError?.limit &&
+    typeof providerError.limit === "object" &&
+    !Array.isArray(providerError.limit)
+      ? providerError.limit
+      : null;
+  const reset = safeNonNegativeInteger(limit?.reset);
+  return Object.freeze({
+    method,
+    path: pathname,
+    status,
+    code,
+    resource,
+    total: safeNonNegativeInteger(limit?.total),
+    remaining: safeNonNegativeInteger(limit?.remaining),
+    resetAt: reset === null ? null : new Date(reset).toISOString(),
+  });
+}
+
 function apiClient(token, fetchImpl = fetch) {
   async function request(pathname, options = {}) {
     const url = new URL(pathname, "https://api.vercel.com");
@@ -200,11 +244,25 @@ function apiClient(token, fetchImpl = fetch) {
       return Object.freeze({ status: response.status, value: null });
     }
     if (!response.ok) {
+      const method = options.method ?? "GET";
+      const quotaFailure = deploymentQuotaFailureDetails(
+        value,
+        method,
+        url.pathname,
+        response.status,
+      );
+      if (quotaFailure) {
+        fail(
+          "VERCEL_DEPLOY_API_QUOTA_EXHAUSTED",
+          "The Vercel API deployment allowance is exhausted; retry only after the recorded reset.",
+          quotaFailure,
+        );
+      }
       fail(
         "VERCEL_DEPLOY_API_FAILED",
         "A Vercel deployment request failed.",
         {
-          method: options.method ?? "GET",
+          method,
           path: url.pathname,
           status: response.status,
           code: safeApiCode(value),
@@ -223,6 +281,7 @@ function safeProject(project) {
     id: typeof project.id === "string" ? project.id : null,
     name: typeof project.name === "string" ? project.name : null,
     framework: typeof project.framework === "string" ? project.framework : null,
+    nodeVersion: typeof project.nodeVersion === "string" ? project.nodeVersion : null,
     rootDirectory: typeof project.rootDirectory === "string" ? project.rootDirectory : null,
     installCommand: typeof project.installCommand === "string" ? project.installCommand : null,
     buildCommand: typeof project.buildCommand === "string" ? project.buildCommand : null,
@@ -240,27 +299,43 @@ function safeProject(project) {
   });
 }
 
+function sourceControlState(project) {
+  const link = safeProject(project)?.link;
+  if (!link) {
+    return Object.freeze({
+      present: false,
+      acceptable: true,
+      mode: "api-managed",
+    });
+  }
+  const typeMatched = link.type === "github";
+  const orgMatched =
+    !link.org || link.org.toLowerCase() === REPOSITORY_ORG.toLowerCase();
+  const repoMatched =
+    !link.repo ||
+    link.repo.toLowerCase() === REPOSITORY_NAME.toLowerCase() ||
+    link.repo.toLowerCase() === REPOSITORY.toLowerCase();
+  const acceptable = typeMatched && orgMatched && repoMatched;
+  return Object.freeze({
+    present: true,
+    acceptable,
+    mode: acceptable ? "git-linked" : "conflict",
+  });
+}
+
 function projectReady(project) {
   const safe = safeProject(project);
-  if (!safe?.id || safe.name !== PROJECT_NAME) return false;
+  if (safe?.id !== PROJECT_ID || safe.name !== PROJECT_NAME) return false;
   if (
     safe.framework !== FRAMEWORK ||
+    safe.nodeVersion !== NODE_VERSION ||
     safe.rootDirectory !== ROOT_DIRECTORY ||
     safe.installCommand !== INSTALL_COMMAND ||
     safe.buildCommand !== BUILD_COMMAND
   ) {
     return false;
   }
-  if (!safe.link || safe.link.type !== "github") return false;
-  if (safe.link.org && safe.link.org.toLowerCase() !== REPOSITORY_ORG.toLowerCase()) return false;
-  if (
-    safe.link.repo &&
-    safe.link.repo.toLowerCase() !== REPOSITORY_NAME.toLowerCase() &&
-    safe.link.repo.toLowerCase() !== REPOSITORY.toLowerCase()
-  ) {
-    return false;
-  }
-  return true;
+  return sourceControlState(project).acceptable;
 }
 
 function deploymentList(value) {
@@ -325,7 +400,7 @@ function safeDeployment(value) {
 
 async function inspect(client, commit) {
   const projectResponse = await client.request(
-    `/v9/projects/${encodeURIComponent(PROJECT_NAME)}?teamId=${encodeURIComponent(TEAM_ID)}`,
+    `/v9/projects/${encodeURIComponent(PROJECT_ID)}?teamId=${encodeURIComponent(TEAM_ID)}`,
     { allow404: true },
   );
   const project = projectResponse.value;
@@ -337,7 +412,7 @@ async function inspect(client, commit) {
     });
   }
 
-  const projectId = safeProject(project)?.id ?? PROJECT_NAME;
+  const projectId = safeProject(project)?.id ?? PROJECT_ID;
   const domainResponse = await client.request(
     `/v9/projects/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(PRODUCTION_DOMAIN)}?teamId=${encodeURIComponent(TEAM_ID)}`,
     { allow404: true },
@@ -376,6 +451,7 @@ function planFromInspection(inspection, commit) {
       exists: Boolean(inspection.project),
       id: safeProject(inspection.project)?.id ?? null,
       ready: projectReady(inspection.project),
+      sourceControl: sourceControlState(inspection.project),
     }),
     domain: Object.freeze({
       exists: Boolean(inspection.domain),
@@ -399,7 +475,7 @@ function deploymentBoundaryBlockers(plan) {
     if (!plan.project.ready) {
       blockers.push(Object.freeze({
         code: "VERCEL_DEPLOY_PROJECT_NOT_READY",
-        message: "The Vercel project does not match the governed GitHub and monorepo build contract.",
+        message: "The Vercel project does not match the governed source-control and monorepo build contract.",
         details: null,
       }));
     }
@@ -461,7 +537,9 @@ async function createDeployment(client, projectId, commit) {
           framework: FRAMEWORK,
           installCommand: INSTALL_COMMAND,
           buildCommand: BUILD_COMMAND,
-          nodeVersion: "22.x",
+          nodeVersion: NODE_VERSION,
+          rootDirectory: ROOT_DIRECTORY,
+          sourceFilesOutsideRootDirectory: true,
         },
       },
     },
@@ -580,7 +658,7 @@ async function writeReceipt(options, receipt) {
   return atomicNewFile(target, serialized);
 }
 
-async function writePlanFailureReceipt(options, error) {
+async function writeFailureReceipt(options, error) {
   const failure = safeFailure(error);
   const boundary = deploymentBoundaryBlockers(activePlan);
   const blockers = [
@@ -593,26 +671,30 @@ async function writePlanFailureReceipt(options, error) {
     check: "vector-studio-vercel-deployment",
     repository: REPOSITORY,
     commit: options.commit,
-    mode: "plan",
+    mode: options.mode,
+    expectedProjectId: PROJECT_ID,
     projectId: activePlan?.project?.id ?? null,
     productionDomain: PRODUCTION_DOMAIN,
     startedAt: new Date(activeStartedAtMs ?? completedAtMs).toISOString(),
     completedAt: new Date(completedAtMs).toISOString(),
     durationMs: Math.max(0, completedAtMs - (activeStartedAtMs ?? completedAtMs)),
     passed: false,
-    readyToApply: false,
+    readyToApply:
+      options.mode === "apply" &&
+      Boolean(activePlan?.inspectionAvailable) &&
+      boundary.length === 0,
     plan: activePlan ?? unavailablePlan(),
     blockers: Object.freeze(blockers),
     result: Object.freeze({
-      deploymentCreated: false,
-      deployment: null,
-      aliases: Object.freeze([]),
-      exactCommitProven: false,
-      productionAliasProven: false,
+      deploymentCreated: activeDeploymentCreated,
+      deployment: activeDeployment,
+      aliases: activeAliases,
+      exactCommitProven: activeDeployment?.commit === options.commit,
+      productionAliasProven: activeAliases.includes(PRODUCTION_DOMAIN),
     }),
     diagnosticReceipt: true,
-    mutationAttempted: false,
-    mutationPerformed: false,
+    mutationAttempted: activeMutationAttempted,
+    mutationPerformed: activeMutationPerformed,
     sensitiveValuesRecorded: false,
   });
   return writeReceipt(options, receipt);
@@ -621,7 +703,7 @@ async function writePlanFailureReceipt(options, error) {
 async function runSelfTest() {
   assert.equal(credentialState({ VERCEL_TOKEN: "v".repeat(40) }).passed, true);
   assert.equal(credentialState({ VERCEL_TOKEN: "short" }).passed, false);
-  assert.equal(GITHUB_REPOSITORY_VISIBILITY, "private");
+  assert.equal(GITHUB_REPOSITORY_VISIBILITY, "public");
   const deployment = safeDeployment({
     id: "dpl_test",
     url: "example.vercel.app",
@@ -637,9 +719,10 @@ async function runSelfTest() {
   const plan = planFromInspection(
     {
       project: {
-        id: "prj_test",
+        id: PROJECT_ID,
         name: PROJECT_NAME,
         framework: FRAMEWORK,
+        nodeVersion: NODE_VERSION,
         rootDirectory: ROOT_DIRECTORY,
         installCommand: INSTALL_COMMAND,
         buildCommand: BUILD_COMMAND,
@@ -651,7 +734,49 @@ async function runSelfTest() {
     "a".repeat(40),
   );
   assert.equal(plan.action, "reuse-ready-exact-commit");
+  assert.equal(plan.project.sourceControl.mode, "git-linked");
   assert.equal(deploymentBoundaryBlockers(plan).length, 0);
+
+  const apiManagedPlan = planFromInspection(
+    {
+      project: {
+        id: PROJECT_ID,
+        name: PROJECT_NAME,
+        framework: FRAMEWORK,
+        nodeVersion: NODE_VERSION,
+        rootDirectory: ROOT_DIRECTORY,
+        installCommand: INSTALL_COMMAND,
+        buildCommand: BUILD_COMMAND,
+      },
+      domain: { verified: true },
+      deployments: [],
+    },
+    "c".repeat(40),
+  );
+  assert.equal(apiManagedPlan.project.ready, true);
+  assert.equal(apiManagedPlan.project.sourceControl.mode, "api-managed");
+  assert.equal(deploymentBoundaryBlockers(apiManagedPlan).length, 0);
+
+  const conflictingLinkPlan = planFromInspection(
+    {
+      project: {
+        id: PROJECT_ID,
+        name: PROJECT_NAME,
+        framework: FRAMEWORK,
+        nodeVersion: NODE_VERSION,
+        rootDirectory: ROOT_DIRECTORY,
+        installCommand: INSTALL_COMMAND,
+        buildCommand: BUILD_COMMAND,
+        link: { type: "github", org: "another-org", repo: "another-repo" },
+      },
+      domain: { verified: true },
+      deployments: [],
+    },
+    "d".repeat(40),
+  );
+  assert.equal(conflictingLinkPlan.project.ready, false);
+  assert.equal(conflictingLinkPlan.project.sourceControl.mode, "conflict");
+  assert.equal(deploymentBoundaryBlockers(conflictingLinkPlan)[0].code, "VERCEL_DEPLOY_PROJECT_NOT_READY");
 
   const missingProject = planFromInspection(
     { project: null, domain: null, deployments: [] },
@@ -662,12 +787,73 @@ async function runSelfTest() {
   assert.equal(missingBlockers[0].code, "VERCEL_DEPLOY_PROJECT_MISSING");
   assert.equal(unavailablePlan().inspectionAvailable, false);
 
+  let capturedDeploymentRequest = null;
+  const created = await createDeployment(
+    Object.freeze({
+      async request(pathname, options) {
+        capturedDeploymentRequest = Object.freeze({ pathname, options });
+        return Object.freeze({
+          status: 200,
+          value: {
+            id: "dpl_created",
+            url: "created.vercel.app",
+            readyState: "QUEUED",
+            target: "production",
+            gitSource: { sha: "e".repeat(40) },
+          },
+        });
+      },
+    }),
+    PROJECT_ID,
+    "e".repeat(40),
+  );
+  assert.equal(created.id, "dpl_created");
+  assert.equal(capturedDeploymentRequest.options.body.projectSettings.rootDirectory, ROOT_DIRECTORY);
+  assert.equal(
+    capturedDeploymentRequest.options.body.projectSettings.sourceFilesOutsideRootDirectory,
+    true,
+  );
+
+  let quotaFailure = null;
+  try {
+    await apiClient("v".repeat(40), async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "payment_required",
+            message: "Resource is limited",
+            resource: "api-deployments-free-per-day",
+            limit: {
+              total: 100,
+              remaining: 0,
+              reset: 1787100229625,
+            },
+          },
+        }),
+        {
+          status: 402,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    ).request("/v13/deployments", { method: "POST", body: { name: PROJECT_NAME } });
+  } catch (error) {
+    quotaFailure = safeFailure(error);
+  }
+  assert.equal(quotaFailure?.code, "VERCEL_DEPLOY_API_QUOTA_EXHAUSTED");
+  assert.equal(quotaFailure?.details?.resource, "api-deployments-free-per-day");
+  assert.equal(quotaFailure?.details?.total, 100);
+  assert.equal(quotaFailure?.details?.remaining, 0);
+  assert.equal(quotaFailure?.details?.resetAt, "2026-08-19T00:43:49.625Z");
+
   process.stdout.write(`${JSON.stringify({
     ok: true,
     check: "vector-studio-vercel-deployer-self-test",
     contractVersion: CONTRACT_VERSION,
     githubRepositoryVisibility: GITHUB_REPOSITORY_VISIBILITY,
     diagnosticPlanReceipts: true,
+    diagnosticApplyReceipts: true,
+    quotaFailuresClassified: true,
+    deploymentRootDirectoryExplicit: true,
     mutationAttempted: false,
     mutationPerformed: false,
     sensitiveValuesRecorded: false,
@@ -679,6 +865,9 @@ async function main() {
   activeOptions = options;
   activeStartedAtMs = Date.now();
   activePlan = unavailablePlan();
+  activeDeploymentCreated = false;
+  activeDeployment = null;
+  activeAliases = Object.freeze([]);
   activeMutationAttempted = false;
   activeMutationPerformed = false;
 
@@ -714,15 +903,20 @@ async function main() {
   let created = false;
   let deployment = plan.exactCommitDeployment;
   let aliases = deployment?.aliases ?? Object.freeze([]);
+  activeDeployment = deployment;
+  activeAliases = aliases;
 
   if (options.mode === "apply") {
     if (!deployment) {
       activeMutationAttempted = true;
       deployment = await createDeployment(client, plan.project.id, options.commit);
       activeMutationPerformed = true;
+      activeDeploymentCreated = true;
+      activeDeployment = deployment;
       created = true;
     }
     deployment = await waitForReady(client, deployment, options.commit);
+    activeDeployment = deployment;
     if (!deployment.commit) {
       const refreshed = await getDeployment(client, deployment.id);
       deployment = refreshed;
@@ -735,6 +929,7 @@ async function main() {
       );
     }
     aliases = await waitForProductionAlias(client, deployment);
+    activeAliases = aliases;
   }
 
   const completedAtMs = Date.now();
@@ -754,6 +949,7 @@ async function main() {
     repository: REPOSITORY,
     commit: options.commit,
     mode: options.mode,
+    expectedProjectId: PROJECT_ID,
     projectId: plan.project.id,
     productionDomain: PRODUCTION_DOMAIN,
     startedAt: new Date(activeStartedAtMs).toISOString(),
@@ -799,9 +995,9 @@ main().catch(async (error) => {
   const failure = safeFailure(error);
   let diagnosticOutput = null;
   let diagnosticReceiptError = null;
-  if (activeOptions?.mode === "plan" && !activeOptions.selfTest) {
+  if (activeOptions && !activeOptions.selfTest) {
     try {
-      diagnosticOutput = await writePlanFailureReceipt(activeOptions, error);
+      diagnosticOutput = await writeFailureReceipt(activeOptions, error);
     } catch (receiptError) {
       diagnosticReceiptError = safeFailure(receiptError);
     }

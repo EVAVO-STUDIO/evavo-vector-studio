@@ -78,8 +78,10 @@ for (const [relativePath, document] of packageDocuments) {
   }
 }
 
-if (rootPackage?.scripts?.["contract:check"] !== "node scripts/check-release-contract.mjs") {
-  fail("package.json must expose contract:check through the dependency-free release gate.");
+const dependencyFreeContractCommand =
+  "node scripts/check-runtime-version.mjs && node scripts/check-release-contract.mjs";
+if (rootPackage?.scripts?.["contract:check"] !== dependencyFreeContractCommand) {
+  fail("package.json must expose contract:check through the composed dependency-free runtime and release gates.");
 }
 if (!String(rootPackage?.scripts?.check ?? "").startsWith("pnpm contract:check &&")) {
   fail("package.json check must execute contract:check before dependency-backed gates.");

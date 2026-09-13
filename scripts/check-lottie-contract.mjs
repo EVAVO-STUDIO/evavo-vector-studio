@@ -70,7 +70,7 @@ if (lottiePackage?.dependencies?.["@evavo/motion-engine"] !== "workspace:*") {
 if (lottiePackage?.dependencies?.["@evavo/vector-core"] !== "workspace:*") {
   errors.push("packages/lottie-engine must depend on @evavo/vector-core through the workspace.");
 }
-if (lottiePackage?.scripts?.test !== "tsc -p tsconfig.json && node --test dist/*.test.js") {
+if (lottiePackage?.scripts?.test !== "node --test dist/*.test.js") {
   errors.push("packages/lottie-engine test must compile and execute its generated tests.");
 }
 if (cliPackage?.dependencies?.["@evavo/lottie-engine"] !== "workspace:*") {

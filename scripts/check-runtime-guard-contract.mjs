@@ -60,7 +60,7 @@ requireTokens(files.route, sources.route, [
   "createRasterRuntimeGuard(resolveRasterRuntimeGuardConfigFromEnvironment())",
   "TRACE_RUNTIME_GUARD.acquire(request.signal)",
   'error: "RASTER_RUNTIME_TIMEOUT"',
-  '"retry-after": String(error.retryAfterSeconds)',
+  'headers.set("retry-after", String(error.retryAfterSeconds))',
   "signal: lease.signal",
   "if (lease.timedOut()) return runtimeTimeoutResponse()",
   "finally {",

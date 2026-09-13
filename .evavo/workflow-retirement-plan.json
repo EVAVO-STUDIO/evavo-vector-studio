@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "1.1",
+  "repository": "EVAVO-STUDIO/evavo-vector-studio",
+  "state": "retired",
+  "canonicalBranch": "main",
+  "canonicalValidationAuthority": "repository-local-contracts",
+  "repositoryPublicationAuthority": "development.repository.publish",
+  "githubActionsRoutineAuthority": false,
+  "githubWorkflowPublicationAuthority": false,
+  "workflowSuccessGrantsRuntimeProof": false,
+  "workflowSuccessGrantsDeploymentApproval": false,
+  "newWorkflowFilesAllowed": false,
+  "monotonicDeletionRequired": true,
+  "initialObservedWorkflowCount": 18,
+  "migrationDebtAtPlanCreation": 7,
+  "activeWorkflowCount": 0,
+  "allowedMigrationDebt": [],
+  "replacementAuthorities": {
+    "workflowRetirementGuard": "scripts/check-workflow-retirement.mjs",
+    "exactCurrentMainAdmission": "scripts/check-exact-current-main.mjs",
+    "readiness": "scripts/run-readiness-local.mjs",
+    "sourceProof": "scripts/create-source-proof.mjs",
+    "releaseProofContract": "scripts/check-release-proof-contract.mjs",
+    "providerSettings": "scripts/run-vector-vercel-settings-source.mjs",
+    "providerProvisioning": "scripts/run-vector-vercel-provisioning-local.mjs",
+    "productionDeployment": "scripts/run-vector-vercel-production-local.mjs",
+    "livePrivateResponse": "scripts/verify-live-private-response.mjs",
+    "liveDeploymentProof": "scripts/verify-live-deployment.mjs",
+    "liveCapabilityProof": "scripts/verify-live-capability-discovery.mjs",
+    "repositoryPublication": "development.repository.publish"
+  },
+  "preservedBoundaries": [
+    "exact clean current main is proven with read-only git ls-remote before provider mutation",
+    "source proof performs frozen install, full repository check and production web build",
+    "provider planning is read-only and provider access is separate from application runtime authorities",
+    "settings mutation and full provisioning retain separate explicit confirmation strings",
+    "production deployment retains a separate explicit deployment confirmation",
+    "Vercel READY and production alias do not substitute for live private-response, capability or signed-launch proof",
+    "owner and client one-time launch tokens are mode-0600 evidence inputs and token bodies are destroyed after proof",
+    "client promotion remains staged and human-reviewed",
+    "GitHub Actions and workflow artifacts grant no validation, deployment, runtime or publication authority"
+  ],
+  "completionEvidence": {
+    "workflowDirectoryExpectedAbsent": true,
+    "providerFreeVercelBoundary": "scripts/check-vercel-deployment-contract.mjs",
+    "providerFreeProductionBoundary": "scripts/check-vercel-production-deployment-contract.mjs",
+    "providerFreeProvisioningBoundary": "scripts/check-vercel-project-provisioning-contract.mjs"
+  }
+}

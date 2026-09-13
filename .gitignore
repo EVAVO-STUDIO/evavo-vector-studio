@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 .pnpm-store/
 .venv/
@@ -17,6 +17,11 @@ outputs/
 renders/
 temp/
 tmp/
+.turbo/
+.ci/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
 
 # Local configuration
 .env

@@ -1,0 +1,109 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+
+const root = process.cwd();
+const files = Object.freeze({
+  manifest: "ops/provider/vector-studio-vercel-project-v1.json",
+  verifier: "scripts/verify-vector-studio-vercel-project-v1.mjs",
+  exactMain: "scripts/check-exact-current-main.mjs",
+  documentation: "docs/VERCEL-PROJECT-STATE-V1.md",
+  retiredWorkflow: ".github/workflows/vector-studio-vercel-project-v1.yml",
+});
+
+function read(relativePath) {
+  const absolute = path.join(root, relativePath);
+  assert.ok(fs.existsSync(absolute), `Missing Vercel project-state file: ${relativePath}`);
+  return fs.readFileSync(absolute, "utf8").replace(/^\uFEFF/, "");
+}
+
+function requireAbsent(relativePath) {
+  assert.ok(!fs.existsSync(path.join(root, relativePath)), `Retired Vercel project workflow must remain absent: ${relativePath}`);
+}
+
+function requireTokens(label, source, tokens) {
+  for (const token of tokens) assert.ok(source.includes(token), `${label} is missing: ${token}`);
+}
+
+function forbidTokens(label, source, tokens) {
+  for (const token of tokens) assert.ok(!source.includes(token), `${label} contains prohibited token: ${token}`);
+}
+
+const manifestSource = read(files.manifest);
+const verifier = read(files.verifier);
+const exactMain = read(files.exactMain);
+const documentation = read(files.documentation);
+const manifest = JSON.parse(manifestSource);
+requireAbsent(files.retiredWorkflow);
+
+assert.equal(manifest.contractVersion, "1.0");
+assert.equal(manifest.provider, "vercel");
+assert.equal(manifest.team.id, "team_ckKLAnG3MGJK0mMpIVpjbogl");
+assert.equal(manifest.project.id, "prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L");
+assert.equal(manifest.project.name, "evavo-vector-studio");
+assert.equal(manifest.project.repository, "EVAVO-STUDIO/evavo-vector-studio");
+assert.equal(manifest.project.rootDirectory, "apps/web");
+assert.equal(manifest.project.framework, "nextjs");
+assert.equal(manifest.project.nodeVersion, "22.x");
+assert.equal(manifest.production.domain, "vector.evavo.com.au");
+assert.equal(manifest.currentMinimumState, "project-created");
+assert.equal(manifest.clientReleaseEligible, false);
+assert.equal(manifest.secretValuesIncluded, false);
+assert.equal(new Set(manifest.requiredEnvironmentKeys).size, 8);
+
+requireTokens("Vercel project verifier", verifier, [
+  'const MANIFEST_PATH = "ops/provider/vector-studio-vercel-project-v1.json"',
+  'method: "GET"',
+  'redirect: "error"',
+  'cache: "no-store"',
+  'flag: "wx"',
+  'mode: 0o600',
+  'clientReleaseEligible: false',
+  'mutationAttempted: false',
+  'mutationPerformed: false',
+  'sensitiveValuesRecorded: false',
+  'valuesRecorded: false',
+  'process.env.VERCEL_TOKEN',
+  '--self-test',
+  'sourceControlState',
+  'sourceControlAcceptable',
+  'exactCommitProductionDeploymentReady',
+  'deploymentCommit',
+  'rawResponsesRecorded: false',
+  '/v7/deployments?projectId=',
+  'providerState',
+  'production-deployed',
+]);
+forbidTokens("Vercel project verifier", verifier, ['method: "POST"', 'method: "PUT"', 'method: "PATCH"', 'method: "DELETE"', "console.log(token)", "console.error(token)", "writeFileSync"]);
+
+requireTokens("exact-current-main admission", exactMain, [
+  'const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio"',
+  'const EXPECTED_BRANCH = "main"',
+  'git", ["ls-remote", "--heads", "origin", "refs/heads/main"]',
+  'VECTOR_MAIN_REMOTE_MISMATCH',
+  'VECTOR_MAIN_REPOSITORY_DIRTY',
+  'mutationAttempted: false',
+  'mutationPerformed: false',
+  'repositoryPublicationAuthority: false',
+  'flag: "wx"',
+]);
+forbidTokens("exact-current-main admission", exactMain, ["git fetch", "git reset", "git checkout", "git switch", "git push", "contents: write"]);
+
+requireTokens("Vercel project documentation", documentation, [
+  "prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L",
+  "evavo-vector-studio",
+  "apps/web",
+  "vector.evavo.com.au",
+  "source-ready",
+  "project-created",
+  "release-withheld",
+  "No secret values",
+  "verify-vector-studio-vercel-project-v1.mjs",
+  "API-managed",
+  "conflicting GitHub link",
+  "exact inspected commit",
+  "`READY` production deployment",
+  "provider runtime proof",
+]);
+
+console.log("Vector Studio Vercel project v1 provider-free source contract passed.");

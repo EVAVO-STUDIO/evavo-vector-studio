@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "kind": "evavo-repository-task-manifest",
+  "repository": "evavo-vector-studio",
+  "tasks": {
+    "mobile-identity-derivative": {
+      "runtime": "node-script",
+      "entry": "scripts/test-mobile-identity-derivative.mjs",
+      "network": "disabled",
+      "timeoutSeconds": 300,
+      "description": "Verify Vector Studio only derives mobile production vectors from an approved Art Studio raster SHA-256, requires measured equivalence, and rejects text or wordmark introduction."
+    },
+    "contracts": {
+      "runtime": "pnpm-script",
+      "entry": "contract:check",
+      "network": "disabled",
+      "timeoutSeconds": 1800,
+      "description": "Run Vector Studio release and runtime contracts."
+    },
+    "check": {
+      "runtime": "pnpm-script",
+      "entry": "check",
+      "network": "disabled",
+      "timeoutSeconds": 7200,
+      "description": "Run Vector Studio's complete deterministic repository validation."
+    }
+  }
+}

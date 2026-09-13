@@ -16,6 +16,18 @@ async function read(relativePath) {
   }
 }
 
+async function requireAbsent(relativePath) {
+  checkedFiles.add(relativePath);
+  try {
+    await fs.stat(path.join(root, relativePath));
+    errors.push(`Retired private-response workflow must remain absent: ${relativePath}.`);
+  } catch (error) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+      errors.push(`Unable to verify retired path ${relativePath} (${error instanceof Error ? error.message : String(error)}).`);
+    }
+  }
+}
+
 function requireTokens(relativePath, source, tokens) {
   for (const token of tokens) {
     if (!source.includes(token)) errors.push(`${relativePath} is missing private-response token: ${token}`);
@@ -36,14 +48,16 @@ const files = {
   launch: "apps/web/app/launch/route.ts",
   health: "apps/web/app/api/health/route.ts",
   liveProof: "scripts/verify-live-private-response.mjs",
+  production: "scripts/run-vector-vercel-production-local.mjs",
   docs: "docs/PRIVATE-APPLICATION-SECURITY.md",
-  workflow: ".github/workflows/vercel-deployment-contract.yml",
-  publicProofWorkflow: ".github/workflows/public-deployment-proof.yml",
 };
 const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),
 );
 const packageJson = JSON.parse(sources.package || "{}");
+
+await requireAbsent(".github/workflows/vercel-deployment-contract.yml");
+await requireAbsent(".github/workflows/public-deployment-proof.yml");
 
 if (packageJson?.scripts?.["private-response:check"] !== "node scripts/check-private-response-contract.mjs") {
   errors.push("package.json must expose private-response:check.");
@@ -115,6 +129,16 @@ forbidTokens(files.liveProof, sources.liveProof, [
   "VECTOR_API_TOKEN",
   "VECTOR_WORKER_API_TOKEN",
 ]);
+
+requireTokens(files.production, sources.production, [
+  '"scripts/verify-live-private-response.mjs"',
+  '"live private-response proof"',
+  'livePrivateResponseProofRequiredOnApply: options.mode === "apply"',
+  'repositoryPublicationAuthority: false',
+  'githubActionsAuthority: false',
+  'sensitiveValuesRecorded: false',
+]);
+
 requireTokens(files.docs, sources.docs, [
   "X-Robots-Tag",
   "Referrer-Policy",
@@ -124,24 +148,10 @@ requireTokens(files.docs, sources.docs, [
   "does not authenticate",
   "client release remains withheld",
 ]);
-requireTokens(files.workflow, sources.workflow, [
-  "node scripts/check-private-response-contract.mjs",
-  "pnpm install --frozen-lockfile",
-]);
-requireTokens(files.publicProofWorkflow, sources.publicProofWorkflow, [
-  "Verify live private response boundary",
-  "node scripts/verify-live-private-response.mjs",
-  ".ci/vector-private-response-proof.json",
-  "PRIVATE_OUTCOME",
-  "source, private response and public runtime proof passed",
-]);
 
 for (const relativePath of [files.liveProof, "scripts/check-private-response-contract.mjs"]) {
-  if (!sources.liveProof && relativePath === files.liveProof) continue;
   try {
-    execFileSync(process.execPath, ["--check", path.join(root, relativePath)], {
-      stdio: "pipe",
-    });
+    execFileSync(process.execPath, ["--check", path.join(root, relativePath)], { stdio: "pipe" });
   } catch (error) {
     errors.push(`${relativePath} failed node --check (${error instanceof Error ? error.message : String(error)})`);
   }
@@ -151,7 +161,7 @@ if (errors.length > 0) {
   process.stderr.write(`${JSON.stringify({
     check: "evavo-vector-private-response",
     ok: false,
-    contractVersion: "1.0",
+    contractVersion: "2.0",
     errors,
   }, null, 2)}\n`);
   process.exit(1);
@@ -160,11 +170,14 @@ if (errors.length > 0) {
 process.stdout.write(`${JSON.stringify({
   check: "evavo-vector-private-response",
   ok: true,
-  contractVersion: "1.0",
+  contractVersion: "2.0",
+  providerFreeValidation: true,
+  retiredWorkflowWrappersAbsent: true,
   indexing: "forbidden",
   framing: "forbidden",
   referrerPolicy: "no-referrer",
   liveDeploymentProof: true,
+  productionLaneOwnsPrivateProof: true,
   authenticationImplementedInMiddleware: false,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);

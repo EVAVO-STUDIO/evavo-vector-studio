@@ -5,6 +5,12 @@ import path from "node:path";
 const REPOSITORY = "EVAVO-STUDIO/evavo-vector-studio";
 const MAX_PROOF_BYTES = 256 * 1024;
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
+const ROOT = path.resolve(".");
+const VALIDATION_GENERATED_PATHS = Object.freeze([
+  Object.freeze({ relativePath: ".turbo", recursive: true }),
+  Object.freeze({ relativePath: "apps/web/next-env.d.ts", recursive: false }),
+  Object.freeze({ relativePath: "apps/web/tsconfig.tsbuildinfo", recursive: false }),
+]);
 
 function fail(code, message, details = undefined) {
   const error = new Error(message);
@@ -71,6 +77,23 @@ function assertCleanRepository() {
   }
 }
 
+function resolveRepositoryPath(relativePath) {
+  const absolute = path.resolve(ROOT, relativePath);
+  const relative = path.relative(ROOT, absolute);
+  if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    fail("SOURCE_PROOF_CLEANUP_PATH_INVALID", "Validation cleanup must remain inside the repository root.", {
+      relativePath,
+    });
+  }
+  return absolute;
+}
+
+async function removeValidationGeneratedPaths() {
+  for (const { relativePath, recursive } of VALIDATION_GENERATED_PATHS) {
+    await rm(resolveRepositoryPath(relativePath), { recursive, force: true });
+  }
+}
+
 function runChecked(command, args, label) {
   const started = Date.now();
   process.stderr.write(`\n[${label}] ${command} ${args.join(" ")}\n`);
@@ -132,6 +155,7 @@ async function main() {
     runChecked("pnpm", ["check"], "complete repository check"),
     runChecked("pnpm", ["--filter", "@evavo/vector-web", "build"], "private web production build"),
   ];
+  await removeValidationGeneratedPaths();
   assertCleanRepository();
   const completedAtMs = Date.now();
   const proof = Object.freeze({

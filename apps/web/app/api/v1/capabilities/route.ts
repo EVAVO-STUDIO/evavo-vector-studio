@@ -64,6 +64,7 @@ export function GET(): Response {
         }),
         api: Object.freeze({
           trace: "/api/v1/trace",
+          readiness: "/api/v1/readiness",
           printPreflight: "/api/v1/print/preflight",
           animatedSvg: "/api/v1/motion/svg",
           lottie: "/api/v1/motion/lottie",

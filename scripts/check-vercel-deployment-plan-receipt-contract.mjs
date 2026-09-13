@@ -79,20 +79,25 @@ requireTokens(files.deployer, sources.deployer, [
   'code: "VERCEL_DEPLOY_PROJECT_MISSING"',
   'code: "VERCEL_DEPLOY_PROJECT_NOT_READY"',
   'code: "VERCEL_DEPLOY_DOMAIN_NOT_VERIFIED"',
-  "async function writePlanFailureReceipt(options, error)",
-  "readyToApply: false",
+  "async function writeFailureReceipt(options, error)",
+  'mode: options.mode',
+  'options.mode === "apply"',
   "blockers: Object.freeze(blockers)",
   "diagnosticReceipt: true",
-  "mutationAttempted: false",
-  "mutationPerformed: false",
+  "mutationAttempted: activeMutationAttempted",
+  "mutationPerformed: activeMutationPerformed",
   'diagnosticPlanReceipts: true',
+  'diagnosticApplyReceipts: true',
+  'quotaFailuresClassified: true',
+  'deploymentRootDirectoryExplicit: true',
+  '"VERCEL_DEPLOY_API_QUOTA_EXHAUSTED"',
+  'resource !== "api-deployments-free-per-day"',
+  'resetAt: reset === null ? null : new Date(reset).toISOString()',
   "activeMutationAttempted = true",
   "activeMutationPerformed = true",
   "readyToApply: true",
   "blockers: Object.freeze([])",
-  "mutationAttempted: activeMutationAttempted",
-  "mutationPerformed: activeMutationPerformed",
-  'activeOptions?.mode === "plan" && !activeOptions.selfTest',
+  'activeOptions && !activeOptions.selfTest',
   "diagnosticReceiptWritten: Boolean(diagnosticOutput)",
   "diagnosticOutput",
   "diagnosticReceiptError",
@@ -166,7 +171,7 @@ requireTokens(files.docs, sources.docs, [
   "pnpm vercel-plan:check",
 ]);
 
-async function executableReceiptTest() {
+async function executablePlanReceiptTest() {
   const directory = await mkdtemp(path.join(os.tmpdir(), "vector-deploy-plan-contract-"));
   const output = path.join(directory, "plan.json");
   const environment = { ...process.env };
@@ -226,12 +231,107 @@ async function executableReceiptTest() {
   }
 }
 
+async function executableApplyFailureReceiptTest() {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "vector-deploy-apply-contract-"));
+  const output = path.join(directory, "apply.json");
+  const environment = { ...process.env };
+  delete environment.VERCEL_TOKEN;
+  delete environment.VECTOR_VERCEL_DEPLOY_CONFIRM;
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "scripts/deploy-vector-studio-vercel.mjs",
+        "--mode",
+        "apply",
+        "--commit",
+        "b".repeat(40),
+        "--out",
+        output,
+      ],
+      {
+        cwd: root,
+        env: environment,
+        encoding: "utf8",
+        shell: false,
+        timeout: 30_000,
+        maxBuffer: 256 * 1024,
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.equal(result.error, undefined);
+    const receipt = JSON.parse(await readFile(output, "utf8"));
+    assert.equal(receipt.version, "1.0");
+    assert.equal(receipt.mode, "apply");
+    assert.equal(receipt.passed, false);
+    assert.equal(receipt.readyToApply, false);
+    assert.equal(receipt.diagnosticReceipt, true);
+    assert.equal(receipt.blockers[0].code, "VERCEL_DEPLOY_CREDENTIALS_INVALID");
+    assert.equal(receipt.mutationAttempted, false);
+    assert.equal(receipt.mutationPerformed, false);
+    assert.equal(receipt.result.deploymentCreated, false);
+    assert.equal(receipt.result.deployment, null);
+    assert.match(result.stderr, /"diagnosticReceiptWritten": true/);
+    return Object.freeze({
+      status: result.status,
+      blockerCode: receipt.blockers[0].code,
+      diagnosticReceipt: true,
+      mode: receipt.mode,
+      mutationAttempted: false,
+      mutationPerformed: false,
+    });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+function executableDeployerSelfTest() {
+  const result = spawnSync(
+    process.execPath,
+    ["scripts/deploy-vector-studio-vercel.mjs", "--self-test"],
+    {
+      cwd: root,
+      env: { ...process.env },
+      encoding: "utf8",
+      shell: false,
+      timeout: 30_000,
+      maxBuffer: 256 * 1024,
+    },
+  );
+  assert.equal(result.status, 0);
+  assert.equal(result.error, undefined);
+  const receipt = JSON.parse(result.stdout);
+  assert.equal(receipt.ok, true);
+  assert.equal(receipt.diagnosticPlanReceipts, true);
+  assert.equal(receipt.diagnosticApplyReceipts, true);
+  assert.equal(receipt.quotaFailuresClassified, true);
+  assert.equal(receipt.deploymentRootDirectoryExplicit, true);
+  assert.equal(receipt.sensitiveValuesRecorded, false);
+  return Object.freeze(receipt);
+}
+
 let executable = null;
+let executableApply = null;
+let deployerSelfTest = null;
 try {
-  executable = await executableReceiptTest();
+  executable = await executablePlanReceiptTest();
 } catch (error) {
   errors.push(
     `Executable diagnostic plan receipt test failed (${error instanceof Error ? error.message : String(error)}).`,
+  );
+}
+try {
+  executableApply = await executableApplyFailureReceiptTest();
+} catch (error) {
+  errors.push(
+    `Executable diagnostic apply receipt test failed (${error instanceof Error ? error.message : String(error)}).`,
+  );
+}
+try {
+  deployerSelfTest = executableDeployerSelfTest();
+} catch (error) {
+  errors.push(
+    `Executable deployer self-test failed (${error instanceof Error ? error.message : String(error)}).`,
   );
 }
 
@@ -251,10 +351,15 @@ process.stdout.write(`${JSON.stringify({
   contractVersion: "1.0",
   noMutationPlan: true,
   diagnosticReceiptOnFailure: true,
+  diagnosticApplyReceiptOnFailure: true,
+  quotaFailuresClassified: true,
+  deploymentRootDirectoryExplicit: true,
   newFileOnly: true,
   secretFree: true,
   nonZeroWhenBlocked: true,
   mutationAttemptTruthRetained: true,
   executable,
+  executableApply,
+  deployerSelfTest,
   checkedFiles: [...checkedFiles].sort(),
 }, null, 2)}\n`);

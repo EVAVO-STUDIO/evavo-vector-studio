@@ -33,11 +33,14 @@
     "safeInteractiveRequestBytes": 4000000,
     "safeInteractiveResponseBytes": 4000000,
     "safeMultipartFileBytes": 3250000,
-    "safeBase64BinaryBytes": 2750000
+    "safeBase64BinaryBytes": 2750000,
+    "projectId": "prj_Nb5IcrF5Fd0xhwDoUfZPJYmwSo6L",
+    "expectedNodeVersion": "22.x",
+    "sourceControlMode": "api-managed-or-exact-github"
   },
   "promotionState": {
     "status": "staged",
-    "vercelProjectProvisioned": false,
+    "vercelProjectProvisioned": true,
     "productionDomainProvisioned": false,
     "productionEnvironmentConfigured": false,
     "frozenInstallVerified": false,
@@ -83,7 +86,10 @@
     "launchReplayProvider": "upstash-redis-rest",
     "launchReplayMaximumTtlSeconds": 150,
     "launchReplayRawCredentialStorage": false,
-    "acceptedActors": ["owner", "client"],
+    "acceptedActors": [
+      "owner",
+      "client"
+    ],
     "applicationKey": "vector-studio",
     "targetHost": "vector.evavo.com.au",
     "workspaceApiSessionAuthorization": "same-origin-app-private-session-or-server-bearer",

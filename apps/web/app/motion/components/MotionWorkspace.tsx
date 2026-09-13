@@ -111,9 +111,10 @@ function shortHash(value: string): string {
   return value.length > 18 ? `${value.slice(0, 18)}…` : value;
 }
 
-function useObjectUrl(blob: Blob | null): string | null {
+function useObjectUrl(blob: Blob | null, revision = 0): string | null {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
+    void revision;
     if (!blob) {
       setUrl(null);
       return;
@@ -121,7 +122,7 @@ function useObjectUrl(blob: Blob | null): string | null {
     const next = URL.createObjectURL(blob);
     setUrl(next);
     return () => URL.revokeObjectURL(next);
-  }, [blob]);
+  }, [blob, revision]);
   return url;
 }
 
@@ -235,9 +236,9 @@ export default function MotionWorkspace() {
   const sourceUrl = useObjectUrl(sourceFile);
   const animatedBlob = useMemo(
     () => result ? new Blob([result.response.svg], { type: "image/svg+xml" }) : null,
-    [result, replayRevision],
+    [result],
   );
-  const animatedUrl = useObjectUrl(animatedBlob);
+  const animatedUrl = useObjectUrl(animatedBlob, replayRevision);
 
   const planState = useMemo(() => {
     if (!sourceInspection || tracks.length === 0) return { plan: null, error: null } as const;

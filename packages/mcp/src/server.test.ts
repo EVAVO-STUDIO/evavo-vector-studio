@@ -112,6 +112,27 @@ test("performs an MCP handshake and exposes the governed tool set", async () => 
     assert.equal(printPreflight?.outputWritten, false);
     assert.equal(printPreflight?.productionApproval, false);
     assert.equal(printPreflight?.approval, "review-required");
+
+    const printSourcePath = path.join(root, "handshake-print.svg");
+    await writeFile(
+      printSourcePath,
+      '<svg xmlns="http://www.w3.org/2000/svg" width="25mm" height="25mm" viewBox="0 0 25 25"><title>Handshake print sample</title><rect width="25" height="25" fill="#111"/></svg>',
+      "utf8",
+    );
+    const printResult = await client.callTool({
+      name: "vector_preflight_svg_print",
+      arguments: {
+        inputPath: printSourcePath,
+        profile: "commercial",
+      },
+    });
+    assert.notEqual(printResult.isError, true);
+    assert.equal(
+      (printResult.structuredContent as { outputWritten?: boolean } | undefined)
+        ?.outputWritten,
+      false,
+    );
+
     const lottie = payload?.lottie as Record<string, unknown> | undefined;
     assert.equal(lottie?.structuralInspection, true);
     assert.equal(lottie?.playerRenderValidation, false);

@@ -79,6 +79,16 @@ Direct SVG headers include `X-Vector-Job-Id`, `X-Vector-Review-Required`, `X-Vec
 
 Expected trace errors include `RASTER_INPUT_TOO_LARGE`, `RASTER_MULTI_IMAGE_UNSUPPORTED`, `RASTER_PIXEL_LIMIT_EXCEEDED`, `RASTER_RUNTIME_BUSY` and `RASTER_RUNTIME_TIMEOUT`.
 
+The hosted trace runtime is bounded by:
+
+```dotenv
+VECTOR_TRACE_TIMEOUT_MS=45000
+VECTOR_TRACE_MAX_CONCURRENT=1
+VECTOR_TRACE_RETRY_AFTER_SECONDS=5
+```
+
+`VECTOR_TRACE_TIMEOUT_MS` accepts 5,000 to 180,000 milliseconds. `VECTOR_TRACE_MAX_CONCURRENT` accepts 1 to 4 active traces per runtime instance. When the concurrency ceiling is reached, the API returns `RASTER_RUNTIME_BUSY` with a bounded `Retry-After` header; timed-out work returns `RASTER_RUNTIME_TIMEOUT`. These limits protect the hosted synchronous route and do not reduce local CLI, MCP, batch or self-hosted worker capability.
+
 # Animated SVG API
 
 ## Motion service discovery
@@ -282,3 +292,11 @@ See [`WORKER-API.md`](WORKER-API.md) and [`OBJECT-TRANSFER.md`](OBJECT-TRANSFER.
 A successful synchronous production response means requested processing completed. A successful hosted job, worker control or object-transfer response means only that the requested record or immutable byte operation completed. None grants production approval.
 
 Human review remains mandatory for tracing geometry, topology, negative space, logo fidelity, motion timing, easing, transform origins, reduced-motion delivery, Lottie paint order, archive compatibility, player fidelity and final platform compatibility.
+
+## Runtime readiness
+
+```text
+GET /api/v1/readiness
+```
+
+This public no-store endpoint returns only bounded booleans, modes, stable action codes and release-proof requirements. It does not return credentials, digests, paths, workspace identity or generated bodies. Configuration readiness is not live release evidence and `clientReleaseEligible` remains false.
