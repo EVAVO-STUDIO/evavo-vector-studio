@@ -48,7 +48,7 @@ const packageJson = await readJson("package.json");
 const turboJson = await readJson("turbo.json");
 const documentation = await read("docs/TEST-BUILD-ISOLATION.md");
 const readme = await read("README.md");
-await requireAbsent(".github/workflows/readiness-contract.yml");
+await requireAbsent(".github/workflows-retired/readiness-contract.yml");
 
 if (packageJson?.scripts?.["test-build-isolation:check"] !== "node scripts/check-test-build-isolation.mjs") errors.push("package.json must expose test-build-isolation:check.");
 if (!String(packageJson?.scripts?.check ?? "").includes("pnpm test-build-isolation:check")) errors.push("package.json check must include test-build-isolation:check before dependency-backed gates.");

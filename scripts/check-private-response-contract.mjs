@@ -56,8 +56,8 @@ const sources = Object.fromEntries(
 );
 const packageJson = JSON.parse(sources.package || "{}");
 
-await requireAbsent(".github/workflows/vercel-deployment-contract.yml");
-await requireAbsent(".github/workflows/public-deployment-proof.yml");
+await requireAbsent(".github/workflows-retired/vercel-deployment-contract.yml");
+await requireAbsent(".github/workflows-retired/public-deployment-proof.yml");
 
 if (packageJson?.scripts?.["private-response:check"] !== "node scripts/check-private-response-contract.mjs") {
   errors.push("package.json must expose private-response:check.");

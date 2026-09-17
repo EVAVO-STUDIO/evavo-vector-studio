@@ -21,7 +21,7 @@ const files = {
 };
 const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])));
 const rootPackage = await readJson(files.rootPackage); const webPackage = await readJson(files.webPackage); const jobPackage = await readJson(files.package);
-await requireAbsent(".github/workflows/quality.yml");
+await requireAbsent(".github/workflows-retired/quality.yml");
 
 if (jobPackage?.version !== rootPackage?.version) errors.push("Job-control version must match root release.");
 if (jobPackage?.scripts?.test !== "node --test dist/*.test.js") errors.push("job-control must compile and execute generated tests.");

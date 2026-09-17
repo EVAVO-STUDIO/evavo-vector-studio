@@ -38,7 +38,7 @@ const files = {
 const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, file]) => [key, await read(file)])));
 const rootPackage = await json(files.rootPackage); const webPackage = await json(files.webPackage); const hubPackage = await json(files.hubPackage);
 const compatibilityFixture = await json(files.compatibilityFixture); const card = await json(files.card); const entry = await json(files.entry); const deployment = await json(files.deployment); const manifest = await json(files.manifest);
-await requireAbsent(".github/workflows/hub-contract.yml");
+await requireAbsent(".github/workflows-retired/hub-contract.yml");
 
 if (hubPackage?.version !== rootPackage?.version) errors.push("Hub auth package version must match root release.");
 if (hubPackage?.scripts?.build !== "tsc -p tsconfig.json") errors.push("Hub auth must retain governed TypeScript build.");

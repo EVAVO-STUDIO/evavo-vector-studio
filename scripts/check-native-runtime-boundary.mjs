@@ -45,7 +45,7 @@ const files = {
   inputPolicyRoute: "apps/web/app/api/v1/input-policy/route.ts",
   traceRoute: "apps/web/app/api/v1/trace/route.ts",
   nextConfig: "apps/web/next.config.mjs",
-  workflow: ".github/workflows/quality.yml",
+  workflow: ".github/workflows-retired/quality.yml",
 };
 const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),

@@ -19,7 +19,7 @@ const files = {
 };
 const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])));
 const rootPackage = await readJson(files.rootPackage); const protocolPackage = await readJson(files.package); const webPackage = await readJson(files.webPackage);
-await requireAbsent(".github/workflows/quality.yml");
+await requireAbsent(".github/workflows-retired/quality.yml");
 
 if (protocolPackage?.version !== rootPackage?.version) errors.push(`Worker protocol version ${String(protocolPackage?.version)} does not match root ${String(rootPackage?.version)}.`);
 if (protocolPackage?.dependencies?.["@evavo/job-control"] !== "workspace:*") errors.push("packages/worker-protocol must consume @evavo/job-control through the workspace.");

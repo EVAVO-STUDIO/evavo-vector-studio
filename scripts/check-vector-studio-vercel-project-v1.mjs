@@ -8,7 +8,7 @@ const files = Object.freeze({
   verifier: "scripts/verify-vector-studio-vercel-project-v1.mjs",
   exactMain: "scripts/check-exact-current-main.mjs",
   documentation: "docs/VERCEL-PROJECT-STATE-V1.md",
-  retiredWorkflow: ".github/workflows/vector-studio-vercel-project-v1.yml",
+  retiredWorkflow: ".github/workflows-retired/vector-studio-vercel-project-v1.yml",
 });
 
 function read(relativePath) {

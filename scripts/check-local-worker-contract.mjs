@@ -72,7 +72,7 @@ const sources = Object.fromEntries(
 );
 const rootPackage = await readJson(files.rootPackage);
 const localPackage = await readJson(files.package);
-await requireAbsent(".github/workflows/quality.yml");
+await requireAbsent(".github/workflows-retired/quality.yml");
 
 if (localPackage?.version !== rootPackage?.version) {
   errors.push(`Local worker version ${String(localPackage?.version)} does not match root ${String(rootPackage?.version)}.`);

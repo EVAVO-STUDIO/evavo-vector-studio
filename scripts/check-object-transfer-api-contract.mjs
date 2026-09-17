@@ -66,7 +66,7 @@ const files = {
   apiDocs: "docs/API.md",
   architecture: "docs/ARCHITECTURE.md",
   readme: "README.md",
-  workflow: ".github/workflows/quality.yml",
+  workflow: ".github/workflows-retired/quality.yml",
 };
 const sources = Object.fromEntries(
   await Promise.all(

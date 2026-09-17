@@ -52,7 +52,7 @@ const files = {
   docs: "docs/DOTLOTTIE.md",
   lottieDocs: "docs/LOTTIE.md",
   readme: "README.md",
-  workflow: ".github/workflows/quality.yml",
+  workflow: ".github/workflows-retired/quality.yml",
 };
 const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),

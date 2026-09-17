@@ -75,7 +75,7 @@ const files = Object.freeze({
 });
 const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])));
 const packageJson = await readJson(files.package);
-await requireAbsent(".github/workflows/readiness-contract.yml");
+await requireAbsent(".github/workflows-retired/readiness-contract.yml");
 
 if (packageJson?.scripts?.["readiness:check"] !== "node scripts/check-readiness-contract.mjs") errors.push("package.json must expose readiness:check.");
 const checkScript = String(packageJson?.scripts?.check ?? "");

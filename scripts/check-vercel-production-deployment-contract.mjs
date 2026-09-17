@@ -38,9 +38,9 @@ const files = Object.freeze({
 const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])));
 const packageJson = await readJson(files.package);
 
-await requireAbsent(".github/workflows/vector-vercel-production-deployment.yml");
-await requireAbsent(".github/workflows/vector-vercel-project-provisioning.yml");
-await requireAbsent(".github/workflows/vector-vercel-provisioning-preflight.yml");
+await requireAbsent(".github/workflows-retired/vector-vercel-production-deployment.yml");
+await requireAbsent(".github/workflows-retired/vector-vercel-project-provisioning.yml");
+await requireAbsent(".github/workflows-retired/vector-vercel-provisioning-preflight.yml");
 
 if (packageJson?.scripts?.["vercel-deploy:check"] !== "node scripts/check-vercel-production-deployment-contract.mjs") errors.push("package.json must expose vercel-deploy:check.");
 if (!String(packageJson?.scripts?.check ?? "").includes("pnpm vercel-deploy:check")) errors.push("package.json check must include vercel-deploy:check.");

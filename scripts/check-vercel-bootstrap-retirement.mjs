@@ -42,12 +42,12 @@ for (const relativePath of [
   "bootstrap-exact-source.sh",
   "scripts/bootstrap-exact-source.sh",
   "apps/web/bootstrap-exact-source.sh",
-  ".github/workflows/export-exact-source.yml",
+  ".github/workflows-retired/export-exact-source.yml",
 ]) requireAbsent(relativePath);
 
 for (const [label, source] of [["root package", packageSource], ["Vercel deployer", deployer], ["Vercel provisioner", provisioner], ["web Vercel config", appVercelSource]]) {
   if (source.includes("bootstrap-exact-source.sh")) errors.push(`${label} references retired manual bootstrap deployment.`);
-  if (source.includes(".github/workflows/export-exact-source.yml")) errors.push(`${label} references retired exact-source workflow.`);
+  if (source.includes(".github/workflows-retired/export-exact-source.yml")) errors.push(`${label} references retired exact-source workflow.`);
 }
 
 for (const token of [

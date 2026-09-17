@@ -55,7 +55,7 @@ Client release remains withheld until the governed provider, live launch, replay
 The obsolete write-enabled recovery workflow must remain absent:
 
 ```text
-.github/workflows/repair-pnpm-lockfile-once.yml
+.github/workflows-retired/repair-pnpm-lockfile-once.yml
 ```
 
 That workflow could commit to `main` and cancel Actions. The package-manager bootstrap defect it addressed is already permanently corrected by the exact Corepack and frozen-install boundaries.

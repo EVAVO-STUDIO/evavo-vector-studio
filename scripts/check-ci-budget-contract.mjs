@@ -75,18 +75,18 @@ function requireDispatchOnly(relativePath, source) {
 }
 
 const files = Object.freeze({
-  quality: ".github/workflows/quality.yml",
-  governance: ".github/workflows/governance-contract.yml",
-  capabilities: ".github/workflows/capabilities-api-contract.yml",
-  print: ".github/workflows/print-preflight-contract.yml",
-  readiness: ".github/workflows/readiness-contract.yml",
-  hub: ".github/workflows/hub-contract.yml",
-  httpWorker: ".github/workflows/http-worker-contract.yml",
-  sourceProof: ".github/workflows/source-release-proof.yml",
-  publicProof: ".github/workflows/public-deployment-proof.yml",
-  providerPreflight: ".github/workflows/vector-vercel-provisioning-preflight.yml",
-  providerProvision: ".github/workflows/vector-vercel-project-provisioning.yml",
-  providerDeploy: ".github/workflows/vector-vercel-production-deployment.yml",
+  quality: ".github/workflows-retired/quality.yml",
+  governance: ".github/workflows-retired/governance-contract.yml",
+  capabilities: ".github/workflows-retired/capabilities-api-contract.yml",
+  print: ".github/workflows-retired/print-preflight-contract.yml",
+  readiness: ".github/workflows-retired/readiness-contract.yml",
+  hub: ".github/workflows-retired/hub-contract.yml",
+  httpWorker: ".github/workflows-retired/http-worker-contract.yml",
+  sourceProof: ".github/workflows-retired/source-release-proof.yml",
+  publicProof: ".github/workflows-retired/public-deployment-proof.yml",
+  providerPreflight: ".github/workflows-retired/vector-vercel-provisioning-preflight.yml",
+  providerProvision: ".github/workflows-retired/vector-vercel-project-provisioning.yml",
+  providerDeploy: ".github/workflows-retired/vector-vercel-production-deployment.yml",
   providerCompatibilityMarker: ".github/vector-vercel-preflight.trigger",
   hygiene: "scripts/check-repository-hygiene.mjs",
   documentation: "docs/CI-BUDGET.md",
@@ -150,7 +150,7 @@ requireTokens(files.governance, governanceTriggers, [
   "paths:",
   "pull_request:",
   "workflow_dispatch:",
-  '".github/workflows/governance-contract.yml"',
+  '".github/workflows-retired/governance-contract.yml"',
   '"scripts/check-ci-budget-contract.mjs"',
   '"scripts/check-repository-hygiene.mjs"',
   '"scripts/check-test-build-isolation.mjs"',
@@ -194,7 +194,7 @@ requireTokens(files.providerCompatibilityMarker, sources.providerCompatibilityMa
 
 requireTokens(files.hygiene, sources.hygiene, [
   "retiredPublicationAuthoritiesAbsent: true",
-  '".github/workflows/one-time-finalise-vercel-contract.yml"',
+  '".github/workflows-retired/one-time-finalise-vercel-contract.yml"',
 ]);
 
 requireTokens(files.documentation, sources.documentation, [
@@ -210,7 +210,7 @@ requireTokens(files.documentation, sources.documentation, [
   "Client release remains withheld",
 ]);
 
-await requireAbsent(".github/workflows/repair-pnpm-lockfile-once.yml");
+await requireAbsent(".github/workflows-retired/repair-pnpm-lockfile-once.yml");
 
 if (errors.length > 0) {
   process.stderr.write(

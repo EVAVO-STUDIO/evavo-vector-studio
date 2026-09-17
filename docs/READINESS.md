@@ -49,7 +49,7 @@ Only governed live release proof plus central human review can promote Vector St
 
 ## Provider-free validation
 
-`pnpm readiness:check`, `pnpm hygiene:check`, `pnpm test-build-isolation:check`, the lockfile checks, workspace typecheck/build and the full `pnpm check` chain are repository-local authority. The retired `.github/workflows/readiness-contract.yml` wrapper must remain absent.
+`pnpm readiness:check`, `pnpm hygiene:check`, `pnpm test-build-isolation:check`, the lockfile checks, workspace typecheck/build and the full `pnpm check` chain are repository-local authority. The retired `.github/workflows-retired/readiness-contract.yml` wrapper must remain absent.
 
 Readiness validation is read-only. It cannot provision Vercel, mutate domains, add credentials, promote the client allowlist or generate a signed launch. Vercel provider effects require their own explicit governed commands and receipts; workflow success does not grant that authority.
 

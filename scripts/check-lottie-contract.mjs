@@ -55,7 +55,7 @@ const files = {
   cli: "packages/cli/src/index.ts",
   docs: "docs/LOTTIE.md",
   cliDocs: "docs/CLI.md",
-  workflow: ".github/workflows/quality.yml",
+  workflow: ".github/workflows-retired/quality.yml",
 };
 const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),

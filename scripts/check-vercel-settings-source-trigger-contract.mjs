@@ -5,7 +5,7 @@ const orchestratorPath = new URL("./run-vector-vercel-settings-source.mjs", impo
 const wrapperPath = new URL("./run-vector-vercel-settings-reconciliation.mjs", import.meta.url);
 const providerAccessPath = new URL("./check-vector-vercel-provider-access.mjs", import.meta.url);
 const sourceProofPath = new URL("./create-source-proof.mjs", import.meta.url);
-const retiredWorkflowPath = new URL("../.github/workflows/vector-vercel-settings-source-trigger.yml", import.meta.url);
+const retiredWorkflowPath = new URL("../.github/workflows-retired/vector-vercel-settings-source-trigger.yml", import.meta.url);
 
 const [orchestrator, wrapper, providerAccess, sourceProof] = await Promise.all([
   readFile(orchestratorPath, "utf8"),
