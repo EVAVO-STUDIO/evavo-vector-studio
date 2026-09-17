@@ -56,3 +56,10 @@ test-results/
 
 # This is a pnpm workspace. An npm lockfile here is cross-tool contamination.
 package-lock.json
+
+# Scaffold left by a project generator for tools this repository does not use.
+# package.json names none of them. Delete the files if you want them gone; this
+# only stops them reading as untracked work.
+.eslintrc.json
+.prettierrc.json
+jest.config.js
