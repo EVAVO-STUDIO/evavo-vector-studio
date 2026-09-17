@@ -53,3 +53,6 @@ test-results/
 *.ai
 *.tif
 *.tiff
+
+# This is a pnpm workspace. An npm lockfile here is cross-tool contamination.
+package-lock.json
