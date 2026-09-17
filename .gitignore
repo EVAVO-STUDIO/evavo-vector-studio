@@ -63,3 +63,6 @@ package-lock.json
 .eslintrc.json
 .prettierrc.json
 jest.config.js
+
+# Generated Vercel config for a service this estate does not deploy to.
+vercel.json
