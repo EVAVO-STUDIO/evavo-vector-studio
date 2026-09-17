@@ -40,7 +40,7 @@ function forbidTokens(relativePath, source, tokens) {
 
 const files = {
   rootPackage: "package.json",
-  workflow: ".github/workflows-retired/quality.yml",
+  workflow: ".github/workflows/quality.yml",
   globalStyles: "apps/web/app/styles.css",
   home: "apps/web/app/page.tsx",
   page: "apps/web/app/motion/page.tsx",

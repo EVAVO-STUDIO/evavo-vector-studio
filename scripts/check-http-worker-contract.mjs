@@ -25,7 +25,7 @@ const files = {
 };
 const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])));
 const rootPackage = await readJson(files.rootPackage); const workerPackage = await readJson(files.package);
-await requireAbsent(".github/workflows-retired/http-worker-contract.yml");
+await requireAbsent(".github/workflows/http-worker-contract.yml");
 
 if (workerPackage?.version !== rootPackage?.version) errors.push("HTTP worker version must match root release.");
 if (workerPackage?.bin?.["evavo-vector-http-worker"] !== "./dist/index.js") errors.push("HTTP worker must expose evavo-vector-http-worker.");

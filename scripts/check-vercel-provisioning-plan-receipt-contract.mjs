@@ -56,7 +56,7 @@ const files = Object.freeze({
   enforcer: "scripts/enforce-vercel-provider-inspection-receipt.mjs",
   projector: "scripts/project-vector-provider-remediation-receipt.mjs",
   checker: "scripts/check-vercel-provisioning-plan-receipt-contract.mjs",
-  workflow: ".github/workflows-retired/vector-vercel-provisioning-preflight.yml",
+  workflow: ".github/workflows/vector-vercel-provisioning-preflight.yml",
   docs: "docs/VERCEL-PROVISIONING-PLAN-RECEIPTS.md",
 });
 const sources = Object.fromEntries(

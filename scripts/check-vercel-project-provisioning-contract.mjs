@@ -66,8 +66,8 @@ const sources = Object.fromEntries(
 );
 const packageJson = await readJson(files.package);
 
-await requireAbsent(".github/workflows-retired/vector-vercel-project-provisioning.yml");
-await requireAbsent(".github/workflows-retired/vector-vercel-provisioning-preflight.yml");
+await requireAbsent(".github/workflows/vector-vercel-project-provisioning.yml");
+await requireAbsent(".github/workflows/vector-vercel-provisioning-preflight.yml");
 
 if (packageJson?.scripts?.["vercel-provision:check"] !== "node scripts/check-vercel-project-provisioning-contract.mjs") {
   errors.push("package.json must expose vercel-provision:check.");

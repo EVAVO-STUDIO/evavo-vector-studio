@@ -59,7 +59,7 @@ const packageJson = await readJson(files.package);
 const cliPackage = await readJson(files.cliPackage);
 const turboJson = await readJson(files.turbo);
 
-await requireAbsent(".github/workflows-retired/readiness-contract.yml");
+await requireAbsent(".github/workflows/readiness-contract.yml");
 
 if (sources.gitignore.startsWith("\uFEFF")) errors.push(".gitignore must not contain a UTF-8 BOM.");
 const ignoreLines = new Set(sources.gitignore.replace(/^\uFEFF/, "").split(/\r?\n/).map((line) => line.trim()));
@@ -111,7 +111,7 @@ try {
   errors.push(`Unable to inspect tracked repository paths (${error instanceof Error ? error.message : String(error)}).`);
 }
 const temporaryPaths = new Set([
-  ".github/workflows-retired/publish-reviewed-runtime-readiness-v1.yml",
+  ".github/workflows/publish-reviewed-runtime-readiness-v1.yml",
   "ops/reviewed/apply-runtime-readiness-v1.py",
   "ops/reviewed/apply-test-build-isolation-v1.py",
   "ops/reviewed/align-test-isolation-contracts-v1.py",
@@ -126,14 +126,14 @@ const retiredPublicationPaths = new Set([
   ".github/proof-redaction-repair.trigger",
   ".github/release-proof-integration.trigger",
   ".github/release-source-reconcile.trigger",
-  ".github/workflows-retired/one-time-finalise-vercel-contract.yml",
-  ".github/workflows-retired/one-time-hosted-motion-limits.yml",
-  ".github/workflows-retired/one-time-hosted-route-repair.yml",
-  ".github/workflows-retired/one-time-hosted-ui-capabilities.yml",
-  ".github/workflows-retired/one-time-private-response-integration.yml",
-  ".github/workflows-retired/one-time-proof-redaction-repair.yml",
-  ".github/workflows-retired/one-time-release-proof-integration.yml",
-  ".github/workflows-retired/one-time-release-source-reconcile.yml",
+  ".github/workflows/one-time-finalise-vercel-contract.yml",
+  ".github/workflows/one-time-hosted-motion-limits.yml",
+  ".github/workflows/one-time-hosted-route-repair.yml",
+  ".github/workflows/one-time-hosted-ui-capabilities.yml",
+  ".github/workflows/one-time-private-response-integration.yml",
+  ".github/workflows/one-time-proof-redaction-repair.yml",
+  ".github/workflows/one-time-release-proof-integration.yml",
+  ".github/workflows/one-time-release-source-reconcile.yml",
 ]);
 const generatedTracked = tracked.filter((relativePath) => relativePath.startsWith(".turbo/") || relativePath.startsWith(".ci/") || relativePath.startsWith(".vercel/") || relativePath.endsWith(".tsbuildinfo") || relativePath === "next-env.d.ts" || relativePath.endsWith("/next-env.d.ts"));
 for (const relativePath of generatedTracked) errors.push(`Generated repository state must not be tracked: ${relativePath}.`);

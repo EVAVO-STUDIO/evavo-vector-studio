@@ -37,8 +37,8 @@ function forbidTokens(relativePath, source, tokens) {
 const files = {
   package: "package.json",
   deployer: "scripts/deploy-vector-studio-vercel.mjs",
-  workflow: ".github/workflows-retired/vector-vercel-production-deployment.yml",
-  deploymentWorkflow: ".github/workflows-retired/vercel-deployment-contract.yml",
+  workflow: ".github/workflows/vector-vercel-production-deployment.yml",
+  deploymentWorkflow: ".github/workflows/vercel-deployment-contract.yml",
   docs: "docs/VERCEL-DEPLOYMENT-PLAN-RECEIPTS.md",
 };
 const sources = Object.fromEntries(

@@ -57,7 +57,7 @@ function count(source, token) {
 const files = Object.freeze({
   project: "ops/provider/vector-studio-vercel-project-v1.json",
   remediation: "ops/provider/vector-studio-provider-remediation-v1.json",
-  workflow: ".github/workflows-retired/governance-contract.yml",
+  workflow: ".github/workflows/governance-contract.yml",
   checker: "scripts/check-vector-provider-remediation-contract.mjs",
   documentation: "docs/VERCEL-REMEDIATION.md",
 });

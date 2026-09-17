@@ -111,8 +111,8 @@ const packageJson = await readJson(files.package);
 const sourceSchema = await readJson(files.sourceSchema);
 const deploymentSchema = await readJson(files.deploymentSchema);
 
-await mustBeAbsent(".github/workflows-retired/source-release-proof.yml");
-await mustBeAbsent(".github/workflows-retired/public-deployment-proof.yml");
+await mustBeAbsent(".github/workflows/source-release-proof.yml");
+await mustBeAbsent(".github/workflows/public-deployment-proof.yml");
 
 if (sources.nvmrc.trim() !== "22.16.0") errors.push(".nvmrc must retain governed Node.js 22.16.0.");
 if (packageJson?.scripts?.["release-proof:check"] !== "node scripts/check-release-proof-contract.mjs") errors.push("package.json must expose release-proof:check.");

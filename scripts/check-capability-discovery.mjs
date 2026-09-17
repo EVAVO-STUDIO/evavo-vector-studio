@@ -87,7 +87,7 @@ const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(a
 const packageJson = await readJson(files.package);
 const webPackageJson = await readJson(files.webPackage);
 await requireAbsent("scripts/check-capabilities-api-contract.mjs");
-await requireAbsent(".github/workflows-retired/capabilities-api-contract.yml");
+await requireAbsent(".github/workflows/capabilities-api-contract.yml");
 
 if (packageJson?.scripts?.["capabilities-api:check"] !== "node scripts/check-capability-discovery.mjs") errors.push("package.json must expose canonical capability-discovery contract.");
 if (!String(packageJson?.scripts?.check ?? "").includes("pnpm capabilities-api:check")) errors.push("package.json check must include capability discovery before dependency-backed gates.");

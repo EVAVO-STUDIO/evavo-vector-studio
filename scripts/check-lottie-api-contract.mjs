@@ -50,7 +50,7 @@ const files = {
   apiDocs: "docs/API.md",
   lottieDocs: "docs/LOTTIE.md",
   motionDocs: "docs/MOTION.md",
-  workflow: ".github/workflows-retired/quality.yml",
+  workflow: ".github/workflows/quality.yml",
 };
 const sources = Object.fromEntries(
   await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])),

@@ -42,7 +42,7 @@ const files = Object.freeze({
 const sources = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, relativePath]) => [key, await read(relativePath)])));
 const packageJson = await readJson(files.package);
 const cliPackageJson = await readJson(files.cliPackage);
-await requireAbsent(".github/workflows-retired/print-preflight-contract.yml");
+await requireAbsent(".github/workflows/print-preflight-contract.yml");
 
 if (packageJson?.scripts?.["print-api:check"] !== "node scripts/check-print-preflight-api-contract.mjs") errors.push("package.json must expose print-api:check.");
 if (!String(packageJson?.scripts?.check ?? "").includes("pnpm print-api:check")) errors.push("package.json check must include print-api:check.");

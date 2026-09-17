@@ -41,7 +41,7 @@ function forbidTokens(relativePath, source, tokens) {
 const files = {
   rootPackage: "package.json",
   webPackage: "apps/web/package.json",
-  workflow: ".github/workflows-retired/quality.yml",
+  workflow: ".github/workflows/quality.yml",
   review: "apps/web/app/motion/components/LottieReview.tsx",
   preview: "apps/web/app/motion/components/LottiePreview.tsx",
   styles: "apps/web/app/motion/components/LottieReview.module.css",
